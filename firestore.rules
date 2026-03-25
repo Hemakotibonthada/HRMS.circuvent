@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Organization documents — only org admins can manage
+    match /organizations/{orgId} {
+      allow read: if request.auth != null && 
+        (resource.data.ownerId == request.auth.uid || 
+         request.auth.uid in resource.data.adminIds ||
+         request.auth.uid in resource.data.memberIds);
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (resource.data.ownerId == request.auth.uid || 
+         request.auth.uid in resource.data.adminIds);
+      
+      // Employees subcollection
+      match /employees/{employeeId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && 
+          get(/databases/$(database)/documents/organizations/$(orgId)).data.adminIds.hasAny([request.auth.uid]);
+      }
+
+      // Attendance subcollection
+      match /attendance/{recordId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null;
+        allow update, delete: if request.auth != null && 
+          (resource.data.employeeId == request.auth.uid ||
+           get(/databases/$(database)/documents/organizations/$(orgId)).data.adminIds.hasAny([request.auth.uid]));
+      }
+
+      // Leave requests
+      match /leaves/{leaveId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null;
+        allow update, delete: if request.auth != null && 
+          (resource.data.employeeId == request.auth.uid ||
+           get(/databases/$(database)/documents/organizations/$(orgId)).data.adminIds.hasAny([request.auth.uid]));
+      }
+
+      // Payroll records
+      match /payroll/{payrollId} {
+        allow read: if request.auth != null && 
+          (resource.data.employeeId == request.auth.uid ||
+           get(/databases/$(database)/documents/organizations/$(orgId)).data.adminIds.hasAny([request.auth.uid]));
+        allow write: if request.auth != null && 
+          get(/databases/$(database)/documents/organizations/$(orgId)).data.adminIds.hasAny([request.auth.uid]);
+      }
+
+      // Recruitment
+      match /jobs/{jobId} {
+        allow read: if true;
+        allow write: if request.auth != null && 
+          get(/databases/$(database)/documents/organizations/$(orgId)).data.adminIds.hasAny([request.auth.uid]);
+      }
+
+      // Performance reviews
+      match /reviews/{reviewId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null;
+      }
+
+      // Departments
+      match /departments/{departmentId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && 
+          get(/databases/$(database)/documents/organizations/$(orgId)).data.adminIds.hasAny([request.auth.uid]);
+      }
+
+      // Announcements
+      match /announcements/{announcementId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && 
+          get(/databases/$(database)/documents/organizations/$(orgId)).data.adminIds.hasAny([request.auth.uid]);
+      }
+
+      // Documents
+      match /documents/{documentId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null;
+      }
+
+      // Training
+      match /training/{trainingId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && 
+          get(/databases/$(database)/documents/organizations/$(orgId)).data.adminIds.hasAny([request.auth.uid]);
+      }
+    }
+
+    // Subscriptions — managed by system
+    match /subscriptions/{subId} {
+      allow read: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && resource.data.ownerId == request.auth.uid;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "hosting": {
+    "site": "circuvent-hrms",
+    "source": ".",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "frameworksBackend": {
+      "region": "asia-southeast1",
+      "maxInstances": 2,
+      "memory": "1GiB",
+      "cpu": 1,
+      "concurrency": 80,
+      "timeoutSeconds": 120
+    }
+  },
+  "firestore": {
+    "database": "hrms-circuvent",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "emulators": {
+    "auth": { "port": 9098 },
+    "firestore": { "port": 8086 },
+    "storage": { "port": 9198 },
+    "ui": { "enabled": true, "port": 4001 },
+    "singleProjectMode": true
+  }
+}

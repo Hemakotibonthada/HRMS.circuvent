@@ -1,0 +1,13 @@
+{
+  "name": "Circuvent HRMS",
+  "short_name": "HRMS",
+  "description": "Human Resource Management System by Circuvent Technologies",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#7c3aed",
+  "icons": [
+    { "src": "/api/icon?size=192", "sizes": "192x192", "type": "image/png" },
+    { "src": "/api/icon?size=512", "sizes": "512x512", "type": "image/png" }
+  ]
+}
