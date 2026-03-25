@@ -26,6 +26,7 @@ import { useEmployeeStore, startSync, type EmployeeDoc } from "@/stores/unified-
 import { genericService, COLLECTIONS } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { useRBAC } from "@/hooks/use-rbac";
+import { createEmployeeAcrossApps, syncEmployeeToOtherApps } from "@/lib/cross-app-sync";
 
 // ═══════════════════════════════════════════════════════════════
 // EMPLOYEE MANAGEMENT — Full CRUD with 360° profiles, grid/list
@@ -56,7 +57,7 @@ export default function EmployeesPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [tab, setTab] = useState("all");
   // Form state
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", department: "", designation: "", joiningDate: "", employmentType: "Full-time", location: "", status: "active", salary: "" });
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", department: "", designation: "", joiningDate: "", employmentType: "Full-time", location: "", status: "active", salary: "", password: "", syncToApps: true });
 
   useEffect(() => { if (!initialized) startSync(COLLECTIONS.employees, store); }, [initialized, store]);
 
@@ -86,17 +87,53 @@ export default function EmployeesPage() {
   const totalOnNotice = items.filter(e => e.status === "notice_period").length;
   const newThisMonth = items.filter(e => { if (!e.joiningDate) return false; const d = new Date(e.joiningDate); const now = new Date(); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); }).length;
 
-  const resetForm = () => setForm({ firstName: "", lastName: "", email: "", phone: "", department: "", designation: "", joiningDate: "", employmentType: "Full-time", location: "", status: "active", salary: "" });
+  const resetForm = () => setForm({ firstName: "", lastName: "", email: "", phone: "", department: "", designation: "", joiningDate: "", employmentType: "Full-time", location: "", status: "active", salary: "", password: "", syncToApps: true });
 
   const handleCreate = async () => {
     if (!form.firstName || !form.lastName || !form.email || !form.department) {
       toast.error("Please fill required fields"); return;
     }
     try {
-      await genericService(COLLECTIONS.employees).create({
-        ...form, salary: form.salary ? parseFloat(form.salary) : 0,
-      });
-      toast.success(`${form.firstName} ${form.lastName} added successfully!`);
+      // If sync to other apps is enabled and password provided, create across all apps
+      if (form.syncToApps && form.password) {
+        const syncResult = await createEmployeeAcrossApps({
+          uid: "",
+          email: form.email,
+          displayName: `${form.firstName} ${form.lastName}`,
+          firstName: form.firstName,
+          lastName: form.lastName,
+          phone: form.phone,
+          department: form.department,
+          designation: form.designation,
+          joiningDate: form.joiningDate,
+          status: form.status,
+          employmentType: form.employmentType,
+          location: form.location,
+          reportingManager: "",
+          role: "employee",
+        }, form.password);
+
+        if (syncResult.success) {
+          toast.success(`${form.firstName} ${form.lastName} created across all apps (HRMS, CV-365, Mail)!`);
+        } else {
+          // Partial success
+          const created = [
+            syncResult.hrmsUserCreated && "HRMS",
+            syncResult.cv365UserCreated && "CV-365",
+            syncResult.mailUserCreated && "Mail",
+          ].filter(Boolean).join(", ");
+          toast.success(`Employee added to: ${created}`);
+          if (syncResult.errors.length > 0) {
+            toast.error(`Sync issues: ${syncResult.errors[0]}`);
+          }
+        }
+      } else {
+        // Just create in HRMS only
+        await genericService(COLLECTIONS.employees).create({
+          ...form, salary: form.salary ? parseFloat(form.salary) : 0,
+        });
+        toast.success(`${form.firstName} ${form.lastName} added to HRMS!`);
+      }
       setCreateOpen(false); resetForm();
     } catch (err) { toast.error("Failed to add employee"); }
   };
@@ -108,7 +145,22 @@ export default function EmployeesPage() {
         ...form, salary: form.salary ? parseFloat(form.salary) : 0,
       });
       store.updateItem(selectedEmp.id, { ...form, salary: form.salary ? parseFloat(form.salary) : 0 } as Partial<EmployeeDoc>);
-      toast.success("Employee updated!"); setEditOpen(false);
+
+      // Sync changes to CV-365 and Mail
+      try {
+        await syncEmployeeToOtherApps({
+          uid: selectedEmp.id,
+          email: form.email || selectedEmp.email,
+          displayName: `${form.firstName} ${form.lastName}`,
+          firstName: form.firstName, lastName: form.lastName,
+          department: form.department, designation: form.designation,
+          joiningDate: form.joiningDate, status: form.status,
+          employmentType: form.employmentType, location: form.location,
+          role: "employee", phone: form.phone,
+        });
+      } catch { /* sync failure shouldn't block local update */ }
+
+      toast.success("Employee updated & synced!"); setEditOpen(false);
     } catch { toast.error("Update failed"); }
   };
 
@@ -123,7 +175,7 @@ export default function EmployeesPage() {
 
   const openEdit = (emp: EmployeeDoc) => {
     setSelectedEmp(emp);
-    setForm({ firstName: emp.firstName || "", lastName: emp.lastName || "", email: emp.email || "", phone: emp.phone || "", department: emp.department || "", designation: emp.designation || "", joiningDate: emp.joiningDate || "", employmentType: emp.employmentType || "Full-time", location: emp.location || "", status: emp.status || "active", salary: emp.salary?.toString() || "" });
+    setForm({ firstName: emp.firstName || "", lastName: emp.lastName || "", email: emp.email || "", phone: emp.phone || "", department: emp.department || "", designation: emp.designation || "", joiningDate: emp.joiningDate || "", employmentType: emp.employmentType || "Full-time", location: emp.location || "", status: emp.status || "active", salary: emp.salary?.toString() || "", password: "", syncToApps: false });
     setEditOpen(true);
   };
 
@@ -382,6 +434,20 @@ export default function EmployeesPage() {
             </div>
             {editOpen && (
               <div className="space-y-2"><Label>Status</Label><Select value={form.status} onValueChange={v => setForm(p => ({ ...p, status: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(STATUS_CONF).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}</SelectContent></Select></div>
+            )}
+            {!editOpen && (
+              <>
+                <Separator />
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                  <h4 className="text-xs font-semibold text-muted-foreground">Cross-App Account Setup</h4>
+                  <p className="text-[10px] text-muted-foreground">Create login access for this employee across HRMS, CV-365, and Mail apps.</p>
+                  <div className="space-y-2"><Label>Login Password</Label><Input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder="Set initial password (min 6 chars)" /></div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="syncApps" checked={form.syncToApps} onChange={e => setForm(p => ({ ...p, syncToApps: e.target.checked }))} className="rounded" />
+                    <label htmlFor="syncApps" className="text-xs">Create accounts in CV-365 and Mail.circuvent</label>
+                  </div>
+                </div>
+              </>
             )}
           </div>
           <DialogFooter>
