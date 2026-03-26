@@ -525,6 +525,26 @@ export const MODULES: NavItem[] = [
     color: "oklch(0.55 0.14 220)",
     category: "admin",
   },
+  {
+    id: "admin",
+    name: "Admin Console",
+    shortName: "Admin",
+    description: "System administration & monitoring",
+    icon: Shield,
+    href: "/admin",
+    color: "oklch(0.50 0.16 260)",
+    category: "admin",
+  },
+  {
+    id: "analytics",
+    name: "Analytics",
+    shortName: "Analytics",
+    description: "Advanced HR analytics & charts",
+    icon: BarChart3,
+    href: "/analytics",
+    color: "oklch(0.58 0.20 280)",
+    category: "admin",
+  },
 ];
 
 export const MODULE_CATEGORIES: Record<string, string> = {

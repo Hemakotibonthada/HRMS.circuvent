@@ -22,7 +22,8 @@ import { toast } from "sonner";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   PieChart, Pie, Cell, Legend, AreaChart, Area, LineChart, Line,
-  Tooltip as RTooltip,
+  Tooltip as RTooltip, RadarChart, Radar, PolarGrid, PolarAngleAxis,
+  PolarRadiusAxis, ComposedChart, ScatterChart, Scatter, ZAxis,
 } from "recharts";
 import {
   useEmployeeStore, useLeaveStore, useExpenseStore,
@@ -242,6 +243,36 @@ export default function AnalyticsPage() {
         rate: v.total > 0 ? Math.round((v.present / v.total) * 100) : 0,
       }));
   }, [attendance]);
+
+  // ── Department Heath Radar ───────────────────────────────
+  const deptRadar = useMemo(() => {
+    return headcountByDept.slice(0, 6).map(d => ({
+      dept: d.name.length > 10 ? d.name.substring(0, 10) + "…" : d.name,
+      headcount: d.value,
+      leaveUtil: Math.round(leaves.filter(l => l.department === d.name && l.status === "approved").reduce((s, l) => s + (l.days || 0), 0) / Math.max(d.value, 1) * 10),
+      expenses: Math.min(100, Math.round(expenses.filter(e => e.department === d.name).reduce((s, e) => s + (e.amount || 0), 0) / 10000)),
+      tickets: Math.min(100, jobs.filter(j => j.department === d.name).length * 20),
+    }));
+  }, [headcountByDept, leaves, expenses, jobs]);
+
+  // ── Tenure scatter ───────────────────────────────────────
+  const tenureScatter = useMemo(() => {
+    return employees.filter(e => e.joiningDate).map(e => {
+      const months = Math.round((new Date().getTime() - new Date(e.joiningDate!).getTime()) / (1000 * 60 * 60 * 24 * 30));
+      return { name: e.firstName || "?", tenure: months, department: e.department || "Other" };
+    });
+  }, [employees]);
+
+  // ── Monthly expense vs hiring composed ───────────────────
+  const monthlyComposed = useMemo(() => {
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return months.map((m, i) => ({
+      month: m,
+      hired: employees.filter(e => e.joiningDate && new Date(e.joiningDate).getMonth() === i).length,
+      expenses: expenses.filter(e => e.date && new Date(e.date).getMonth() === i).reduce((s, e) => s + (e.amount || 0), 0),
+      leaves: leaves.filter(l => l.fromDate && new Date(l.fromDate).getMonth() === i).reduce((s, l) => s + (l.days || 0), 0),
+    }));
+  }, [employees, expenses, leaves]);
 
   if (loading) return <DataLoadingSkeleton />;
   if (employees.length === 0 && leaves.length === 0 && expenses.length === 0) {
@@ -724,6 +755,76 @@ export default function AnalyticsPage() {
                     </div>
                   ))}
                 </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Department Performance Radar */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader><CardTitle className="text-base">Department Performance Radar</CardTitle></CardHeader>
+            <CardContent>
+              {deptRadar.length > 0 ? (
+                <ResponsiveContainer width="100%" height={320}>
+                  <RadarChart data={deptRadar}>
+                    <PolarGrid stroke="hsl(var(--border))" />
+                    <PolarAngleAxis dataKey="dept" tick={{ fontSize: 10 }} />
+                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
+                    <Radar name="Headcount" dataKey="headcount" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} />
+                    <Radar name="Leave Usage" dataKey="leaveUtil" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.15} />
+                    <Radar name="Expenses" dataKey="expenses" stroke="#10b981" fill="#10b981" fillOpacity={0.1} />
+                    <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 10 }} />
+                    <RTooltip />
+                  </RadarChart>
+                </ResponsiveContainer>
+              ) : (
+                <DataEmptyState title="No data" description="Department performance radar will appear with data." compact />
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Combined Trend — Composed */}
+            <Card className="border-0 shadow-sm">
+              <CardHeader><CardTitle className="text-base">Monthly Activity Composed</CardTitle></CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={280}>
+                  <ComposedChart data={monthlyComposed}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 9 }} tickFormatter={v => `₹${(v / 1000).toFixed(0)}K`} />
+                    <RTooltip />
+                    <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 10 }} />
+                    <Bar yAxisId="left" dataKey="hired" name="Hired" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="leaves" name="Leave Days" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="expenses" name="Expenses (₹)" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Tenure Scatter */}
+            <Card className="border-0 shadow-sm">
+              <CardHeader><CardTitle className="text-base">Employee Tenure Scatter</CardTitle></CardHeader>
+              <CardContent>
+                {tenureScatter.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <ScatterChart>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" dataKey="tenure" name="Months" tick={{ fontSize: 10 }} label={{ value: "Tenure (months)", position: "insideBottom", offset: -5, style: { fontSize: 10 } }} />
+                      <YAxis type="category" dataKey="department" name="Dept" tick={{ fontSize: 9 }} width={80} />
+                      <ZAxis range={[30, 150]} />
+                      <RTooltip cursor={{ strokeDasharray: "3 3" }} content={({ active, payload }) => {
+                        if (!active || !payload?.[0]) return null;
+                        const d = payload[0].payload;
+                        return <div className="rounded-lg border bg-background/95 backdrop-blur-sm px-3 py-2 shadow-xl text-xs"><p className="font-semibold">{d.name}</p><p>{d.department} · {d.tenure} months</p></div>;
+                      }} />
+                      <Scatter name="Employees" data={tenureScatter} fill="#ec4899" />
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <DataEmptyState title="No data" description="Add employees with joining dates to see tenure distribution." compact />
+                )}
               </CardContent>
             </Card>
           </div>

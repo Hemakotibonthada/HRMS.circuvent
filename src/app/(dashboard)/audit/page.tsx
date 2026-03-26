@@ -27,7 +27,9 @@ import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip as RTooltip, AreaChart, Area,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell, Legend, LineChart, Line,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  ComposedChart,
 } from "recharts";
 
 // ═══════════════════════════════════════════════════════════════
@@ -119,6 +121,42 @@ export default function AuditPage() {
     items.forEach(a => { const m = a.module || "Other"; map[m] = (map[m] || 0) + 1; });
     return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [items]);
+
+  // Severity over time — stacked area
+  const severityTimeline = useMemo(() => {
+    const byDate: Record<string, { info: number; warning: number; critical: number }> = {};
+    items.forEach(a => {
+      if (!a.timestamp) return;
+      const d = new Date(a.timestamp).toISOString().split("T")[0].substring(5);
+      if (!byDate[d]) byDate[d] = { info: 0, warning: 0, critical: 0 };
+      const sev = (a.severity || "info") as "info" | "warning" | "critical";
+      if (sev in byDate[d]) byDate[d][sev]++;
+    });
+    return Object.entries(byDate).sort().slice(-14).map(([date, v]) => ({ date, ...v }));
+  }, [items]);
+
+  // Action type breakdown — for composed chart
+  const actionBreakdown = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
+    items.forEach(a => {
+      const mod = a.module || "Other";
+      const act = a.action || "other";
+      if (!map[mod]) map[mod] = {};
+      map[mod][act] = (map[mod][act] || 0) + 1;
+    });
+    return Object.entries(map).slice(0, 8).map(([name, acts]) => ({
+      name,
+      create: acts.create || 0,
+      update: acts.update || 0,
+      delete: acts.delete || 0,
+      total: Object.values(acts).reduce((s, v) => s + v, 0),
+    }));
+  }, [items]);
+
+  // Compliance radar
+  const complianceRadar = useMemo(() =>
+    COMPLIANCE_SCORES.map(c => ({ category: c.category.length > 10 ? c.category.substring(0, 10) + "…" : c.category, score: c.score, target: 90 })),
+  []);
 
   const severityDistribution = useMemo(() => {
     const map: Record<string, number> = {};
@@ -301,30 +339,94 @@ export default function AuditPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Severity Stacked Area */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Severity Trend Over Time</CardTitle></CardHeader>
+            <CardContent>
+              {severityTimeline.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <AreaChart data={severityTimeline}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="date" fontSize={11} />
+                    <YAxis fontSize={11} />
+                    <RTooltip />
+                    <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 10 }} />
+                    <Area type="monotone" dataKey="info" name="Info" stackId="1" fill="#06b6d4" stroke="#06b6d4" fillOpacity={0.3} />
+                    <Area type="monotone" dataKey="warning" name="Warning" stackId="1" fill="#f59e0b" stroke="#f59e0b" fillOpacity={0.3} />
+                    <Area type="monotone" dataKey="critical" name="Critical" stackId="1" fill="#ef4444" stroke="#ef4444" fillOpacity={0.3} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : <p className="text-sm text-muted-foreground text-center py-8">No timeline data</p>}
+            </CardContent>
+          </Card>
+
+          {/* Module Action Composed Chart */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Module Activity by Action Type</CardTitle></CardHeader>
+            <CardContent>
+              {actionBreakdown.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <ComposedChart data={actionBreakdown}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="name" fontSize={10} />
+                    <YAxis fontSize={11} />
+                    <RTooltip />
+                    <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 10 }} />
+                    <Bar dataKey="create" name="Create" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="update" name="Update" stackId="a" fill="#8b5cf6" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="delete" name="Delete" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    <Line type="monotone" dataKey="total" name="Total" stroke="#06b6d4" strokeWidth={2} dot={{ r: 3 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : <p className="text-sm text-muted-foreground text-center py-8">No module data</p>}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="compliance" className="mt-4 space-y-6">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Compliance Scores</CardTitle></CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {COMPLIANCE_SCORES.map(cs => (
-                  <div key={cs.category}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="font-medium">{cs.category}</span>
-                      <span className={cn("font-bold", cs.score >= 90 ? "text-green-600" : cs.score >= 75 ? "text-amber-600" : "text-red-600")}>{cs.score}%</span>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Compliance Scores — Progress Bars */}
+            <Card>
+              <CardHeader><CardTitle className="text-base">Compliance Scores</CardTitle></CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {COMPLIANCE_SCORES.map(cs => (
+                    <div key={cs.category}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="font-medium">{cs.category}</span>
+                        <span className={cn("font-bold", cs.score >= 90 ? "text-green-600" : cs.score >= 75 ? "text-amber-600" : "text-red-600")}>{cs.score}%</span>
+                      </div>
+                      <Progress value={cs.score} className="h-2" />
                     </div>
-                    <Progress value={cs.score} className="h-2" />
-                  </div>
-                ))}
-              </div>
-              <Separator className="my-4" />
-              <div className="flex items-center justify-between">
-                <p className="font-medium">Overall Compliance Score</p>
-                <p className="text-2xl font-bold text-green-600">{Math.round(COMPLIANCE_SCORES.reduce((s, c) => s + c.score, 0) / COMPLIANCE_SCORES.length)}%</p>
-              </div>
-            </CardContent>
-          </Card>
+                  ))}
+                </div>
+                <Separator className="my-4" />
+                <div className="flex items-center justify-between">
+                  <p className="font-medium">Overall Compliance Score</p>
+                  <p className="text-2xl font-bold text-green-600">{Math.round(COMPLIANCE_SCORES.reduce((s, c) => s + c.score, 0) / COMPLIANCE_SCORES.length)}%</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Compliance Radar */}
+            <Card>
+              <CardHeader><CardTitle className="text-base">Compliance Radar</CardTitle></CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={320}>
+                  <RadarChart data={complianceRadar}>
+                    <PolarGrid stroke="hsl(var(--border))" />
+                    <PolarAngleAxis dataKey="category" tick={{ fontSize: 9 }} />
+                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
+                    <Radar name="Score" dataKey="score" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.25} strokeWidth={2} />
+                    <Radar name="Target" dataKey="target" stroke="#ef4444" fill="transparent" strokeDasharray="5 5" strokeWidth={1.5} />
+                    <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 10 }} />
+                    <RTooltip />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
           <Card>
             <CardHeader><CardTitle className="text-base">Events by Module</CardTitle></CardHeader>
             <CardContent>
