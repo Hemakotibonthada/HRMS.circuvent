@@ -57,6 +57,13 @@ export interface EmployeeDoc extends BaseRecord {
   department: string; designation: string; joiningDate: string;
   status: string; employmentType: string; reportingManager: string;
   location: string; salary?: number; skills?: string[];
+  gender?: string; dateOfBirth?: string; bloodGroup?: string;
+  maritalStatus?: string; nationality?: string;
+  emergencyContactName?: string; emergencyContactPhone?: string;
+  bankName?: string; bankAccount?: string; ifscCode?: string;
+  panNumber?: string; aadharNumber?: string;
+  probationEndDate?: string; noticePeriod?: number;
+  lastPromotionDate?: string; previousDesignation?: string;
 }
 export const useEmployeeStore = createDataStore<EmployeeDoc>();
 
@@ -82,6 +89,9 @@ export interface AttendanceDoc extends BaseRecord {
   employeeId: string; employeeName: string; date: string;
   clockIn: string; clockOut: string; status: string;
   hours: number; overtime: number; location: string;
+  clockMethod?: string; shiftType?: string; breakDuration?: number;
+  lateMinutes?: number; earlyDepartMinutes?: number;
+  remarks?: string;
 }
 export const useAttendanceStore = createDataStore<AttendanceDoc>();
 
@@ -91,6 +101,9 @@ export interface PayrollDoc extends BaseRecord {
   month: string; year: number; basicPay: number; hra: number;
   specialAllowance: number; grossEarnings: number;
   totalDeductions: number; netPay: number; status: string;
+  pf?: number; esi?: number; tax?: number; professionalTax?: number;
+  conveyance?: number; medical?: number; lta?: number;
+  bonus?: number; incentive?: number;
 }
 export const usePayrollStore = createDataStore<PayrollDoc>();
 
@@ -99,6 +112,9 @@ export interface ExpenseDoc extends BaseRecord {
   employeeId: string; employeeName: string; department: string;
   category: string; amount: number; date: string;
   description: string; status: string; receipt: boolean;
+  approvedBy?: string; approvedDate?: string;
+  reimbursedDate?: string; paymentMethod?: string;
+  invoiceNumber?: string; vendor?: string;
 }
 export const useExpenseStore = createDataStore<ExpenseDoc>();
 
@@ -124,6 +140,9 @@ export interface TicketDoc extends BaseRecord {
   title: string; description: string; category: string;
   priority: string; status: string; reporterName: string;
   assigneeName: string; createdAt: string;
+  resolvedAt?: string; closedAt?: string;
+  slaDeadline?: string; department?: string;
+  resolution?: string; feedback?: number;
 }
 export const useTicketStore = createDataStore<TicketDoc>();
 
@@ -141,6 +160,9 @@ export interface GoalDoc extends BaseRecord {
   title: string; description: string; employeeId: string;
   category: string; weight: number; progress: number;
   status: string; dueDate: string;
+  assignedBy?: string; reviewedBy?: string;
+  milestones?: number; milestonesCompleted?: number;
+  priority?: string; department?: string;
 }
 export const useGoalStore = createDataStore<GoalDoc>();
 

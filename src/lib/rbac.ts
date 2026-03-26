@@ -3,7 +3,7 @@
 // Defines permissions, module access, and action rights per role
 // ═══════════════════════════════════════════════════════════════
 
-export type Role = "admin" | "hr" | "employee";
+export type Role = "admin" | "hr" | "manager" | "employee";
 
 export type Permission =
   | "dashboard.view"
@@ -233,9 +233,28 @@ const EMPLOYEE_PERMISSIONS: Permission[] = [
   "parking.view",
 ];
 
+// Manager: employee perms + team approval + limited analytics
+const MANAGER_PERMISSIONS: Permission[] = [
+  ...EMPLOYEE_PERMISSIONS,
+  "employees.view",
+  "attendance.view_all",
+  "leave.approve", "leave.view_all",
+  "expenses.approve", "expenses.view_all",
+  "performance.view", "performance.manage",
+  "goals.create",
+  "overtime.approve",
+  "wfh.approve",
+  "travel.approve",
+  "reports.view",
+  "analytics.view",
+  "awards.view", "awards.give",
+  "departments.view",
+];
+
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   admin: ADMIN_PERMISSIONS,
   hr: HR_PERMISSIONS,
+  manager: MANAGER_PERMISSIONS,
   employee: EMPLOYEE_PERMISSIONS,
 };
 
@@ -356,6 +375,7 @@ export function getRoleLabel(role: Role): string {
   const labels: Record<Role, string> = {
     admin: "Administrator",
     hr: "HR Manager",
+    manager: "Team Manager",
     employee: "Employee",
   };
   return labels[role] || role;
@@ -365,6 +385,7 @@ export function getRoleBadgeColor(role: Role): string {
   const colors: Record<Role, string> = {
     admin: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
     hr: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",
+    manager: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
     employee: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   };
   return colors[role] || "";

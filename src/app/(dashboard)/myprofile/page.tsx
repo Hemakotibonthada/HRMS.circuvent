@@ -15,15 +15,22 @@ import {
   Shield, GraduationCap, Award, Clock, DollarSign, Edit,
   Save, Target, Star, FileText, Heart, Key,
 } from "lucide-react";
+import {
+  ResponsiveContainer, PieChart, Pie, Cell, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip as RTooltip, RadarChart, Radar, PolarGrid,
+  PolarAngleAxis, PolarRadiusAxis,
+} from "recharts";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useRBAC } from "@/hooks/use-rbac";
-import { useEmployeeStore, useGoalStore, useLeaveStore, startSync, type EmployeeDoc } from "@/stores/unified-store";
+import { useEmployeeStore, useGoalStore, useLeaveStore, useAttendanceStore, useExpenseStore, startSync, type EmployeeDoc } from "@/stores/unified-store";
 import { COLLECTIONS, genericService } from "@/lib/firestore-service";
 import { DataLoadingSkeleton } from "@/components/data-empty-state";
 
 const GRADIENTS = ["from-violet-500 to-purple-600","from-blue-500 to-cyan-500","from-emerald-500 to-green-600","from-amber-500 to-orange-500","from-pink-500 to-rose-600"];
+const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ec4899","#ef4444","#6366f1","#14b8a6"];
 
 export default function MyProfilePage() {
   const { user } = useAuth();
@@ -31,6 +38,8 @@ export default function MyProfilePage() {
   const empStore = useEmployeeStore();
   const goalStore = useGoalStore();
   const leaveStore = useLeaveStore();
+  const attStore = useAttendanceStore();
+  const expStore = useExpenseStore();
   const [tab, setTab] = useState("overview");
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ phone: "", location: "" });
@@ -39,7 +48,9 @@ export default function MyProfilePage() {
     if (!empStore.initialized) startSync(COLLECTIONS.employees, empStore);
     if (!goalStore.initialized) startSync(COLLECTIONS.goals, goalStore);
     if (!leaveStore.initialized) startSync(COLLECTIONS.leaves, leaveStore);
-  }, [empStore, goalStore, leaveStore]);
+    if (!attStore.initialized) startSync(COLLECTIONS.attendance, attStore);
+    if (!expStore.initialized) startSync(COLLECTIONS.expenses, expStore);
+  }, [empStore, goalStore, leaveStore, attStore, expStore]);
 
   // Find the current user's employee record
   const myProfile = useMemo(() => {
@@ -56,6 +67,37 @@ export default function MyProfilePage() {
     if (!myProfile) return [];
     return leaveStore.items.filter(l => l.employeeId === myProfile.id);
   }, [leaveStore.items, myProfile]);
+
+  const myAttendance = useMemo(() => {
+    if (!myProfile) return [];
+    return attStore.items.filter(a => a.employeeId === myProfile.id);
+  }, [attStore.items, myProfile]);
+
+  const myExpenses = useMemo(() => {
+    if (!myProfile) return [];
+    return expStore.items.filter(e => e.employeeId === myProfile.id);
+  }, [expStore.items, myProfile]);
+
+  // Chart data
+  const leaveByType = useMemo(() => {
+    const m: Record<string, number> = {};
+    myLeaves.forEach(l => { m[l.leaveType || "Other"] = (m[l.leaveType || "Other"] || 0) + (l.days || 1); });
+    return Object.entries(m).map(([name, value]) => ({ name, value }));
+  }, [myLeaves]);
+
+  const goalRadar = useMemo(() => {
+    const cats: Record<string, { total: number; sum: number }> = {};
+    myGoals.forEach(g => {
+      const c = g.category || "General";
+      if (!cats[c]) cats[c] = { total: 0, sum: 0 };
+      cats[c].total++;
+      cats[c].sum += (g.progress || 0);
+    });
+    return Object.entries(cats).map(([name, v]) => ({
+      category: name.length > 10 ? name.substring(0, 10) + "…" : name,
+      progress: v.total > 0 ? Math.round(v.sum / v.total) : 0,
+    }));
+  }, [myGoals]);
 
   const initials = user?.displayName?.split(" ").map(n => n[0]).join("").toUpperCase() || user?.email?.[0]?.toUpperCase() || "?";
   const displayName = user?.displayName || user?.email || "User";
@@ -108,6 +150,7 @@ export default function MyProfilePage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="goals">My Goals ({myGoals.length})</TabsTrigger>
           <TabsTrigger value="leaves">My Leaves ({myLeaves.length})</TabsTrigger>
           <TabsTrigger value="account">Account</TabsTrigger>
@@ -180,6 +223,64 @@ export default function MyProfilePage() {
               { label: "Pending Leaves", value: myLeaves.filter(l => l.status === "pending").length.toString(), icon: Clock, color: "from-pink-500 to-rose-600" },
             ].map(s => (
               <Card key={s.label} className="group"><CardContent className="flex items-center gap-3 p-4"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${s.color} text-white shadow-md transition-transform group-hover:scale-110`}><s.icon className="h-5 w-5" /></div><div><p className="text-[10px] font-medium text-muted-foreground">{s.label}</p><p className="text-lg font-bold">{s.value}</p></div></CardContent></Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* Analytics Tab */}
+        <TabsContent value="analytics" className="mt-4 space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Leave Usage Donut */}
+            <Card>
+              <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Calendar className="h-4 w-4 text-blue-500" />Leave Usage by Type</CardTitle></CardHeader>
+              <CardContent>
+                {leaveByType.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={250}>
+                    <PieChart>
+                      <Pie data={leaveByType} cx="50%" cy="50%" innerRadius={45} outerRadius={85} paddingAngle={3} dataKey="value" labelLine={false}>
+                        {leaveByType.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                      </Pie>
+                      <RTooltip />
+                      <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 10 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-center text-xs text-muted-foreground py-12">No leave data yet</p>}
+              </CardContent>
+            </Card>
+
+            {/* Goal Progress Radar */}
+            <Card>
+              <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Target className="h-4 w-4 text-violet-500" />Goal Progress by Category</CardTitle></CardHeader>
+              <CardContent>
+                {goalRadar.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={250}>
+                    <RadarChart data={goalRadar}>
+                      <PolarGrid stroke="hsl(var(--border))" />
+                      <PolarAngleAxis dataKey="category" tick={{ fontSize: 10 }} />
+                      <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
+                      <Radar name="Progress %" dataKey="progress" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.25} strokeWidth={2} />
+                      <RTooltip />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-center text-xs text-muted-foreground py-12">No goals data yet</p>}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Summary Stats */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { label: "Total Leave Days", value: myLeaves.filter(l => l.status === "approved").reduce((s, l) => s + (l.days || 0), 0), icon: Calendar, color: "text-blue-600" },
+              { label: "Total Expenses", value: `₹${myExpenses.reduce((s, e) => s + (e.amount || 0), 0).toLocaleString()}`, icon: DollarSign, color: "text-emerald-600" },
+              { label: "Attendance Days", value: myAttendance.length, icon: Clock, color: "text-amber-600" },
+              { label: "Goals Completed", value: myGoals.filter(g => g.status === "completed").length, icon: Star, color: "text-violet-600" },
+            ].map(s => (
+              <Card key={s.label}>
+                <CardContent className="p-4 text-center">
+                  <p className={cn("text-2xl font-bold", s.color)}>{s.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
+                </CardContent>
+              </Card>
             ))}
           </div>
         </TabsContent>

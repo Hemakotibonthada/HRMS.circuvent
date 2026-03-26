@@ -24,6 +24,7 @@ export interface RBACContext {
   canAccessModule: (moduleId: string) => boolean;
   isAdmin: boolean;
   isHR: boolean;
+  isManager: boolean;
   isEmployee: boolean;
 }
 
@@ -56,7 +57,7 @@ export function useRBAC(): RBACContext {
           if (userDoc.exists()) {
             const data = userDoc.data();
             const role = data?.role as Role;
-            if (role && (role === "admin" || role === "hr" || role === "employee")) {
+            if (role && (role === "admin" || role === "hr" || role === "manager" || role === "employee")) {
               setFirebaseRole(role);
             } else {
               setFirebaseRole("employee");
@@ -100,6 +101,7 @@ export function useRBAC(): RBACContext {
     canAccessModule: (moduleId: string) => canAccessModule(role, moduleId),
     isAdmin: role === "admin",
     isHR: role === "hr",
+    isManager: role === "manager",
     isEmployee: role === "employee",
   }), [role, roleLoading]);
 }
