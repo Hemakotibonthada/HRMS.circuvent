@@ -278,6 +278,7 @@ export default function SettingsPage() {
 
           {/* ─── Integrations ─── */}
           {activeSection === "integrations" && (
+            <>
             <Card><CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Webhook className="h-4 w-4 text-teal-500" />Connected Services</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {INTEGRATIONS.map(int => (
@@ -290,6 +291,45 @@ export default function SettingsPage() {
                 ))}
               </CardContent>
             </Card>
+
+            {/* Cross-App Sync */}
+            <Card className="mt-4">
+              <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Webhook className="h-4 w-4 text-violet-500" />Cross-App Employee Sync</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">Sync employee data between HRMS, CV-365, and Mail.circuvent. All apps share the same Firebase project with separate databases.</p>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { app: "HRMS", db: "hrms-circuvent", status: "Primary", color: "status-active" },
+                    { app: "CV-365", db: "cv-365", status: "Connected", color: "status-active" },
+                    { app: "Mail", db: "default", status: "Connected", color: "status-active" },
+                  ].map(app => (
+                    <div key={app.app} className="rounded-lg border p-3 text-center">
+                      <p className="text-xs font-semibold">{app.app}</p>
+                      <p className="text-[9px] text-muted-foreground">DB: {app.db}</p>
+                      <Badge className={cn("text-[8px] border-0 mt-1", app.color)}>{app.status}</Badge>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="text-xs gap-1 flex-1" onClick={() => { fetch("/api/sync/bulk", { method: "POST" }).then(r => r.json()).then(d => { if (d.success) toast.success(`Synced ${d.synced}/${d.total} employees`); else toast.error("Sync failed"); }); }}>
+                    <Webhook className="h-3 w-3" />Run Full Sync
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs gap-1">
+                    <Clock className="h-3 w-3" />Sync History
+                  </Button>
+                </div>
+                <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+                  <h4 className="text-[10px] font-semibold text-muted-foreground">Sync Behavior</h4>
+                  <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc pl-4">
+                    <li>New employees auto-sync to CV-365 and Mail on creation</li>
+                    <li>Employee updates sync displayName, department, designation</li>
+                    <li>Firebase Auth account shared across all apps (SSO)</li>
+                    <li>Mail accounts auto-activated with default settings</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+            </>
           )}
 
           {/* ─── Billing ─── */}
