@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyRequest, authErrorResponse } from "@/lib/server-auth";
 
 // ═══════════════════════════════════════════════════════════════
 // HRMS API — Leave Management
@@ -6,6 +7,12 @@ import { NextRequest, NextResponse } from "next/server";
 // ═══════════════════════════════════════════════════════════════
 
 export async function GET(request: NextRequest) {
+  try {
+    await verifyRequest(request);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
   const { searchParams } = new URL(request.url);
   const employeeId = searchParams.get("employeeId");
   const status = searchParams.get("status");
@@ -21,6 +28,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  try {
+    await verifyRequest(request);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
   try {
     const body = await request.json();
     const required = ["employeeId", "leaveType", "startDate", "endDate", "reason"];
@@ -61,6 +74,12 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  try {
+    await verifyRequest(request);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
   try {
     const body = await request.json();
     const { id, action, approvedBy, reason } = body;

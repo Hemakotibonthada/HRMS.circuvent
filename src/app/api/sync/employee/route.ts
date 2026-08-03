@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  adminDb,
+  requireUserOrService,
+  authErrorResponse,
+} from "@/lib/server-auth";
 
 // ═══════════════════════════════════════════════════════════════
 // CROSS-APP EMPLOYEE SYNC API
@@ -6,50 +11,18 @@ import { NextRequest, NextResponse } from "next/server";
 // data from the HRMS system. Used for login gating and profile sync.
 // ═══════════════════════════════════════════════════════════════
 
-import {
-  initializeApp as initClientApp,
-  getApps as getClientApps,
-} from "firebase/app";
-import {
-  getFirestore,
-  initializeFirestore,
-  memoryLocalCache,
-  collection,
-  query,
-  where,
-  getDocs,
-  getDoc,
-  doc,
-} from "firebase/firestore";
-
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCh3BRY6Azf3pY3pbeWm0hYe7xs93uj_aA",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "circuvent.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "circuvent",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "circuvent.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "743562898363",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:743562898363:web:dcce791242be3af248b29e",
-};
-
-function getHrmsDb() {
-  const app = getClientApps().length === 0
-    ? initClientApp(firebaseConfig)
-    : getClientApps()[0];
-  try {
-    return initializeFirestore(app, {
-      experimentalForceLongPolling: true,
-      localCache: memoryLocalCache(),
-    }, "hrms-circuvent");
-  } catch {
-    return getFirestore(app, "hrms-circuvent");
-  }
-}
-
 // ─── GET: Fetch employee by email or uid ─────────────────────
 // Usage: GET /api/sync/employee?email=user@company.com
 //    or: GET /api/sync/employee?uid=abc123
 
 export async function GET(req: NextRequest) {
+  try {
+    await requireUserOrService(req);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const email = searchParams.get("email");
@@ -62,17 +35,17 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const db = getHrmsDb();
+    const db = adminDb("hrms-circuvent");
 
     if (uid) {
-      const snap = await getDoc(doc(db, "employees", uid));
-      if (!snap.exists()) {
+      const snap = await db.collection("employees").doc(uid).get();
+      if (!snap.exists) {
         return NextResponse.json(
           { success: false, error: "Employee not found" },
           { status: 404 }
         );
       }
-      const data = snap.data();
+      const data = snap.data()!;
       return NextResponse.json({
         success: true,
         employee: {
@@ -93,8 +66,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Search by email
-    const q = query(collection(db, "employees"), where("email", "==", email));
-    const snap = await getDocs(q);
+    const snap = await db.collection("employees").where("email", "==", email).get();
 
     if (snap.empty) {
       return NextResponse.json(

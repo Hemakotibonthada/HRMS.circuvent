@@ -9,6 +9,27 @@ import {
   onSnapshot, serverTimestamp, increment, writeBatch,
   type DocumentData, type QueryConstraint,
 } from "@/lib/firebase";
+import { isTenantScoped, orgConstraint, withOrgId } from "@/lib/tenant";
+
+// ─── Tenant scoping ──────────────────────────────────────────
+// Every list/subscribe is pinned to the caller's organization, and every write
+// is stamped with it. Firestore rules match on the query, so without the
+// constraint below a tenant-scoped rule would reject the read outright.
+
+function scopedConstraints(
+  collectionName: string,
+  constraints: QueryConstraint[]
+): QueryConstraint[] {
+  if (!isTenantScoped(collectionName)) return constraints;
+  return [...orgConstraint(), ...constraints];
+}
+
+function scopedData<T extends Record<string, unknown>>(
+  collectionName: string,
+  data: T
+): Record<string, unknown> {
+  return isTenantScoped(collectionName) ? withOrgId(data) : data;
+}
 
 // ─── Generic CRUD ────────────────────────────────────────────
 
@@ -16,7 +37,7 @@ export async function createDocument<T extends Record<string, unknown>>(
   collectionName: string, data: T
 ): Promise<string> {
   const ref = await addDoc(collection(db, collectionName), {
-    ...data,
+    ...scopedData(collectionName, data),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -27,7 +48,7 @@ export async function setDocument<T extends Record<string, unknown>>(
   collectionName: string, docId: string, data: T
 ): Promise<void> {
   await setDoc(doc(db, collectionName, docId), {
-    ...data,
+    ...scopedData(collectionName, data),
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
@@ -44,7 +65,10 @@ export async function getCollection<T>(
   collectionName: string,
   constraints: QueryConstraint[] = []
 ): Promise<(T & { id: string })[]> {
-  const q = query(collection(db, collectionName), ...constraints);
+  const q = query(
+    collection(db, collectionName),
+    ...scopedConstraints(collectionName, constraints)
+  );
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() } as T & { id: string }));
 }
@@ -69,7 +93,10 @@ export function subscribeToCollection<T>(
   callback: (items: (T & { id: string })[]) => void,
   constraints: QueryConstraint[] = []
 ): () => void {
-  const q = query(collection(db, collectionName), ...constraints);
+  const q = query(
+    collection(db, collectionName),
+    ...scopedConstraints(collectionName, constraints)
+  );
   return onSnapshot(q, (snap) => {
     const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as T & { id: string }));
     callback(items);

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { auth, onAuthStateChanged, type User } from "@/lib/firebase";
+import { clearOrgId, loadOrgIdForUser, setOrgId } from "@/lib/tenant";
 import {
   isLocalCredentialsMode,
   getLocalSession,
@@ -18,29 +19,33 @@ export interface AuthUser {
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  // Tenant must resolve before any scoped Firestore query is issued, otherwise
+  // the query carries no organizationId filter and security rules reject it.
+  const [tenantReady, setTenantReady] = useState(false);
 
   useEffect(() => {
     // Local credentials mode — no Firebase needed
     if (isLocalCredentialsMode()) {
-      const localUser = getLocalSession();
-      if (localUser) {
-        setUser({
-          uid: localUser.uid,
-          email: localUser.email,
-          displayName: localUser.displayName,
-        });
-      }
+      const applyLocal = (localUser: LocalUser | null) => {
+        if (localUser) {
+          setUser({
+            uid: localUser.uid,
+            email: localUser.email,
+            displayName: localUser.displayName,
+          });
+          setOrgId(localUser.organizationId ?? "local-dev-org");
+        } else {
+          setUser(null);
+          clearOrgId();
+        }
+        setTenantReady(true);
+      };
+
+      applyLocal(getLocalSession());
       setLoading(false);
 
       // Listen for storage changes (login/logout in another tab)
-      const handler = () => {
-        const u = getLocalSession();
-        setUser(
-          u
-            ? { uid: u.uid, email: u.email, displayName: u.displayName }
-            : null
-        );
-      };
+      const handler = () => applyLocal(getLocalSession());
       window.addEventListener("storage", handler);
       // Also listen for custom event from login page
       window.addEventListener("local-auth-change", handler);
@@ -55,28 +60,36 @@ export function useAuth() {
       const unsubscribe = onAuthStateChanged(
         auth,
         (firebaseUser) => {
-          setUser(
-            firebaseUser
-              ? {
-                  uid: firebaseUser.uid,
-                  email: firebaseUser.email,
-                  displayName: firebaseUser.displayName,
-                }
-              : null
-          );
+          if (firebaseUser) {
+            setUser({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName,
+            });
+            setTenantReady(false);
+            void loadOrgIdForUser(firebaseUser.uid).finally(() =>
+              setTenantReady(true)
+            );
+          } else {
+            setUser(null);
+            clearOrgId();
+            setTenantReady(true);
+          }
           setLoading(false);
         },
         (error) => {
           console.error("Auth state error:", error);
           setLoading(false);
+          setTenantReady(true);
         }
       );
       return unsubscribe;
     } catch (error) {
       console.error("Auth initialization error:", error);
       setLoading(false);
+      setTenantReady(true);
     }
   }, []);
 
-  return { user, loading };
+  return { user, loading, tenantReady };
 }

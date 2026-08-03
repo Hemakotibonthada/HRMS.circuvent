@@ -13,7 +13,7 @@ import {
   isLocalCredentialsMode,
   validateLocalCredentials,
   setLocalSession,
-  LOCAL_CREDENTIALS,
+  LOCAL_USERS,
 } from "@/lib/local-auth";
 import { toast } from "sonner";
 
@@ -164,22 +164,24 @@ export default function LoginPage() {
                   Local Credentials Mode
                 </p>
                 <div className="grid grid-cols-2 gap-2">
-                  {LOCAL_CREDENTIALS.map((cred) => (
+                  {LOCAL_USERS.map((localUser) => (
                     <Button
-                      key={cred.email}
+                      key={localUser.email}
                       variant="outline"
                       size="sm"
                       className="text-xs h-9 justify-start gap-2"
                       onClick={() => {
-                        setEmail(cred.email);
-                        setPassword(cred.password);
+                        // Only prefills the email — the dev password comes from
+                        // NEXT_PUBLIC_LOCAL_DEV_PASSWORD and is never bundled here.
+                        setEmail(localUser.email);
+                        setPassword(process.env.NEXT_PUBLIC_LOCAL_DEV_PASSWORD ?? "");
                       }}
                     >
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-violet-500 to-purple-600 text-[9px] text-white font-bold">
-                        {cred.user.displayName.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                        {localUser.displayName.split(" ").map(n => n[0]).join("").slice(0, 2)}
                       </span>
-                      <span className="truncate">{cred.user.displayName}</span>
-                      <span className="ml-auto rounded bg-muted px-1 py-0.5 text-[9px] capitalize text-muted-foreground">{cred.user.role}</span>
+                      <span className="truncate">{localUser.displayName}</span>
+                      <span className="ml-auto rounded bg-muted px-1 py-0.5 text-[9px] capitalize text-muted-foreground">{localUser.role}</span>
                     </Button>
                   ))}
                 </div>

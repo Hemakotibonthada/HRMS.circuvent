@@ -1,18 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { FieldValue } from "firebase-admin/firestore";
 import {
-  initializeApp as initClientApp,
-  getApps as getClientApps,
-} from "firebase/app";
-import {
-  getFirestore,
-  initializeFirestore,
-  memoryLocalCache,
-  collection,
-  getDocs,
-  doc,
-  setDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+  adminDb,
+  requireUserOrService,
+  authErrorResponse,
+} from "@/lib/server-auth";
 
 // ═══════════════════════════════════════════════════════════════
 // BULK SYNC API
@@ -20,37 +12,21 @@ import {
 // Used for initial migration or periodic full sync.
 // ═══════════════════════════════════════════════════════════════
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCh3BRY6Azf3pY3pbeWm0hYe7xs93uj_aA",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "circuvent.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "circuvent",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "circuvent.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "743562898363",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:743562898363:web:dcce791242be3af248b29e",
-};
-
-function getDb(dbName?: string) {
-  const app = getClientApps().length === 0
-    ? initClientApp(firebaseConfig)
-    : getClientApps()[0];
-  if (!dbName) {
-    try { return getFirestore(app); } catch { return getFirestore(app); }
-  }
-  try {
-    return initializeFirestore(app, { experimentalForceLongPolling: true, localCache: memoryLocalCache() }, dbName);
-  } catch {
-    return getFirestore(app, dbName);
-  }
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const hrmsDb = getDb("hrms-circuvent");
-    const cv365Db = getDb("cv-365");
-    const mailDb = getDb();
+    await requireUserOrService(req);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
+
+  try {
+    const hrmsDb = adminDb("hrms-circuvent");
+    const cv365Db = adminDb("cv-365");
+    const mailDb = adminDb();
 
     // Fetch all employees from HRMS
-    const empSnap = await getDocs(collection(hrmsDb, "employees"));
+    const empSnap = await hrmsDb.collection("employees").get();
     const total = empSnap.size;
     let synced = 0;
     let failed = 0;
@@ -62,7 +38,7 @@ export async function POST(req: NextRequest) {
 
       // Sync to CV-365
       try {
-        await setDoc(doc(cv365Db, "users", empDoc.id), {
+        await cv365Db.collection("users").doc(empDoc.id).set({
           uid: empDoc.id,
           displayName,
           email: data.email || "",
@@ -73,7 +49,7 @@ export async function POST(req: NextRequest) {
           department: data.department || "",
           manager: data.reportingManager || "",
           syncedFromHRMS: true,
-          updatedAt: serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
       } catch (err: unknown) {
         errors.push(`CV-365 sync for ${data.email}: ${(err as Error).message}`);
@@ -81,13 +57,13 @@ export async function POST(req: NextRequest) {
 
       // Sync to Mail
       try {
-        await setDoc(doc(mailDb, "users", empDoc.id), {
+        await mailDb.collection("users").doc(empDoc.id).set({
           displayName,
           email: data.email || "",
           role: "user",
           status: "active",
           syncedFromHRMS: true,
-          updatedAt: serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
           settings: {
             theme: "system",
             density: "default",

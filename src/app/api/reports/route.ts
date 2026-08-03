@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireRole, authErrorResponse } from "@/lib/server-auth";
 
 // ═══════════════════════════════════════════════════════════════
 // HRMS API — Reports & Analytics
@@ -6,6 +7,12 @@ import { NextRequest, NextResponse } from "next/server";
 // ═══════════════════════════════════════════════════════════════
 
 export async function GET(request: NextRequest) {
+  try {
+    await requireRole(request, ["owner", "admin", "hr"]);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type") || "summary";
   const period = searchParams.get("period") || "current_month";
@@ -57,6 +64,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  try {
+    await requireRole(request, ["owner", "admin", "hr"]);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
   try {
     const body = await request.json();
     const { action } = body;

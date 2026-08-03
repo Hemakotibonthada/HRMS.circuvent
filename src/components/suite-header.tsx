@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationCenter } from "@/components/notification-center";
+import { EcosystemSwitcher } from "@/components/ecosystem-switcher";
 import { MODULES } from "@/lib/constants";
 import { Search } from "lucide-react";
 
@@ -55,6 +56,7 @@ export function SuiteHeader() {
           <Search className="h-3.5 w-3.5" /> Search...
           <kbd className="ml-2 rounded border bg-muted px-1 text-[10px] font-mono">Ctrl+K</kbd>
         </Button>
+        <EcosystemSwitcher current="hrms" />
         <NotificationCenter />
         <ThemeToggle />
       </div>

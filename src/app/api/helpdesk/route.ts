@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyRequest, authErrorResponse } from "@/lib/server-auth";
 
 // ═══════════════════════════════════════════════════════════════
 // HRMS API — Helpdesk & Tickets
@@ -6,6 +7,12 @@ import { NextRequest, NextResponse } from "next/server";
 // ═══════════════════════════════════════════════════════════════
 
 export async function GET(request: NextRequest) {
+  try {
+    await verifyRequest(request);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
   const category = searchParams.get("category");
@@ -20,6 +27,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  try {
+    await verifyRequest(request);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
   try {
     const body = await request.json();
     const { action } = body;

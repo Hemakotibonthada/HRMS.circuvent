@@ -5,11 +5,10 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "frameworksBackend": {
       "region": "asia-southeast1",
-      "maxInstances": 2,
-      "memory": "1GiB",
-      "cpu": 1,
+      "maxInstances": 1,
+      "memory": "128MiB",
       "concurrency": 80,
-      "timeoutSeconds": 120
+      "timeoutSeconds": 60
     }
   },
   "firestore": {

@@ -2,6 +2,14 @@
 // LOCAL CREDENTIALS — Development Only
 // Used with `npm run dev:localcreds` for offline development
 // ═══════════════════════════════════════════════════════════════
+// The shared password is NOT stored in this file. It is read from
+// NEXT_PUBLIC_LOCAL_DEV_PASSWORD, and local-credentials mode refuses to
+// authenticate anyone when that variable is unset. Previously a real personal
+// password was committed here in plaintext for four accounts, which meant it
+// also shipped inside the compiled client bundle.
+//
+// To use: set NEXT_PUBLIC_USE_LOCAL_CREDS=true and
+// NEXT_PUBLIC_LOCAL_DEV_PASSWORD=<something> in .env.local (git-ignored).
 
 export interface LocalUser {
   uid: string;
@@ -10,62 +18,54 @@ export interface LocalUser {
   role: "admin" | "hr" | "employee";
   department: string;
   designation: string;
+  organizationId: string;
   avatar?: string;
   phone?: string;
 }
 
-export const LOCAL_CREDENTIALS: { email: string; password: string; user: LocalUser }[] = [
+/** Synthetic organization used to scope local dev data. */
+export const LOCAL_ORG_ID = "local-dev-org";
+
+export const LOCAL_USERS: LocalUser[] = [
   {
+    uid: "local-admin-001",
     email: "admin@circuvent.com",
-    password: "Hemakoti@003",
-    user: {
-      uid: "local-admin-001",
-      email: "admin@circuvent.com",
-      displayName: "Admin",
-      role: "admin",
-      department: "Administration",
-      designation: "System Administrator",
-      phone: "+91 98765 00000",
-    },
+    displayName: "Admin",
+    role: "admin",
+    department: "Administration",
+    designation: "System Administrator",
+    organizationId: LOCAL_ORG_ID,
+    phone: "+91 98765 00000",
   },
   {
+    uid: "local-hr-001",
     email: "hr@circuvent.com",
-    password: "Hemakoti@003",
-    user: {
-      uid: "local-hr-001",
-      email: "hr@circuvent.com",
-      displayName: "Priya Sharma",
-      role: "hr",
-      department: "Human Resources",
-      designation: "HR Director",
-      phone: "+91 98765 43211",
-    },
+    displayName: "Priya Sharma",
+    role: "hr",
+    department: "Human Resources",
+    designation: "HR Director",
+    organizationId: LOCAL_ORG_ID,
+    phone: "+91 98765 43211",
   },
   {
+    uid: "local-emp-001",
     email: "employee@circuvent.com",
-    password: "Hemakoti@003",
-    user: {
-      uid: "local-emp-001",
-      email: "employee@circuvent.com",
-      displayName: "Arun Kumar",
-      role: "employee",
-      department: "Engineering",
-      designation: "Senior Full Stack Developer",
-      phone: "+91 98765 43210",
-    },
+    displayName: "Arun Kumar",
+    role: "employee",
+    department: "Engineering",
+    designation: "Senior Full Stack Developer",
+    organizationId: LOCAL_ORG_ID,
+    phone: "+91 98765 43210",
   },
   {
-    email: "hema@circuvent.com",
-    password: "Hemakoti@003",
-    user: {
-      uid: "local-hema-001",
-      email: "hema@circuvent.com",
-      displayName: "Hema Koti",
-      role: "admin",
-      department: "Leadership",
-      designation: "Director",
-      phone: "+91 98765 00001",
-    },
+    uid: "local-lead-001",
+    email: "lead@circuvent.com",
+    displayName: "Team Lead",
+    role: "admin",
+    department: "Leadership",
+    designation: "Director",
+    organizationId: LOCAL_ORG_ID,
+    phone: "+91 98765 00001",
   },
 ];
 
@@ -76,14 +76,34 @@ export function isLocalCredentialsMode(): boolean {
   return process.env.NEXT_PUBLIC_USE_LOCAL_CREDS === "true";
 }
 
+function getLocalDevPassword(): string | null {
+  const password = process.env.NEXT_PUBLIC_LOCAL_DEV_PASSWORD;
+  return password && password.length > 0 ? password : null;
+}
+
 /**
- * Validate local credentials and return user if valid
+ * Validate local credentials and return user if valid.
+ * Fails closed when no dev password is configured.
  */
-export function validateLocalCredentials(email: string, password: string): LocalUser | null {
-  const match = LOCAL_CREDENTIALS.find(
-    (cred) => cred.email.toLowerCase() === email.toLowerCase() && cred.password === password
+export function validateLocalCredentials(
+  email: string,
+  password: string
+): LocalUser | null {
+  if (!isLocalCredentialsMode()) return null;
+
+  const expected = getLocalDevPassword();
+  if (!expected) {
+    console.error(
+      "Local credentials mode is on but NEXT_PUBLIC_LOCAL_DEV_PASSWORD is not set — refusing to sign in."
+    );
+    return null;
+  }
+  if (password !== expected) return null;
+
+  return (
+    LOCAL_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase()) ??
+    null
   );
-  return match ? match.user : null;
 }
 
 /**
@@ -93,7 +113,7 @@ export function getLocalSession(): LocalUser | null {
   if (typeof window === "undefined") return null;
   try {
     const stored = localStorage.getItem("hrms_local_user");
-    if (stored) return JSON.parse(stored);
+    if (stored) return JSON.parse(stored) as LocalUser;
   } catch {
     // ignore
   }
