@@ -24,6 +24,7 @@ import {
 } from "recharts";
 import { COLLECTIONS, genericService } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { useNowMs } from "@/hooks/use-now";
 
 const STATUS_CONF: Record<string, { label: string; className: string }> = {
   active: { label: "Active", className: "status-active" },
@@ -68,6 +69,7 @@ const useContractorStore = create<ContractorStore>((set) => ({
 }));
 
 export default function ContractorsPage() {
+  const nowMs = useNowMs();
   const store = useContractorStore();
   const { items, loading } = store;
   const [search, setSearch] = useState("");
@@ -142,8 +144,8 @@ export default function ContractorsPage() {
 
   const activeCount = items.filter(c => c.status === "active").length;
   const expiringCount = items.filter(c => {
-    if (!c.endDate) return false;
-    const diff = new Date(c.endDate).getTime() - Date.now();
+    if (!c.endDate || nowMs === null) return false;
+    const diff = new Date(c.endDate).getTime() - nowMs;
     return diff > 0 && diff < 30 * 24 * 60 * 60 * 1000;
   }).length;
   const totalCost = items.filter(c => c.status === "active").reduce((s, c) => s + (c.rate || 0), 0);

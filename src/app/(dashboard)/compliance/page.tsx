@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { useNowMs } from "@/hooks/use-now";
 
 // ═══════════════════════════════════════════════════════════════
 // COMPLIANCE — Regulatory tracking, acknowledgments, due dates
@@ -66,6 +67,7 @@ const useComplianceStore = create<ComplianceState>((set) => ({
 }));
 
 export default function CompliancePage() {
+  const nowMs = useNowMs();
   const { items, addItem } = useComplianceStore();
   const [tab, setTab] = useState("all");
   const [search, setSearch] = useState("");
@@ -108,7 +110,9 @@ export default function CompliancePage() {
   }, [form, addItem]);
 
   const daysUntilDue = (date: string) => {
-    const diff = Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
+    // Rendered text, so it must not be computed from the render-time clock.
+    if (nowMs === null) return "";
+    const diff = Math.ceil((new Date(date).getTime() - nowMs) / 86400000);
     if (diff < 0) return `${Math.abs(diff)}d overdue`;
     if (diff === 0) return "Due today";
     return `${diff}d remaining`;

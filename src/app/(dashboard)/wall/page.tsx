@@ -26,6 +26,7 @@ import {
 } from "recharts";
 import { genericService, COLLECTIONS } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { useNowMs } from "@/hooks/use-now";
 
 // ═══════════════════════════════════════════════════════════════
 // WALL — Employee engagement social wall
@@ -82,6 +83,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export default function WallPage() {
+  const nowMs = useNowMs();
   const store = useWallStore();
   const { items: posts, loading } = store;
   const [search, setSearch] = useState("");
@@ -171,7 +173,8 @@ export default function WallPage() {
   };
 
   const timeAgo = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
+    if (nowMs === null) return "";
+    const diff = nowMs - new Date(dateStr).getTime();
     const hours = Math.floor(diff / 3600000);
     if (hours < 1) return `${Math.floor(diff / 60000)}m ago`;
     if (hours < 24) return `${hours}h ago`;

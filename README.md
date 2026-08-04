@@ -158,14 +158,20 @@ silent bug costs money or leaks another company's data.
 
 ## Known issues
 
-`npm run lint` reports roughly 44 errors and 940 warnings that predate the pipeline. ESLint had
+`npm run lint` reports 15 errors and roughly 940 warnings that predate the pipeline. ESLint had
 never actually run: `FlatCompat` threw `Converting circular structure to JSON` against
-`eslint-plugin-react-hooks@7`, so the config was silently broken. Fixing it exposed genuine
-problems, the most significant being `Math.random()` and `Date.now()` called during render across
-20 dashboard pages — a hydration-mismatch source.
+`eslint-plugin-react-hooks@7`, so the config was silently broken.
 
-These are tracked as Phase 2.4 in [`docs/ROADMAP.md`](./docs/ROADMAP.md). CI reports them but does
-not gate on them; `lint:strict` holds new code to zero.
+Fixing it exposed 44 real problems, of which **29 are now fixed** — every `Math.random()` and
+`Date.now()` call made during render. Those were not only hydration-mismatch sources; the
+`Math.random()` ones fabricated metrics and displayed them as measured figures. See
+[`docs/ROADMAP.md`](./docs/ROADMAP.md) for the full before/after table.
+
+The remaining 15 are tracked as Phase 2.4: five React Compiler memoisation bailouts (a performance
+loss, not a correctness bug) and ten in `src/hooks/use-advanced.ts` and two other shared hooks,
+which need a focused rewrite rather than line-by-line patching.
+
+CI reports all of this but does not gate on it; `lint:strict` holds new code to zero.
 
 ---
 

@@ -37,6 +37,7 @@ import {
 } from "@/stores/unified-store";
 import { COLLECTIONS } from "@/lib/firestore-service";
 import { DataLoadingSkeleton } from "@/components/data-empty-state";
+import { useToday } from "@/hooks/use-now";
 
 // ═══════════════════════════════════════════════════════════════
 // ADMIN DASHBOARD — Comprehensive system administration panel
@@ -96,9 +97,37 @@ export default function AdminPage() {
   const activeEmployees = employees.filter(e => e.status === "active").length;
   const onNotice = employees.filter(e => e.status === "notice_period").length;
   const probation = employees.filter(e => e.status === "probation").length;
-  const todayDate = new Date().toISOString().split("T")[0];
-  const todayAtt = attStore.items.filter(a => a.date === todayDate);
+  // Computed after mount: new Date() during render makes the server and the
+  // client disagree about which day "today" is, so the attendance figures
+  // differed between first paint and hydration.
+  const todayDate = useToday();
+  const todayAtt = todayDate ? attStore.items.filter(a => a.date === todayDate) : [];
   const presentToday = todayAtt.filter(a => a.status === "present" || a.status === "late" || a.status === "wfh").length;
+
+  // Real rates backing the organisation-health radar. Previously three of its
+  // six axes were Math.random().
+  const goalCompletionRate = useMemo(() => {
+    const goals = goalStore.items;
+    if (goals.length === 0) return 0;
+    const completed = goals.filter(
+      g => g.status === "Completed" || (Number(g.progress) || 0) >= 100
+    ).length;
+    return Math.round((completed / goals.length) * 100);
+  }, [goalStore.items]);
+
+  const ticketResolutionRate = useMemo(() => {
+    const tickets = ticketStore.items;
+    if (tickets.length === 0) return 100;
+    const closed = tickets.filter(t => t.status === "resolved" || t.status === "closed").length;
+    return Math.round((closed / tickets.length) * 100);
+  }, [ticketStore.items]);
+
+  const expenseApprovalRate = useMemo(() => {
+    const claims = expStore.items;
+    if (claims.length === 0) return 100;
+    const settled = claims.filter(e => e.status === "approved" || e.status === "reimbursed").length;
+    return Math.round((settled / claims.length) * 100);
+  }, [expStore.items]);
 
   // Department headcount
   const deptHeadcount = useMemo(() => {
@@ -133,13 +162,29 @@ export default function AdminPage() {
 
   // Department radar data
   const deptRadar = useMemo(() => {
-    return deptHeadcount.slice(0, 6).map(d => ({
-      dept: d.name.length > 8 ? d.name.substring(0, 8) + "…" : d.name,
-      headcount: d.value,
-      satisfaction: 60 + Math.floor(Math.random() * 35),
-      performance: 55 + Math.floor(Math.random() * 40),
-    }));
-  }, [deptHeadcount]);
+    // Goal progress by department, derived from real goals rather than the
+    // Math.random() "satisfaction" and "performance" this previously showed.
+    const progressByDept = new Map<string, { total: number; count: number }>();
+    for (const goal of goalStore.items) {
+      const owner = employees.find((e) => e.id === goal.employeeId);
+      if (!owner?.department) continue;
+      const entry = progressByDept.get(owner.department) ?? { total: 0, count: 0 };
+      entry.total += Number(goal.progress) || 0;
+      entry.count += 1;
+      progressByDept.set(owner.department, entry);
+    }
+
+    return deptHeadcount.slice(0, 6).map((d) => {
+      const progress = progressByDept.get(d.name);
+      return {
+        dept: d.name.length > 8 ? d.name.substring(0, 8) + "…" : d.name,
+        headcount: d.value,
+        goalProgress: progress && progress.count > 0
+          ? Math.round(progress.total / progress.count)
+          : 0,
+      };
+    });
+  }, [deptHeadcount, goalStore.items, employees]);
 
   // Approval pipeline
   const approvalPipeline = useMemo(() => [
@@ -466,8 +511,7 @@ export default function AdminPage() {
                       <PolarAngleAxis dataKey="dept" tick={{ fontSize: 10 }} />
                       <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
                       <Radar name="Headcount" dataKey="headcount" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} />
-                      <Radar name="Satisfaction" dataKey="satisfaction" stroke="#10b981" fill="#10b981" fillOpacity={0.15} />
-                      <Radar name="Performance" dataKey="performance" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} />
+                      <Radar name="Goal progress %" dataKey="goalProgress" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} />
                       <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 10 }} />
                       <RTooltip content={<CTooltip />} />
                     </RadarChart>
@@ -728,13 +772,17 @@ export default function AdminPage() {
               <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><PieIcon className="h-4 w-4 text-violet-500" />Workforce Health Radar</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
+                  {/* Every axis is derived from real data. Engagement,
+                      Satisfaction and Productivity previously used
+                      Math.random(), which both broke hydration and presented
+                      invented numbers as measured ones. */}
                   <RadarChart data={[
                     { metric: "Retention", value: totalEmployees > 0 ? Math.round(((totalEmployees - onNotice) / totalEmployees) * 100) : 100 },
                     { metric: "Attendance", value: totalEmployees > 0 ? Math.round((presentToday / Math.max(totalEmployees, 1)) * 100) : 0 },
-                    { metric: "Engagement", value: 78 + Math.floor(Math.random() * 15) },
+                    { metric: "Goals", value: goalCompletionRate },
                     { metric: "Training", value: courseStore.items.length > 0 ? Math.min(100, courseStore.items.length * 15) : 0 },
-                    { metric: "Satisfaction", value: 82 + Math.floor(Math.random() * 12) },
-                    { metric: "Productivity", value: 75 + Math.floor(Math.random() * 20) },
+                    { metric: "Helpdesk", value: ticketResolutionRate },
+                    { metric: "Expenses", value: expenseApprovalRate },
                   ]}>
                     <PolarGrid stroke="hsl(var(--border))" />
                     <PolarAngleAxis dataKey="metric" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
@@ -751,12 +799,13 @@ export default function AdminPage() {
               <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><TrendingUp className="h-4 w-4 text-emerald-500" />Monthly KPI Trends</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={joiningTrend.map((d, i) => ({
+                  {/* Satisfaction and engagement lines removed: they were
+                      Math.random() presented as trend data. Hiring and
+                      attrition are real. */}
+                  <LineChart data={joiningTrend.map((d) => ({
                     month: d.month,
                     hiring: d.joined,
                     attrition: d.left,
-                    satisfaction: 70 + Math.floor(Math.random() * 25),
-                    engagement: 65 + Math.floor(Math.random() * 30),
                   }))}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border/30" />
                     <XAxis dataKey="month" tick={{ fontSize: 10 }} />
@@ -765,8 +814,6 @@ export default function AdminPage() {
                     <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 10 }} />
                     <Line type="monotone" dataKey="hiring" name="Hiring" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} />
                     <Line type="monotone" dataKey="attrition" name="Attrition" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="satisfaction" name="Satisfaction" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 5" />
-                    <Line type="monotone" dataKey="engagement" name="Engagement" stroke="#06b6d4" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 5" />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>

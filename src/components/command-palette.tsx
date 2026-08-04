@@ -28,14 +28,17 @@ export function CommandPalette() {
     `${m.name} ${m.shortName} ${m.description}`.toLowerCase().includes(query.toLowerCase())
   );
 
-  useEffect(() => { setSelectedIndex(0); }, [query]);
+  // Clamped during render rather than reset by an effect. Resetting state in
+  // an effect triggers a second render pass on every keystroke, and left a
+  // frame where selectedIndex pointed past the end of the filtered list.
+  const activeIndex = Math.min(selectedIndex, Math.max(0, filtered.length - 1));
 
   const handleSelect = (href: string) => { setOpen(false); router.push(href); };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1)); }
     if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex((i) => Math.max(i - 1, 0)); }
-    if (e.key === "Enter" && filtered[selectedIndex]) { handleSelect(filtered[selectedIndex].href); }
+    if (e.key === "Enter" && filtered[activeIndex]) { handleSelect(filtered[activeIndex].href); }
   };
 
   if (!open) return null;
@@ -67,7 +70,7 @@ export function CommandPalette() {
                 onClick={() => handleSelect(mod.href)}
                 className={cn(
                   "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
-                  i === selectedIndex ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                  i === activeIndex ? "bg-primary/10 text-primary" : "hover:bg-muted"
                 )}
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">

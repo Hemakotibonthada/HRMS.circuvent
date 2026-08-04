@@ -20,6 +20,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useNowMs } from "@/hooks/use-now";
 import { toast } from "sonner";
 import {
   Mail, Phone, MapPin, Calendar, Building2, User, Shield, Heart,
@@ -153,12 +154,17 @@ const taxComputation = {
 };
 
 export default function EmployeeProfilePage() {
+  const nowMs = useNowMs();
   const [activeTab, setActiveTab] = useState("overview");
   const [editOpen, setEditOpen] = useState(false);
   const [editTab, setEditTab] = useState("personal");
   const p = profileData;
 
-  const tenure = Math.floor((Date.now() - new Date(p.joiningDate).getTime()) / (365.25 * 24 * 3600000));
+  // Computed from a post-mount clock; Date.now() during render made the
+  // server and client disagree on tenure and broke hydration.
+  const tenure = nowMs === null
+    ? 0
+    : Math.floor((nowMs - new Date(p.joiningDate).getTime()) / (365.25 * 24 * 3600000));
   const formatSalary = (n: number) => `₹${(n / 100000).toFixed(1)}L`;
   const formatMonthly = (n: number) => `₹${(n / 12000).toFixed(0)}K`;
 

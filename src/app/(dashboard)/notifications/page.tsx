@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useNotifStore, startSync, type NotificationDoc } from "@/stores/unified-store";
 import { genericService, COLLECTIONS } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { useNowMs } from "@/hooks/use-now";
 
 // ═══════════════════════════════════════════════════════════════
 // NOTIFICATIONS CENTER — All/Unread/Starred tabs, categories, KPIs
@@ -40,6 +41,7 @@ const TYPE_COLORS: Record<string, string> = {
 const CATEGORIES = ["All", "Leave", "Attendance", "Payroll", "Helpdesk", "Announcement", "System", "Approval"];
 
 export default function NotificationsPage() {
+  const nowMs = useNowMs();
   const store = useNotifStore();
   const [tab, setTab] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -108,8 +110,10 @@ export default function NotificationsPage() {
   }, [store]);
 
   const timeAgo = (ts: string) => {
-    if (!ts) return "";
-    const diff = Date.now() - new Date(ts).getTime();
+    // Relative times are rendered text, so they cannot come from the
+    // render-time clock without a hydration mismatch.
+    if (!ts || nowMs === null) return "";
+    const diff = nowMs - new Date(ts).getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 60) return `${mins}m ago`;
     const hrs = Math.floor(mins / 60);

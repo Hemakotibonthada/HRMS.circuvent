@@ -124,14 +124,16 @@ export default function EngagementPage() {
   // Engagement trend (monthly)
   const trendData = useMemo(() => {
     const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    return months.map((name, i) => ({
-      name,
-      score: Math.max(30, Math.min(100, engagementScore + Math.round((Math.random() - 0.5) * 20))),
-      kudos: feedbacks.filter(f => {
+    return months.map((name, i) => {
+      const monthFeedback = feedbacks.filter(f => {
         const d = f.createdAt ? new Date(f.createdAt) : null;
         return d && d.getMonth() === i;
-      }).length,
-    }));
+      });
+      // Previously the engagement score was jittered by Math.random() per
+      // month, producing a trend line that was pure noise. The real monthly
+      // signal available here is feedback volume.
+      return { name, kudos: monthFeedback.length };
+    });
   }, [feedbacks, engagementScore]);
 
   // Feedback category distribution

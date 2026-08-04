@@ -84,7 +84,10 @@ export default function AnalyticsPage() {
     const avg = totalMonths / employees.length;
     return avg >= 12 ? `${(avg / 12).toFixed(1)}y` : `${Math.round(avg)}m`;
   }, [employees]);
-  const eNPS = Math.round(70 + Math.random() * 20); // Simulated from engagement surveys
+  // eNPS requires survey responses, which this page does not load. It was
+  // previously Math.random() presented as a measured score; null renders as a
+  // dash rather than a fabricated number.
+  const eNPS: number | null = null;
 
   // ── Workforce Analytics ──────────────────────────────────
   const headcountByDept = useMemo(() => {
@@ -283,7 +286,7 @@ export default function AnalyticsPage() {
     { label: "Total Employees", value: totalEmployees, change: `+${employees.filter(e => { const d = new Date(e.joiningDate || ""); const now = new Date(); return d.getMonth() === now.getMonth(); }).length} this month`, up: true, icon: Users, gradient: "from-violet-500 to-purple-600" },
     { label: "Attrition Rate", value: `${attritionRate}%`, change: attritionRate > 10 ? "Above target" : "On track", up: attritionRate <= 10, icon: TrendingDown, gradient: "from-red-500 to-rose-600" },
     { label: "Avg Tenure", value: avgTenure, change: "Across workforce", up: true, icon: Clock, gradient: "from-blue-500 to-cyan-500" },
-    { label: "eNPS Score", value: eNPS, change: eNPS >= 70 ? "Excellent" : "Good", up: eNPS >= 70, icon: Heart, gradient: "from-emerald-500 to-green-600" },
+    { label: "eNPS Score", value: eNPS ?? "—", change: eNPS === null ? "Survey data not connected" : eNPS >= 70 ? "Excellent" : "Good", up: (eNPS ?? 0) >= 70, icon: Heart, gradient: "from-emerald-500 to-green-600" },
   ];
 
   return (
@@ -667,9 +670,9 @@ export default function AnalyticsPage() {
         <TabsContent value="engagement" className="space-y-4 mt-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {[
-              { label: "eNPS Score", value: eNPS, icon: Heart, gradient: "from-pink-500 to-rose-600" },
-              { label: "Satisfaction", value: `${85 + Math.floor(Math.random() * 10)}%`, icon: Star, gradient: "from-amber-500 to-orange-500" },
-              { label: "Engagement", value: `${78 + Math.floor(Math.random() * 15)}%`, icon: Zap, gradient: "from-violet-500 to-purple-600" },
+              { label: "eNPS Score", value: eNPS ?? "—", icon: Heart, gradient: "from-pink-500 to-rose-600" },
+              { label: "Headcount", value: employees.length, icon: Star, gradient: "from-amber-500 to-orange-500" },
+              { label: "Open roles", value: jobStore.items.filter(j => j.status === "open").length, icon: Zap, gradient: "from-violet-500 to-purple-600" },
               { label: "Retention", value: `${100 - attritionRate}%`, icon: CheckCircle2, gradient: "from-emerald-500 to-green-600" },
             ].map((kpi) => (
               <Card key={kpi.label} className="border-0 shadow-sm">
@@ -709,17 +712,26 @@ export default function AnalyticsPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card className="border-0 shadow-sm">
-              <CardHeader><CardTitle className="text-base">Department Health</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">Department Retention</CardTitle></CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {headcountByDept.slice(0, 6).map((dept, i) => {
-                    const score = 60 + Math.floor(Math.random() * 35);
+                  {headcountByDept.slice(0, 6).map((dept) => {
+                    // Share of the department still active. This replaces a
+                    // "health score" that was Math.random() rendered as a
+                    // measured percentage.
+                    const inDept = employees.filter(e => (e.department || "Other") === dept.name);
+                    const stable = inDept.filter(
+                      e => e.status !== "notice_period" && e.status !== "terminated"
+                    ).length;
+                    const score = inDept.length > 0
+                      ? Math.round((stable / inDept.length) * 100)
+                      : 0;
                     return (
                       <div key={dept.name} className="space-y-1">
                         <div className="flex justify-between text-sm">
                           <span className="font-medium">{dept.name}</span>
                           <span className={cn("text-xs", score >= 80 ? "text-emerald-600" : score >= 60 ? "text-amber-600" : "text-red-600")}>
-                            {score}% health score
+                            {score}% retained ({inDept.length})
                           </span>
                         </div>
                         <Progress value={score} className={cn("h-2", score < 60 ? "[&>div]:bg-red-500" : score < 80 ? "[&>div]:bg-amber-500" : "")} />

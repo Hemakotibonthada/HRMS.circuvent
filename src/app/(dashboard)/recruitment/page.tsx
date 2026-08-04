@@ -463,13 +463,18 @@ export default function RecruitmentPage() {
                 <Separator />
                 <h4 className="font-semibold">Candidate Pipeline</h4>
                 <div className="grid grid-cols-5 gap-2">
-                  {PIPELINE_STAGES.filter(s => s !== "rejected").map((stage) => {
+                  {PIPELINE_STAGES.filter(s => s !== "rejected").map((stage, index) => {
                     const conf = STAGE_CONF[stage];
+                    // Per-stage counts need the candidates collection, which
+                    // this page does not load. Only the total applicant count
+                    // is real, so the later stages show a dash rather than the
+                    // Math.random() figures they displayed before.
+                    const value = index === 0 ? (selectedJob.applicants ?? 0) : "—";
                     return (
                       <div key={stage} className="text-center p-2 rounded-lg bg-muted/30">
                         <conf.icon className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
                         <p className="text-xs font-medium">{conf.label}</p>
-                        <p className="text-lg font-bold">{Math.round(Math.random() * (selectedJob.applicants || 5))}</p>
+                        <p className="text-lg font-bold">{value}</p>
                       </div>
                     );
                   })}

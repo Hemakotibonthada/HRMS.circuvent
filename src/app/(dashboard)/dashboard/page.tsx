@@ -165,13 +165,30 @@ export default function DashboardPage() {
 
   // Department radar
   const deptRadar = useMemo(() => {
-    return deptData.slice(0, 6).map(d => ({
-      dept: d.name.length > 8 ? d.name.substring(0, 8) + "…" : d.name,
-      headcount: d.value,
-      satisfaction: 60 + Math.floor(Math.random() * 35),
-      performance: 55 + Math.floor(Math.random() * 40),
-    }));
-  }, [deptData]);
+    // Goal progress by department, from real goals. This previously showed
+    // Math.random() "satisfaction" and "performance" as if measured, which
+    // also broke hydration.
+    const progressByDept = new Map<string, { total: number; count: number }>();
+    for (const goal of goalStore.items) {
+      const owner = empStore.items.find((e) => e.id === goal.employeeId);
+      if (!owner?.department) continue;
+      const entry = progressByDept.get(owner.department) ?? { total: 0, count: 0 };
+      entry.total += Number(goal.progress) || 0;
+      entry.count += 1;
+      progressByDept.set(owner.department, entry);
+    }
+
+    return deptData.slice(0, 6).map((d) => {
+      const progress = progressByDept.get(d.name);
+      return {
+        dept: d.name.length > 8 ? d.name.substring(0, 8) + "…" : d.name,
+        headcount: d.value,
+        goalProgress: progress && progress.count > 0
+          ? Math.round(progress.total / progress.count)
+          : 0,
+      };
+    });
+  }, [deptData, goalStore.items, empStore.items]);
 
   // Leave monthly trend
   const leaveTrend = useMemo(() => {

@@ -453,11 +453,11 @@ export default function AuditPage() {
                   { check: "Two-factor authentication enabled for all admin accounts", passed: true },
                   { check: "Audit logs retained for minimum 90 days", passed: true },
                   { check: "Employee data encrypted at rest and in transit", passed: true },
-                  { check: "Regular backup schedule configured and verified", passed: COMPLIANCE_SCORES.find(c => c.category === "Backup")?.score! >= 80 },
+                  { check: "Regular backup schedule configured and verified", passed: (COMPLIANCE_SCORES.find(c => c.category === "Backup")?.score ?? 0) >= 80 },
                   { check: "Access reviews completed quarterly", passed: false },
                   { check: "Data classification policy implemented", passed: true },
                   { check: "Incident response plan documented and tested", passed: true },
-                  { check: "GDPR/privacy consent forms collected", passed: COMPLIANCE_SCORES.find(c => c.category === "Data Privacy")?.score! >= 90 },
+                  { check: "GDPR/privacy consent forms collected", passed: (COMPLIANCE_SCORES.find(c => c.category === "Data Privacy")?.score ?? 0) >= 90 },
                   { check: "Session timeout configured for inactive users", passed: true },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">

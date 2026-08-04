@@ -20,8 +20,10 @@ export function SuiteHeader() {
 
   const breadcrumbs = segments.map((seg, i) => {
     const href = "/" + segments.slice(0, i + 1).join("/");
-    const module = MODULES.find((m) => m.href === href);
-    const label = module?.name ?? seg.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    // Not named `module`: Next.js reserves that identifier, and assigning to
+    // it breaks the bundler's module resolution.
+    const matched = MODULES.find((m) => m.href === href);
+    const label = matched?.name ?? seg.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     return { href, label, isLast: i === segments.length - 1 };
   });
 

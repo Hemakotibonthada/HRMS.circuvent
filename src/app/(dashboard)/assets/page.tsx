@@ -29,6 +29,7 @@ import {
 import { useAssetStore, startSync, type AssetDoc } from "@/stores/unified-store";
 import { COLLECTIONS, genericService } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { useNowMs } from "@/hooks/use-now";
 
 // ═══════════════════════════════════════════════════════════════
 // ASSETS — Full asset management with lifecycle tracking
@@ -50,6 +51,7 @@ const STATUS_MAP: Record<string, { label: string; className: string }> = {
 const LIFECYCLE_STAGES = ["Purchase", "Assign", "Maintain", "Retire"];
 
 export default function AssetsPage() {
+  const nowMs = useNowMs();
   const rbac = useRBAC();
   const store = useAssetStore();
   const { items, loading, initialized } = store;
@@ -90,7 +92,10 @@ export default function AssetsPage() {
 
   // Warranty alerts (approximation: 2 years from purchase)
   const warrantyAlerts = useMemo(() => {
-    const now = Date.now();
+    // Date.now() during render made the server and client disagree on which
+    // assets were "expiring soon", so React discarded the server markup.
+    if (nowMs === null) return [];
+    const now = nowMs;
     const twoYears = 2 * 365.25 * 86400000;
     return items.filter(a => {
       if (!a.purchaseDate) return false;
@@ -99,7 +104,7 @@ export default function AssetsPage() {
       const threeMonths = 90 * 86400000;
       return warrantyEnd - now < threeMonths && warrantyEnd > now;
     });
-  }, [items]);
+  }, [items, nowMs]);
 
   // Assignment tracking
   const assignedAssets = useMemo(() => items.filter(a => a.status === "Assigned" && a.assignedTo), [items]);

@@ -69,8 +69,37 @@ Enabling the pipeline surfaced defects that were previously invisible:
 | `startSync` set `loading: true` with no error path, so a permission or network failure left the UI spinning forever | `src/stores/unified-store.ts`, `src/lib/firestore-service.ts` | Fixed — added an `onError` channel |
 | ESLint had never actually run: `FlatCompat` threw `Converting circular structure to JSON` against `eslint-plugin-react-hooks@7` | `eslint.config.mjs` | Fixed — use `eslint-config-next`'s native flat configs |
 | `.firebase/` deploy output was being linted, producing ~44,000 spurious problems | `eslint.config.mjs` | Fixed — added to `ignores` |
-| **44 pre-existing `react-hooks` errors**, incl. `Math.random()` / `Date.now()` called during render across 20 dashboard pages — a hydration-mismatch source | `src/app/(dashboard)/**`, `src/hooks/use-advanced.ts` | ⏳ Phase 2.4 backlog |
+| **44 pre-existing `react-hooks` errors**, incl. `Math.random()` / `Date.now()` called during render across 20 dashboard pages — a hydration-mismatch source | `src/app/(dashboard)/**`, `src/hooks/use-advanced.ts` | **29 fixed.** All 17 `Math.random()` and all 9 `Date.now()` purity errors resolved; see below. 15 remain. |
 | ~940 lint warnings (`no-explicit-any`, `no-console`) | repo-wide | ⏳ Phase 2.4 backlog |
+
+### Fabricated metrics found while fixing the purity errors
+
+The `Math.random()` calls were not merely a hydration bug. Each one invented a number and rendered
+it as a measured figure — an HR admin reading "Satisfaction: 87%" had no way to know it was noise.
+They have been replaced with values derived from real data, or removed:
+
+| Where | Was | Now |
+|---|---|---|
+| `admin` — org health radar | Engagement, Satisfaction, Productivity were `Math.random()` | Goal completion, helpdesk resolution and expense approval rates, all computed from their stores |
+| `admin`, `dashboard` — department radar | `satisfaction` and `performance` random | Average goal progress per department |
+| `admin` — monthly KPI trends | `satisfaction` and `engagement` series random | Series removed; hiring and attrition are real |
+| `analytics` — eNPS, Satisfaction, Engagement | random percentages | eNPS renders `—` (no survey data loaded); the other two replaced with headcount and open roles |
+| `analytics` — department health score | random 60-95% | Share of the department not on notice or terminated |
+| `engagement` — monthly trend | real score jittered by `Math.random()` | Feedback volume per month |
+| `performancesuite` — self vs manager | `self` was manager rating plus random | `self` series removed until self-assessments exist |
+| `recruitment` — candidate funnel | each stage `Math.random() * applicants` | Real applicant total on the first stage, `—` elsewhere |
+
+### Remaining `react-hooks` errors (15)
+
+| Rule | Count | Where |
+|---|---|---|
+| `preserve-manual-memoization` | 5 | `celebrations`, `offboarding` ×2, `onboarding`, `onboardinghub` — React Compiler bails out; a performance loss, not a correctness bug |
+| `set-state-in-effect` | 6 | `succession`, `use-advanced` ×3, `use-auth`, `use-shared` |
+| `refs` during render | 3 | `use-advanced` |
+| `use-memo` | 1 | `use-advanced` |
+
+Seven of these are in `src/hooks/use-advanced.ts`, which needs a focused rewrite rather than
+line-by-line patching.
 
 ### 1.1 Data layer
 

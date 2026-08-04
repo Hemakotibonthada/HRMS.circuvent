@@ -22,6 +22,7 @@ import {
 import { useEmployeeStore, startSync } from "@/stores/unified-store";
 import { COLLECTIONS, genericService } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { useNowMs } from "@/hooks/use-now";
 
 const ONBOARDING_PHASES = [
   { key: "preboarding", label: "Pre-boarding", icon: Briefcase, color: "text-blue-500" },
@@ -46,6 +47,7 @@ const ONBOARDING_TASKS = [
 ];
 
 export default function OnboardingHubPage() {
+  const nowMs = useNowMs();
   const empStore = useEmployeeStore();
   const { items, loading, initialized } = empStore;
   const [search, setSearch] = useState("");
@@ -55,12 +57,15 @@ export default function OnboardingHubPage() {
   }, [initialized, empStore]);
 
   const newJoiners = useMemo(() => {
-    const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    // Date.now() during render made "joined in the last 90 days" resolve
+    // differently on the server and the client.
+    if (nowMs === null) return [];
+    const cutoff = nowMs - 90 * 24 * 60 * 60 * 1000;
     return items.filter(e => {
       if (!e.joiningDate) return false;
       return new Date(e.joiningDate).getTime() >= cutoff;
     }).sort((a, b) => new Date(b.joiningDate).getTime() - new Date(a.joiningDate).getTime());
-  }, [items]);
+  }, [items, nowMs]);
 
   const filtered = useMemo(() => {
     if (!search) return newJoiners;
@@ -72,7 +77,8 @@ export default function OnboardingHubPage() {
   }, [newJoiners, search]);
 
   const getJoinerProgress = (joiningDate: string) => {
-    const daysSinceJoin = Math.floor((Date.now() - new Date(joiningDate).getTime()) / (1000 * 60 * 60 * 24));
+    if (nowMs === null) return 0;
+    const daysSinceJoin = Math.floor((nowMs - new Date(joiningDate).getTime()) / (1000 * 60 * 60 * 24));
     if (daysSinceJoin >= 90) return 100;
     if (daysSinceJoin >= 30) return 75;
     if (daysSinceJoin >= 7) return 50;
@@ -81,7 +87,8 @@ export default function OnboardingHubPage() {
   };
 
   const getCurrentPhase = (joiningDate: string) => {
-    const daysSinceJoin = Math.floor((Date.now() - new Date(joiningDate).getTime()) / (1000 * 60 * 60 * 24));
+    if (nowMs === null) return "preboarding";
+    const daysSinceJoin = Math.floor((nowMs - new Date(joiningDate).getTime()) / (1000 * 60 * 60 * 24));
     if (daysSinceJoin >= 90) return "month3";
     if (daysSinceJoin >= 30) return "month1";
     if (daysSinceJoin >= 7) return "week1";

@@ -137,11 +137,12 @@ export default function PerformanceSuitePage() {
     );
   }, [goals, search]);
 
-  // Self vs Manager comparison (simulated)
+  // Self vs manager comparison. The "self" series was previously the manager
+  // rating plus Math.random(), i.e. invented, so only the real figure remains
+  // until self-assessments are captured.
   const selfVsManager = useMemo(() => {
     return categoryProgress.slice(0, 5).map(c => ({
       name: c.name,
-      self: Math.min(100, c.avgProgress + Math.floor(Math.random() * 10)),
       manager: c.avgProgress,
     }));
   }, [categoryProgress]);

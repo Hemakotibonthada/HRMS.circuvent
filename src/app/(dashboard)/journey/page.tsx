@@ -28,6 +28,7 @@ import {
 } from "@/stores/unified-store";
 import { COLLECTIONS } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { useNowMs } from "@/hooks/use-now";
 
 // ═══════════════════════════════════════════════════════════════
 // JOURNEY — Employee lifecycle journey map with 7 stages
@@ -53,6 +54,7 @@ const STAGES: JourneyStage[] = [
 ];
 
 export default function JourneyPage() {
+  const nowMs = useNowMs();
   const empStore = useEmployeeStore();
   const goalStore = useGoalStore();
   const feedbackStore = useFeedbackStore();
@@ -72,8 +74,8 @@ export default function JourneyPage() {
   const stageMetrics = useMemo(() => {
     const active = employees.filter(e => e.status === "active").length;
     const newJoiners = employees.filter(e => {
-      if (!e.joiningDate) return false;
-      const diff = Date.now() - new Date(e.joiningDate).getTime();
+      if (!e.joiningDate || nowMs === null) return false;
+      const diff = nowMs - new Date(e.joiningDate).getTime();
       return diff < 90 * 86400000; // last 90 days
     }).length;
     const withGoals = new Set(goals.map(g => g.employeeId)).size;
@@ -93,7 +95,7 @@ export default function JourneyPage() {
       { stage: "Engage", metric: `${active} active`, count: active, satisfaction: 78 },
       { stage: "Transition", metric: `${exiting} exiting`, count: exiting, satisfaction: exiting > 0 ? 50 : 90 },
     ];
-  }, [employees, goals, feedback]);
+  }, [employees, goals, feedback, nowMs]);
 
   // Touchpoint details per stage
   const getTouchpoints = (stageName: string) => {
