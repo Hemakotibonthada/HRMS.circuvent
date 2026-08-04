@@ -33,14 +33,22 @@ changing a single UI component. Everything after this rides on this base.
 | 1.1.3 | `identity` + `hrms` schemas transcribed from `src/types/` — 38 tables | ✅ |
 | 1.1.4 | RLS enabled on all 37 org-scoped tables, `FORCE` + `WITH CHECK` | ✅ |
 | 1.1.5 | Composite indexes, FKs, CHECK constraints, maker-checker on payroll | ✅ |
+| 1.2.1–1.2.4 | `EmployeeRepository` contract + Firestore, Neon, HTTP and dual-write implementations behind `DATA_BACKEND` | ✅ |
+| 1.3.1 | Argon2id password hashing (OWASP params, PHC format, timing-safe) | ✅ |
+| 1.3.2 | 15-min access JWT + rotating 30-day refresh token, stored hashed | ✅ |
+| 1.3.3 | `.circuvent.com` cookie scoping for cross-app SSO | ✅ |
+| 1.3.4 | TOTP MFA + single-use backup codes | ✅ |
 | 1.4.1 | Hardcoded Firebase key fallbacks removed; missing config now fails fast | ✅ |
+| 1.4.3 | Per-user rate limiting on employee API routes (in-memory; Redis later) | ✅ |
+| 1.4.6 | Zod validation at every employee API boundary | ✅ |
 | 1.4.7 | Hash-chained, insert-only audit log with tamper detection | ✅ |
-| 1.5.1 | Vitest + 39 tests on `payroll-engine` and `rbac` | ✅ |
+| 1.5.1 | Vitest + 78 tests across payroll, RBAC, dual-write and auth | ✅ |
 | 1.5.5 | GitHub Actions `verify` workflow + gitleaks secret scanning | ✅ |
 | — | `npm run db:verify` — migrations + 7 tenant-isolation assertions on PGlite | ✅ |
+| — | Real `/api/employees` CRUD, replacing a stub that returned `[]` | ✅ |
 | 1.1.1 | Create the Neon project and branches | ⏳ needs Neon MCP (CLI restart) |
-| 1.2.x | Repository abstraction + `DATA_BACKEND` switch | ⏳ next |
-| 1.3.x | Identity service (JWT, Argon2id, TOTP, SSO cookie) | ⏳ next |
+| 1.3.5–1.3.7 | Login/refresh/logout routes, edge middleware, Firebase user import | ⏳ next |
+| 1.2.5–1.2.6 | Reconciliation job; point Zustand stores at repositories | ⏳ next |
 
 ### Found during Phase 1 verification
 
@@ -263,11 +271,12 @@ in airplane mode; push delivery > 99%; crash-free sessions > 99.5%.
 
 ---
 
-## Immediate Next Actions (Phase 1 start)
+## Immediate Next Actions (Phase 1 continued)
 
-1. Create the Neon project and the six schemas (via Neon MCP — **requires a Copilot CLI restart to
-   load the MCP tools**).
-2. Add Drizzle to HRMS and transcribe `src/types/` into `src/db/schema/`.
-3. Delete the hardcoded Firebase key fallbacks and make missing env vars fail fast.
-4. Stand up Vitest with the first tests on `payroll-engine.ts` and `rbac.ts`.
-5. Introduce `IEmployeeRepository` and wire `employee-store.ts` to it behind `DATA_BACKEND`.
+1. **Create the Neon project** and the six schemas — requires a Copilot CLI restart so the Neon
+   MCP tools load, then `npm run db:migrate` against the new branch.
+2. Login / refresh / logout routes wiring `src/lib/auth/*` to `identity.users`.
+3. Edge middleware verifying the access JWT, replacing `AuthGuard`'s client-side check.
+4. Firebase Auth user import with forced password reset on first sign-in.
+5. Point `employee-store.ts` at `employeeRepository()` so the UI stops touching Firestore.
+6. Extend the repository pattern to leave, attendance and payroll.
