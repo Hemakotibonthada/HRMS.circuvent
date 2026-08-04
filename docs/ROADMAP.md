@@ -190,32 +190,32 @@ that enterprise buyers actually evaluate on.
 
 ### 2.1 Platform capabilities (the real differentiators)
 
-| Feature | Why it matters |
-|---|---|
-| **Visual workflow engine** | Drag-drop approval chains, conditional routing, parallel/serial approvers, delegation, SLA timers, auto-escalation, reminders. Every HR process becomes configurable instead of hard-coded. |
-| **Custom fields & custom objects** | Per-tenant schema extension without a deploy. Non-negotiable for enterprise. |
-| **Report builder** | Drag-drop dimensions/measures, saved views, scheduled delivery, XLSX/PDF/CSV export. |
-| **Notification engine** | Multi-channel (email, SMS, push, WhatsApp, Slack, Teams), per-user preferences, digest batching, templating. Extends existing `notification-templates.ts`. |
-| **Public API + webhooks** | Versioned REST, per-org API keys, scoped tokens, rate limits, OpenAPI spec, webhook subscriptions with retry + signature. |
-| **SSO & SCIM** | SAML 2.0, OIDC, SCIM 2.0 provisioning, JIT user creation, IdP-initiated login. |
-| **Feature flags per plan/tenant** | Ties directly to the existing `billing` + `subscription` modules. |
-| **i18n & multi-currency** | `next-intl`, RTL support, per-org locale, multi-country payroll rules. |
-| **Data governance** | GDPR/DPDP: DSAR export, right-to-erasure, retention policies, field-level encryption for PII, consent tracking. |
-| **e-Signature** | Offer letters, policy acknowledgements, PIP sign-off — with audit trail. |
-| **Bulk data operations** | Guided import with column mapping, dry-run validation, partial-failure reporting, rollback. |
+| Feature | Status | Why it matters |
+|---|---|---|
+| **Visual workflow engine** | ✅ engine + tests (`src/lib/workflow/engine.ts`) | Drag-drop approval chains, conditional routing, parallel/serial approvers, delegation, SLA timers, auto-escalation, reminders. Every HR process becomes configurable instead of hard-coded. UI still to build. |
+| **Report builder** | ✅ builder + presets + `/api/reports/run` | Drag-drop dimensions/measures, saved views, scheduled delivery, XLSX/PDF/CSV export. Designer UI and scheduling still to build. |
+| **Notification engine** | ✅ engine + tests (`src/lib/notifications/engine.ts`) | Multi-channel, per-user preferences, quiet hours, digest batching, idempotency. Transports (Resend, Expo push, SMS) still to wire. |
+| **Public API + webhooks** | ✅ API surface | Versioned REST at `/api/v1`, per-org API keys, scoped tokens, rate limits, OpenAPI spec at `/api/v1/openapi`. Webhook subscriptions still to build. |
+| **Custom fields & custom objects** | ⏳ | Per-tenant schema extension without a deploy. Columns exist on `organizations.custom_fields` and `employees.custom_fields`. |
+| **SSO & SCIM** | ⏳ | Schema in place (`sso_connections`, `scim_tokens`); protocol handlers still to build. |
+| **Feature flags per plan/tenant** | ⏳ | Column exists on `organizations.features`. |
+| **i18n & multi-currency** | ⏳ | `next-intl`, RTL, per-org locale, multi-country payroll rules. |
+| **Data governance** | ⏳ | GDPR/DPDP: DSAR export, right-to-erasure, retention policies, field-level encryption, consent tracking. |
+| **e-Signature** | ⏳ | Offer letters, policy acknowledgements, PIP sign-off. |
+| **Bulk data operations** | ⏳ | Guided import with column mapping, dry-run validation, partial-failure reporting. |
 
 ### 2.2 AI layer ("the latest")
 
-| Feature | Implementation |
-|---|---|
-| **HR Copilot** | RAG over company policies, handbook, and the employee's own records. Replaces the stub `chatbot` module. |
-| **Resume parsing & ranking** | Structured extraction + semantic match against JD; feeds ATS. |
-| **Attrition risk prediction** | Model over tenure, engagement scores, comp ratio, manager changes, leave patterns. Surfaces in `orghealth`. |
-| **Survey sentiment analysis** | Theme extraction + sentiment on free-text feedback and exit interviews. |
-| **AI drafting** | JDs, offer letters, performance review summaries, PIP plans, policy docs. |
-| **Anomaly detection** | Payroll outliers, attendance fraud (impossible geo-jumps), duplicate/suspicious expenses. |
-| **Smart scheduling** | Interview slot optimisation across panel calendars. |
-| **Semantic search** | pgvector in Neon over employees, policies, documents, tickets. |
+| Feature | Status | Implementation |
+|---|---|---|
+| **Attrition risk prediction** | ✅ `src/lib/intelligence/attrition.ts` | Transparent additive model over tenure, comp ratio, promotion/raise recency, engagement, manager churn, overtime and absence. Every score carries its factors — an unexplained "high risk" is unactionable and indefensible. Protected characteristics deliberately excluded. |
+| **Anomaly detection** | ✅ `src/lib/intelligence/anomaly.ts` | Payroll outliers, impossible-travel punches, duplicate and threshold-split expense claims. Median/MAD rather than mean/SD, because the outlier being sought drags the mean. Nothing auto-rejects. |
+| **HR Copilot** | ⏳ | RAG over company policies, handbook, and the employee's own records. Replaces the stub `chatbot` module. |
+| **Resume parsing & ranking** | ⏳ | Structured extraction + semantic match against JD; column exists (`candidates.parsed_resume`, `applications.match_score`). |
+| **Survey sentiment analysis** | ⏳ | Theme extraction + sentiment on free-text feedback and exit interviews. |
+| **AI drafting** | ⏳ | JDs, offer letters, review summaries (`performance_reviews.ai_summary`), PIP plans. |
+| **Smart scheduling** | ⏳ | Interview slot optimisation across panel calendars. |
+| **Semantic search** | ⏳ | pgvector in Neon over employees, policies, documents, tickets. |
 
 ### 2.3 HR domain depth
 
@@ -316,12 +316,18 @@ in airplane mode; push delivery > 99%; crash-free sessions > 99.5%.
 
 ---
 
-## Immediate Next Actions (Phase 1 continued)
+## Immediate Next Actions
 
-1. **Create the Neon project** and the six schemas — requires a Copilot CLI restart so the Neon
-   MCP tools load, then `npm run db:migrate` against the new branch.
-2. Login / refresh / logout routes wiring `src/lib/auth/*` to `identity.users`.
-3. Edge middleware verifying the access JWT, replacing `AuthGuard`'s client-side check.
-4. Firebase Auth user import with forced password reset on first sign-in.
-5. Point `employee-store.ts` at `employeeRepository()` so the UI stops touching Firestore.
-6. Extend the repository pattern to leave, attendance and payroll.
+**Blocked on credentials:**
+1. **Create the Neon project** and the six schemas — requires a Copilot CLI restart so the Neon MCP
+   tools load, then `npm run db:migrate` against the new branch.
+2. Vercel projects, GoDaddy DNS cutover, Oracle VM provisioning, backups.
+
+**Unblocked, in order of value:**
+3. Wire notification transports (Resend for email, Expo for push) to the engine.
+4. Workflow engine persistence and UI — the schema and evaluator exist; `leave_requests` and
+   `expense_claims` already carry `workflow_instance_id`.
+5. Report designer UI over `/api/reports/fields` and `/api/reports/run`.
+6. SSO (SAML/OIDC) and SCIM protocol handlers over the existing schema.
+7. Firebase Auth user import, then flip `DATA_BACKEND` to `dual`.
+8. Phase 3: scaffold the Expo monorepo from `WebSite/mobile`.
