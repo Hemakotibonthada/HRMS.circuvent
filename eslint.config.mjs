@@ -46,6 +46,10 @@ const eslintConfig = [
     files: [
       "src/db/**/*.ts",
       "src/lib/auth/**/*.ts",
+      "src/lib/workflow/**/*.ts",
+      "src/lib/notifications/**/*.ts",
+      "src/lib/reporting/**/*.ts",
+      "src/lib/api-keys.ts",
       "src/lib/firebase-env.ts",
       "src/lib/api-context.ts",
       "src/middleware.ts",
@@ -53,6 +57,7 @@ const eslintConfig = [
       "src/app/api/leave/**/*.ts",
       "src/app/api/attendance/**/*.ts",
       "src/app/api/payroll/**/*.ts",
+      "src/app/api/reports/**/*.ts",
       "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],
     rules: {
