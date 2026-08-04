@@ -17,7 +17,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ACCESS_COOKIE, REFRESH_COOKIE, verifyAccessToken } from "@/lib/auth/tokens";
 import { canAccessModule, type Role } from "@/lib/rbac";
 
-/** Routes reachable without a session. */
+/** Routes reachable without a session cookie. */
 const PUBLIC_PREFIXES = [
   "/login",
   "/register",
@@ -29,6 +29,11 @@ const PUBLIC_PREFIXES = [
   "/api/auth/refresh",
   "/api/auth/logout",
   "/api/health",
+  // The public API authenticates by API key, not by session, and every /api/v1
+  // handler calls requireApiKey before touching data. Passing it through here
+  // is what lets an integration with no browser use it at all — it is not an
+  // exemption from authentication.
+  "/api/v1",
 ];
 
 function isPublic(pathname: string): boolean {

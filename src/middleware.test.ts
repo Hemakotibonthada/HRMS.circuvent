@@ -67,6 +67,21 @@ describe("middleware", () => {
       const response = await middleware(makeRequest("/api/auth/me"));
       expect(response.status).toBe(401);
     });
+
+    it("passes /api/v1 through, since those routes authenticate by API key", async () => {
+      // An integration has no session cookie. The handlers themselves call
+      // requireApiKey, so this is a different authentication path rather than
+      // an exemption from one.
+      for (const path of ["/api/v1/employees", "/api/v1/leave", "/api/v1/openapi"]) {
+        const response = await middleware(makeRequest(path));
+        expect(response.status, `${path} should reach its handler`).toBe(200);
+      }
+    });
+
+    it("does not extend that to a lookalike path", async () => {
+      const response = await middleware(makeRequest("/api/v1nonsense"));
+      expect(response.status).toBe(401);
+    });
   });
 
   describe("unauthenticated access", () => {
