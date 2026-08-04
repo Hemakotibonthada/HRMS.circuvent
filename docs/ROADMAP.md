@@ -25,6 +25,36 @@
 Goal: HRMS running on Neon + Vercel with real auth, real tests, and no Firebase — without
 changing a single UI component. Everything after this rides on this base.
 
+### Progress
+
+| # | Task | Status |
+|---|---|---|
+| 1.1.2 | Drizzle + `@neondatabase/serverless` + `pg` installed | ✅ |
+| 1.1.3 | `identity` + `hrms` schemas transcribed from `src/types/` — 38 tables | ✅ |
+| 1.1.4 | RLS enabled on all 37 org-scoped tables, `FORCE` + `WITH CHECK` | ✅ |
+| 1.1.5 | Composite indexes, FKs, CHECK constraints, maker-checker on payroll | ✅ |
+| 1.4.1 | Hardcoded Firebase key fallbacks removed; missing config now fails fast | ✅ |
+| 1.4.7 | Hash-chained, insert-only audit log with tamper detection | ✅ |
+| 1.5.1 | Vitest + 39 tests on `payroll-engine` and `rbac` | ✅ |
+| 1.5.5 | GitHub Actions `verify` workflow + gitleaks secret scanning | ✅ |
+| — | `npm run db:verify` — migrations + 7 tenant-isolation assertions on PGlite | ✅ |
+| 1.1.1 | Create the Neon project and branches | ⏳ needs Neon MCP (CLI restart) |
+| 1.2.x | Repository abstraction + `DATA_BACKEND` switch | ⏳ next |
+| 1.3.x | Identity service (JWT, Argon2id, TOTP, SSO cookie) | ⏳ next |
+
+### Found during Phase 1 verification
+
+Enabling the pipeline surfaced defects that were previously invisible:
+
+| Defect | Where | Resolution |
+|---|---|---|
+| `generatePayslip` produced `NaN` net pay when a month had 0 working days — `Infinity × 0` propagated through `lopDeduction` into a bank payment instruction | `src/lib/payroll-engine.ts` | Fixed — guarded the divisor |
+| `goals.create` duplicated in `MANAGER_PERMISSIONS` | `src/lib/rbac.ts` | Fixed |
+| ESLint had never actually run: `FlatCompat` threw `Converting circular structure to JSON` against `eslint-plugin-react-hooks@7` | `eslint.config.mjs` | Fixed — use `eslint-config-next`'s native flat configs |
+| `.firebase/` deploy output was being linted, producing ~44,000 spurious problems | `eslint.config.mjs` | Fixed — added to `ignores` |
+| **44 pre-existing `react-hooks` errors**, incl. `Math.random()` / `Date.now()` called during render across 20 dashboard pages — a hydration-mismatch source | `src/app/(dashboard)/**`, `src/hooks/use-advanced.ts` | ⏳ Phase 2.4 backlog |
+| ~940 lint warnings (`no-explicit-any`, `no-console`) | repo-wide | ⏳ Phase 2.4 backlog |
+
 ### 1.1 Data layer
 
 | # | Task | Detail |

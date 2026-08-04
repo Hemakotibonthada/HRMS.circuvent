@@ -241,7 +241,6 @@ const MANAGER_PERMISSIONS: Permission[] = [
   "leave.approve", "leave.view_all",
   "expenses.approve", "expenses.view_all",
   "performance.view", "performance.manage",
-  "goals.create",
   "overtime.approve",
   "wfh.approve",
   "travel.approve",

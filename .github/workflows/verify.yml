@@ -1,0 +1,67 @@
+name: verify
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint (new code, zero tolerance)
+        run: npm run lint:strict
+
+      # The whole-repo pass reports ~44 pre-existing react-hooks errors and
+      # ~940 warnings that predate this pipeline. Surfaced, not gating, until
+      # the Phase 2 cleanup lands (docs/ROADMAP.md §2.4).
+      - name: Lint (whole repo, informational)
+        run: npm run lint
+        continue-on-error: true
+
+      # Applies every migration to an in-memory Postgres and asserts that
+      # row-level security actually blocks cross-tenant reads and writes.
+      # Needs no external database.
+      - name: Verify migrations and tenant isolation
+        run: npm run db:verify
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ci-placeholder
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ci.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ci-project
+          NEXT_PUBLIC_FIREBASE_APP_ID: "1:0:web:ci"
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The April audit found live credentials committed to source. This keeps
+      # them from coming back.
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

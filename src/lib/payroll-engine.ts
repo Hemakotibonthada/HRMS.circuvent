@@ -208,7 +208,12 @@ export function generatePayslip(params: {
   const bonus = params.bonus || 0;
   const arrears = params.arrears || 0;
   
-  const lopDeduction = Math.round(((structure.grossSalary / 12) / workingDays) * lopDays);
+  // Guard against a zero-working-day month: dividing by it yields Infinity,
+  // and Infinity * 0 lopDays is NaN, which propagates through totalDeductions
+  // into netPay and would emit a NaN payment instruction.
+  const lopDeduction = workingDays > 0
+    ? Math.round(((structure.grossSalary / 12) / workingDays) * lopDays)
+    : 0;
   
   const totalEarnings = basic + hra + specialAllowance + conveyanceAllowance
     + medicalAllowance + lta + otherAllowances + overtime + bonus + arrears;
