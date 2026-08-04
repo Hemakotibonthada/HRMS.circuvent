@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "lint:strict": "eslint src/db scripts src/lib/auth src/lib/workflow src/lib/notifications src/lib/reporting src/lib/intelligence src/lib/api-keys.ts src/lib/api-keys.test.ts src/lib/api-context.ts src/lib/api-v1-context.ts src/lib/firebase-env.ts src/hooks/use-now.ts src/middleware.ts src/middleware.test.ts src/app/api/employees src/app/api/auth/login src/app/api/auth/refresh src/app/api/auth/logout src/app/api/auth/me src/app/api/leave src/app/api/attendance src/app/api/payroll src/app/api/reports src/app/api/v1 src/lib/payroll-engine.test.ts src/lib/rbac.test.ts --max-warnings 0",
+    "lint:strict": "eslint src/db scripts src/lib/auth src/lib/workflow src/lib/notifications src/lib/reporting src/lib/intelligence src/lib/api-keys.ts src/lib/api-keys.test.ts src/lib/api-context.ts src/lib/api-v1-context.ts src/lib/firebase-env.ts src/hooks/use-now.ts src/middleware.ts src/middleware.test.ts src/app/api/employees src/app/api/auth/login src/app/api/auth/refresh src/app/api/auth/logout src/app/api/auth/me src/app/api/leave src/app/api/attendance src/app/api/payroll src/app/api/reports src/app/api/workflows src/app/api/v1 src/lib/payroll-engine.test.ts src/lib/rbac.test.ts --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
