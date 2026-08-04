@@ -43,7 +43,12 @@ const eslintConfig = [
   },
   {
     // New code has no backlog, so it is held to the target standard.
-    files: ["src/db/**/*.ts", "src/lib/firebase-env.ts"],
+    files: [
+      "src/db/**/*.ts",
+      "src/lib/firebase-env.ts",
+      "src/lib/api-context.ts",
+      "src/app/api/employees/**/*.ts",
+    ],
     rules: {
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": [
