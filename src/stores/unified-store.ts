@@ -4,6 +4,8 @@ import {
   payrollService, recruitmentService, helpdeskService, announcementService,
   genericService, COLLECTIONS,
 } from "@/lib/firestore-service";
+import { dataBackend, employeeRepository } from "@/db/repositories";
+import type { EmployeeRecord } from "@/db/repositories/types";
 
 // ═══════════════════════════════════════════════════════════════
 // UNIFIED REAL-TIME STORES
@@ -298,17 +300,61 @@ export interface NotificationDoc extends BaseRecord {
 }
 export const useNotifStore = createDataStore<NotificationDoc>();
 
-// ─── Firestore Sync Helpers ──────────────────────────────────
+// ─── Sync Helpers ────────────────────────────────────────────
 
 const unsubscribers = new Map<string, () => void>();
 
+/**
+ * Starts a live subscription for a collection.
+ *
+ * Employees route through the repository layer, so DATA_BACKEND decides
+ * whether the data comes from Firestore or Neon without this call site
+ * changing (src/db/repositories/index.ts). Other collections still go straight
+ * to Firestore until their repositories land.
+ */
 export function startSync<T extends BaseRecord>(collectionName: string, store: DataStore<T>) {
   if (unsubscribers.has(collectionName)) return; // Already syncing
   store.setLoading(true);
+  store.setError(null);
+
+  if (collectionName === COLLECTIONS.employees && dataBackend() !== "firestore") {
+    const unsub = employeeRepository().subscribe((records) => {
+      store.setItems(records.map(toEmployeeDoc) as unknown as T[]);
+    });
+    unsubscribers.set(collectionName, unsub);
+    return;
+  }
+
   const unsub = genericService(collectionName).subscribe(
     (items) => { store.setItems(items as T[]); },
+    undefined,
+    (error) => {
+      // Without this the store stays loading forever on a permission or
+      // network failure, and the UI shows a spinner that never resolves.
+      store.setLoading(false);
+      store.setError(error.message);
+    },
   );
   unsubscribers.set(collectionName, unsub);
+}
+
+/** Maps the backend-neutral repository record onto the shape the UI expects. */
+function toEmployeeDoc(record: EmployeeRecord): EmployeeDoc {
+  return {
+    id: record.id,
+    firstName: record.firstName,
+    lastName: record.lastName,
+    email: record.email,
+    phone: record.phone ?? "",
+    department: record.departmentName ?? record.departmentId ?? "",
+    designation: record.designation,
+    joiningDate: record.joinDate,
+    status: record.status,
+    employmentType: record.employmentType,
+    reportingManager: record.reportingToName ?? record.reportingToId ?? "",
+    location: record.location ?? "",
+    salary: record.salary,
+  };
 }
 
 export function stopSync(collectionName: string) {
@@ -347,12 +393,24 @@ export async function updateAndSync<T extends BaseRecord>(
   updates: Partial<T>,
   store: DataStore<T>
 ): Promise<void> {
+  // Captured before the optimistic write so the change can actually be undone.
+  // Previously this only logged on failure, leaving the UI showing an edit
+  // that was never persisted — the user had no way to know.
+  const previous = store.items.find((i) => i.id === id);
+
   store.updateItem(id, updates);
   try {
     await genericService(collectionName).update(id, updates as Record<string, unknown>);
   } catch (err) {
-    // Revert would need original data - for now just log
-    console.error(`Failed to update ${collectionName}/${id}:`, err);
+    if (previous) {
+      // Restore every touched field to its prior value, including ones that
+      // were previously undefined.
+      const reverted = Object.fromEntries(
+        Object.keys(updates).map((key) => [key, previous[key]])
+      ) as Partial<T>;
+      store.updateItem(id, reverted);
+    }
+    store.setError(err instanceof Error ? err.message : "Update failed");
     throw err;
   }
 }
@@ -362,11 +420,18 @@ export async function removeAndSync<T extends BaseRecord>(
   id: string,
   store: DataStore<T>
 ): Promise<void> {
+  // The whole list is captured, not just the row, so a failed delete restores
+  // the original ordering rather than re-adding the item at the top.
+  const previousItems = store.items;
+
   store.removeItem(id);
   try {
     await genericService(collectionName).remove(id);
   } catch (err) {
-    console.error(`Failed to delete ${collectionName}/${id}:`, err);
+    // A failed delete previously left the row gone from the UI but present in
+    // the database, so it silently reappeared on the next refresh.
+    store.setItems(previousItems);
+    store.setError(err instanceof Error ? err.message : "Delete failed");
     throw err;
   }
 }

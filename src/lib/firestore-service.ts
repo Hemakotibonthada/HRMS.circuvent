@@ -91,7 +91,8 @@ export async function deleteDocument(
 export function subscribeToCollection<T>(
   collectionName: string,
   callback: (items: (T & { id: string })[]) => void,
-  constraints: QueryConstraint[] = []
+  constraints: QueryConstraint[] = [],
+  onError?: (error: Error) => void
 ): () => void {
   const q = query(
     collection(db, collectionName),
@@ -101,7 +102,10 @@ export function subscribeToCollection<T>(
     const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as T & { id: string }));
     callback(items);
   }, (error) => {
+    // Previously this only logged, so a permission or network failure left the
+    // caller waiting forever with no indication anything had gone wrong.
     console.error(`Firestore subscription error (${collectionName}):`, error);
+    onError?.(error);
   });
 }
 
@@ -274,6 +278,9 @@ export const genericService = (collectionName: string) => ({
   create: (data: Record<string, unknown>) => createDocument(collectionName, data),
   update: (id: string, data: Record<string, unknown>) => updateDocument(collectionName, id, data),
   remove: (id: string) => deleteDocument(collectionName, id),
-  subscribe: (cb: (items: DocumentData[]) => void, constraints?: QueryConstraint[]) =>
-    subscribeToCollection(collectionName, cb, constraints),
+  subscribe: (
+    cb: (items: DocumentData[]) => void,
+    constraints?: QueryConstraint[],
+    onError?: (error: Error) => void
+  ) => subscribeToCollection(collectionName, cb, constraints, onError),
 });
