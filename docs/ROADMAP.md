@@ -253,15 +253,20 @@ One Expo/Turborepo monorepo, six apps, one shared design system — templated fr
 
 ### 3.1 Shared foundation
 
-| # | Task |
-|---|---|
-| 3.1.1 | Turborepo + pnpm workspace scaffold |
-| 3.1.2 | `packages/ui` — design system ported from `WebSite/mobile/design-system` |
-| 3.1.3 | `packages/api` — typed client generated from the Phase 2 OpenAPI spec, shared with web |
-| 3.1.4 | `packages/auth` — identity SDK, biometric unlock, `expo-secure-store` token storage |
-| 3.1.5 | `packages/offline` — SQLite/WatermelonDB sync engine with conflict resolution |
-| 3.1.6 | `packages/push` — Expo Notifications + FCM/APNs |
-| 3.1.7 | EAS Build + Submit pipelines; OTA updates via EAS Update |
+| # | Task | Status |
+|---|---|---|
+| 3.1.5 | Offline sync engine with conflict handling — `src/lib/mobile/offline-queue.ts` | ✅ |
+| 3.1.3 | Typed API client with single-flight token refresh — `src/lib/mobile/api-client.ts` | ✅ |
+| 3.1.1 | Turborepo + pnpm workspace scaffold | ⏳ |
+| 3.1.2 | `packages/ui` — design system ported from `WebSite/mobile/design-system` | ⏳ |
+| 3.1.4 | `packages/auth` — biometric unlock, `expo-secure-store` token storage | ⏳ |
+| 3.1.6 | `packages/push` — Expo Notifications registration and handling | ⏳ |
+| 3.1.7 | EAS Build + Submit pipelines; OTA updates via EAS Update | ⏳ |
+
+The two hardest pieces are done and tested. They live in the HRMS repo as isomorphic TypeScript
+(no React Native imports) so they share types with the web app and are covered by the existing test
+setup; the Expo app imports them. `WebSite/mobile` (Expo 51, an IoT app) is a useful reference for
+`eas.json` and build config, not a template for HRMS.
 
 ### 3.2 App rollout order
 
@@ -324,10 +329,10 @@ in airplane mode; push delivery > 99%; crash-free sessions > 99.5%.
 2. Vercel projects, GoDaddy DNS cutover, Oracle VM provisioning, backups.
 
 **Unblocked, in order of value:**
-3. Wire notification transports (Resend for email, Expo for push) to the engine.
-4. Workflow engine persistence and UI — the schema and evaluator exist; `leave_requests` and
-   `expense_claims` already carry `workflow_instance_id`.
+3. Expo app shell: Expo Router, secure token storage, biometric unlock, and the first screens
+   (punch in/out, leave, payslips) over the client and queue already built.
+4. Workflow designer UI over `/api/workflows` and the definitions schema.
 5. Report designer UI over `/api/reports/fields` and `/api/reports/run`.
 6. SSO (SAML/OIDC) and SCIM protocol handlers over the existing schema.
 7. Firebase Auth user import, then flip `DATA_BACKEND` to `dual`.
-8. Phase 3: scaffold the Expo monorepo from `WebSite/mobile`.
+8. Wire the notification engine into leave, expense and payroll events.
