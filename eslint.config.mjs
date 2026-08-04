@@ -50,6 +50,7 @@ const eslintConfig = [
       "src/lib/notifications/**/*.ts",
       "src/lib/reporting/**/*.ts",
       "src/lib/intelligence/**/*.ts",
+      "src/lib/mobile/**/*.ts",
       "src/lib/api-keys.ts",
       "src/lib/api-v1-context.ts",
       "src/lib/firebase-env.ts",
