@@ -48,7 +48,9 @@ const eslintConfig = [
       "src/lib/auth/**/*.ts",
       "src/lib/firebase-env.ts",
       "src/lib/api-context.ts",
+      "src/middleware.ts",
       "src/app/api/employees/**/*.ts",
+      "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],
     rules: {
       "@typescript-eslint/no-explicit-any": "error",
