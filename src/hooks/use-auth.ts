@@ -42,6 +42,10 @@ export function useAuth() {
       };
 
       applyLocal(getLocalSession());
+      // Session state lives in browser storage, which does not exist during
+      // server render, so it can only be read after mount. There is nothing to
+      // derive this from during render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
 
       // Listen for storage changes (login/logout in another tab)

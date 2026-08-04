@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useNowMs } from "@/hooks/use-now";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +50,7 @@ const TYPE_CONF: Record<string, { label: string; className: string; icon: typeof
 };
 
 export default function CelebrationsPage() {
+  const nowMs = useNowMs();
   const celebStore = useCelebrationStore();
   const empStore = useEmployeeStore();
   const { items: celebrations, loading, initialized } = celebStore;
@@ -64,27 +66,40 @@ export default function CelebrationsPage() {
   useEffect(() => { if (!empInit) startSync(COLLECTIONS.employees, empStore); }, [empInit, empStore]);
 
   const upcomingFromEmployees = useMemo(() => {
-    const now = new Date();
+    // `new Date()` inside the memo was impure, so the value went stale and the
+    // server and client disagreed. The anniversary is also built without
+    // mutating a Date in place: the React Compiler bails out of optimising a
+    // component when it sees a locally created object mutated after the fact.
+    if (!nowMs) return [];
+    const now = new Date(nowMs);
+    const currentYear = now.getFullYear();
+
     const upcoming: { name: string; type: string; date: string; department: string; daysUntil: number }[] = [];
+
     employees.forEach(emp => {
       if (!emp.joiningDate) return;
       const jd = new Date(emp.joiningDate);
-      const thisYearAnniversary = new Date(now.getFullYear(), jd.getMonth(), jd.getDate());
-      if (thisYearAnniversary < now) thisYearAnniversary.setFullYear(now.getFullYear() + 1);
-      const daysUntil = Math.ceil((thisYearAnniversary.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (Number.isNaN(jd.getTime())) return;
+
+      const thisYear = new Date(currentYear, jd.getMonth(), jd.getDate());
+      const anniversary = thisYear < now
+        ? new Date(currentYear + 1, jd.getMonth(), jd.getDate())
+        : thisYear;
+
+      const daysUntil = Math.ceil((anniversary.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       if (daysUntil <= 30) {
-        const years = now.getFullYear() - jd.getFullYear();
         upcoming.push({
           name: `${emp.firstName} ${emp.lastName}`,
           type: "anniversary",
-          date: thisYearAnniversary.toISOString().split("T")[0],
+          date: anniversary.toISOString().split("T")[0],
           department: emp.department || "—",
           daysUntil,
         });
       }
     });
+
     return upcoming.sort((a, b) => a.daysUntil - b.daysUntil);
-  }, [employees]);
+  }, [employees, nowMs]);
 
   const filtered = useMemo(() => {
     if (!search) return celebrations;

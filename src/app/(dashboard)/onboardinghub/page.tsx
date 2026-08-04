@@ -108,7 +108,7 @@ export default function OnboardingHubPage() {
       name: p.label,
       count: newJoiners.filter(e => getCurrentPhase(e.joiningDate) === p.key).length,
     })),
-  [newJoiners]);
+  [newJoiners, nowMs]);
 
   if (loading && !initialized) return <DataLoadingSkeleton />;
   if (!loading && initialized && newJoiners.length === 0) {

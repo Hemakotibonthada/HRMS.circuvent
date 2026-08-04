@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -87,12 +87,14 @@ export default function OnboardingPage() {
     return "month2_3";
   };
 
-  const getCompletionRate = (empId: string) => {
+  // Memoised so the compiler can trace the memos below to `taskCompletions`
+  // through it, rather than bailing out of optimising the component.
+  const getCompletionRate = useCallback((empId: string) => {
     const completions = taskCompletions[empId] || {};
     const allTasks = PHASES.flatMap(p => p.tasks);
     const done = allTasks.filter(t => completions[t]).length;
     return allTasks.length ? Math.round((done / allTasks.length) * 100) : 0;
-  };
+  }, [taskCompletions]);
 
   const toggleTask = (empId: string, task: string) => {
     setTaskCompletions(prev => ({

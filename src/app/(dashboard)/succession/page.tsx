@@ -46,7 +46,7 @@ interface SuccessionPlan {
 export default function SuccessionPage() {
   const empStore = useEmployeeStore();
   const goalStore = useGoalStore();
-  const [plans, setPlans] = useState<SuccessionPlan[]>([]);
+  const [editedPlans, setEditedPlans] = useState<SuccessionPlan[] | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("all");
@@ -61,22 +61,30 @@ export default function SuccessionPage() {
 
   const loading = empStore.loading && !empStore.initialized;
 
-  // Build plans from employees with leadership roles
-  useEffect(() => {
-    if (empStore.items.length === 0) return;
-    const leaderRoles = empStore.items.filter(e => e.designation?.toLowerCase().includes("manager") || e.designation?.toLowerCase().includes("director") || e.designation?.toLowerCase().includes("head") || e.designation?.toLowerCase().includes("lead"));
-    if (plans.length === 0 && leaderRoles.length > 0) {
-      const initialPlans = leaderRoles.slice(0, 6).map((e, i) => ({
-        id: `sp-${i}`,
-        position: e.designation,
-        department: e.department,
-        currentHolder: `${e.firstName} ${e.lastName}`,
-        criticality: (i < 2 ? "High" : i < 4 ? "Medium" : "Low") as SuccessionPlan["criticality"],
-        candidates: [] as SuccessionPlan["candidates"],
-      }));
-      setPlans(initialPlans);
-    }
-  }, [empStore.items, plans.length]);
+  // Plans seeded from leadership roles, derived rather than pushed into state
+  // by an effect. The effect version rendered an empty page first and then
+  // re-rendered with content, and re-ran whenever plans.length changed.
+  const seededPlans = useMemo<SuccessionPlan[]>(() => {
+    const leaderRoles = empStore.items.filter(e =>
+      e.designation?.toLowerCase().includes("manager") ||
+      e.designation?.toLowerCase().includes("director") ||
+      e.designation?.toLowerCase().includes("head") ||
+      e.designation?.toLowerCase().includes("lead")
+    );
+
+    return leaderRoles.slice(0, 6).map((e, i) => ({
+      id: `sp-${i}`,
+      position: e.designation,
+      department: e.department,
+      currentHolder: `${e.firstName} ${e.lastName}`,
+      criticality: (i < 2 ? "High" : i < 4 ? "Medium" : "Low") as SuccessionPlan["criticality"],
+      candidates: [] as SuccessionPlan["candidates"],
+    }));
+  }, [empStore.items]);
+
+  // Null until the user edits, so the seed keeps tracking employee changes
+  // until then and stops the moment their own edits exist.
+  const plans = editedPlans ?? seededPlans;
 
   const goalCompletionMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -119,18 +127,20 @@ export default function SuccessionPage() {
       currentHolder: form.currentHolder || "Vacant", criticality: form.criticality,
       candidates: [],
     };
-    setPlans(prev => [newPlan, ...prev]);
+    // Falls back to the seed on the first edit, so the user's change is
+    // applied on top of what they were looking at rather than an empty list.
+    setEditedPlans(prev => [newPlan, ...(prev ?? plans)]);
     toast.success(`Plan for "${form.position}" added`);
     setAddOpen(false);
     setForm({ position: "", department: "", currentHolder: "", criticality: "High" });
-  }, [form]);
+  }, [form, plans]);
 
   const handleAddCandidate = useCallback(() => {
     if (!selectedPlan || !candidateForm.employeeId) { toast.error("Select an employee"); return; }
     const emp = empStore.items.find(e => e.id === candidateForm.employeeId);
     if (!emp) return;
     const goalComp = goalCompletionMap.get(emp.id) || 0;
-    setPlans(prev => prev.map(p => p.id === selectedPlan.id ? {
+    setEditedPlans(prev => (prev ?? plans).map(p => p.id === selectedPlan.id ? {
       ...p, candidates: [...p.candidates, {
         employeeId: emp.id, name: `${emp.firstName} ${emp.lastName}`,
         readiness: candidateForm.readiness, goalCompletion: goalComp,
@@ -138,7 +148,7 @@ export default function SuccessionPage() {
     } : p));
     toast.success(`${emp.firstName} added as successor candidate`);
     setCandidateForm({ employeeId: "", readiness: "1-2 Years" });
-  }, [selectedPlan, candidateForm, empStore.items, goalCompletionMap]);
+  }, [selectedPlan, candidateForm, empStore.items, goalCompletionMap, plans]);
 
   if (loading) return <div className="p-6"><DataLoadingSkeleton /></div>;
 

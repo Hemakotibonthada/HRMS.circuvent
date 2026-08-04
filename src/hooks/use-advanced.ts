@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, useSyncExternalStore } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 // ADVANCED HR HOOKS LIBRARY
@@ -429,13 +429,18 @@ export function useDebouncedCallback<T extends (...args: unknown[]) => unknown>(
     };
   }, []);
 
-  return useCallback(
-    ((...args: unknown[]) => {
+  // The cast sits outside useCallback rather than around its argument. Casting
+  // the inline function hid it from the React Compiler, which then could not
+  // verify the dependencies.
+  const debounced = useCallback(
+    (...args: unknown[]) => {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => callback(...args), delay);
-    }) as T,
+    },
     [callback, delay]
   );
+
+  return debounced as T;
 }
 
 // ─── Local Storage ───────────────────────────────────────────
@@ -540,20 +545,37 @@ export function useKeyboardShortcut(
 
 // ─── Media Query ─────────────────────────────────────────────
 
+/**
+ * Tracks a CSS media query.
+ *
+ * Uses useSyncExternalStore rather than useState plus an effect. matchMedia is
+ * an external store, and this is what the API is for: React reads the current
+ * value during render instead of rendering once with a default and then
+ * correcting it, which caused a flash of the wrong layout on every mount.
+ * It also gives an explicit server snapshot rather than guessing.
+ */
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(false);
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      if (typeof window === "undefined") return () => {};
+      const mediaQuery = window.matchMedia(query);
+      mediaQuery.addEventListener("change", onChange);
+      return () => mediaQuery.removeEventListener("change", onChange);
+    },
+    [query]
+  );
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mediaQuery = window.matchMedia(query);
-    setMatches(mediaQuery.matches);
+  const getSnapshot = useCallback(
+    () => (typeof window === "undefined" ? false : window.matchMedia(query).matches),
+    [query]
+  );
 
-    const handler = (event: MediaQueryListEvent) => setMatches(event.matches);
-    mediaQuery.addEventListener("change", handler);
-    return () => mediaQuery.removeEventListener("change", handler);
-  }, [query]);
+  // The server has no viewport, so every query resolves false there. The
+  // client corrects it on hydration without a mismatch, because React knows
+  // the two snapshots are allowed to differ.
+  const getServerSnapshot = useCallback(() => false, []);
 
-  return matches;
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
 // ─── Intersection Observer (Infinite Scroll / Lazy Load) ─────
@@ -564,7 +586,14 @@ export function useIntersectionObserver(
 ): React.RefObject<HTMLDivElement | null> {
   const ref = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(callback);
-  callbackRef.current = callback;
+
+  // Assigned in an effect, not during render. Writing a ref while rendering is
+  // a side effect: React may render a component twice (StrictMode) or discard
+  // a render entirely under concurrent features, so the write can happen for a
+  // pass that never commits.
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     const element = ref.current;
@@ -620,10 +649,25 @@ export function useCounter(initial = 0, { min, max }: { min?: number; max?: numb
 
 // ─── Previous Value ──────────────────────────────────────────
 
+/**
+ * The value from the previous render.
+ *
+ * Held in state rather than a ref: reading a ref during render is unsafe under
+ * concurrent rendering, because the ref may hold a value written by a pass
+ * that was discarded. Keeping the current value alongside the previous one
+ * makes the comparison explicit and render-safe.
+ */
 export function usePrevious<T>(value: T): T | undefined {
-  const ref = useRef<T>(undefined);
-  useEffect(() => { ref.current = value; });
-  return ref.current;
+  const [state, setState] = useState<{ current: T; previous: T | undefined }>({
+    current: value,
+    previous: undefined,
+  });
+
+  if (!Object.is(state.current, value)) {
+    setState({ current: value, previous: state.current });
+  }
+
+  return state.previous;
 }
 
 // ─── Window Size ─────────────────────────────────────────────
@@ -655,7 +699,13 @@ export function useDocumentTitle(title: string) {
 
 export function useInterval(callback: () => void, delay: number | null) {
   const savedCallback = useRef(callback);
-  savedCallback.current = callback;
+
+  // Assigned in an effect rather than during render, for the same reason as
+  // useIntersectionObserver: a ref write is a side effect and must not happen
+  // in a render pass that may be discarded.
+  useEffect(() => {
+    savedCallback.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     if (delay === null) return;
@@ -771,11 +821,16 @@ export function useCountdown(targetSeconds: number): UseCountdownResult {
 export function useNotificationPermission() {
   const [permission, setPermission] = useState<NotificationPermission>("default");
 
+  // Notification.permission does not exist during server render and has no
+  // change event to subscribe to, so it can only be read after mount. There is
+  // no useSyncExternalStore equivalent for a value with no subscription.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (typeof Notification !== "undefined") {
       setPermission(Notification.permission);
     }
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const requestPermission = useCallback(async () => {
     if (typeof Notification === "undefined") return "denied" as NotificationPermission;
@@ -854,18 +909,34 @@ export function useBulkActions<T>(
 
 // ─── Theme ───────────────────────────────────────────────────
 
+/**
+ * The operating system's colour-scheme preference.
+ *
+ * Same reasoning as useMediaQuery: matchMedia is an external store, so
+ * useSyncExternalStore reads it during render rather than mounting light and
+ * flipping to dark a frame later.
+ */
 export function useThemeDetector(): "dark" | "light" {
-  const [theme, setTheme] = useState<"dark" | "light">("light");
-
-  useEffect(() => {
+  const subscribe = useCallback((onChange: () => void) => {
+    if (typeof window === "undefined") return () => {};
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    setTheme(mediaQuery.matches ? "dark" : "light");
-    const handler = (e: MediaQueryListEvent) => setTheme(e.matches ? "dark" : "light");
-    mediaQuery.addEventListener("change", handler);
-    return () => mediaQuery.removeEventListener("change", handler);
+    mediaQuery.addEventListener("change", onChange);
+    return () => mediaQuery.removeEventListener("change", onChange);
   }, []);
 
-  return theme;
+  const getSnapshot = useCallback(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? ("dark" as const)
+        : ("light" as const),
+    []
+  );
+
+  // The server cannot know the user's preference, so it renders light.
+  const getServerSnapshot = useCallback(() => "light" as const, []);
+
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
 // ─── Focus Trap ──────────────────────────────────────────────

@@ -69,7 +69,7 @@ Enabling the pipeline surfaced defects that were previously invisible:
 | `startSync` set `loading: true` with no error path, so a permission or network failure left the UI spinning forever | `src/stores/unified-store.ts`, `src/lib/firestore-service.ts` | Fixed — added an `onError` channel |
 | ESLint had never actually run: `FlatCompat` threw `Converting circular structure to JSON` against `eslint-plugin-react-hooks@7` | `eslint.config.mjs` | Fixed — use `eslint-config-next`'s native flat configs |
 | `.firebase/` deploy output was being linted, producing ~44,000 spurious problems | `eslint.config.mjs` | Fixed — added to `ignores` |
-| **44 pre-existing `react-hooks` errors**, incl. `Math.random()` / `Date.now()` called during render across 20 dashboard pages — a hydration-mismatch source | `src/app/(dashboard)/**`, `src/hooks/use-advanced.ts` | **29 fixed.** All 17 `Math.random()` and all 9 `Date.now()` purity errors resolved; see below. 15 remain. |
+| **44 pre-existing `react-hooks` errors**, incl. `Math.random()` / `Date.now()` called during render across 20 dashboard pages — a hydration-mismatch source | `src/app/(dashboard)/**`, `src/hooks/use-advanced.ts` | **39 fixed.** All purity, ref-during-render and set-state-in-effect errors resolved. 5 remain. |
 | ~940 lint warnings (`no-explicit-any`, `no-console`) | repo-wide | ⏳ Phase 2.4 backlog |
 
 ### Fabricated metrics found while fixing the purity errors
@@ -89,17 +89,24 @@ They have been replaced with values derived from real data, or removed:
 | `performancesuite` — self vs manager | `self` was manager rating plus random | `self` series removed until self-assessments exist |
 | `recruitment` — candidate funnel | each stage `Math.random() * applicants` | Real applicant total on the first stage, `—` elsewhere |
 
-### Remaining `react-hooks` errors (15)
+### Remaining `react-hooks` errors (5)
 
-| Rule | Count | Where |
+All five are `preserve-manual-memoization` — the React Compiler declining to optimise a component
+because it would memoise differently from the hand-written `useMemo`. That is a lost optimisation,
+not a correctness bug, and chasing it further risks introducing real defects through speculative
+refactoring.
+
+Fixed in this pass, beyond the purity errors:
+
+| Was | Why it mattered | Now |
 |---|---|---|
-| `preserve-manual-memoization` | 5 | `celebrations`, `offboarding` ×2, `onboarding`, `onboardinghub` — React Compiler bails out; a performance loss, not a correctness bug |
-| `set-state-in-effect` | 6 | `succession`, `use-advanced` ×3, `use-auth`, `use-shared` |
-| `refs` during render | 3 | `use-advanced` |
-| `use-memo` | 1 | `use-advanced` |
-
-Seven of these are in `src/hooks/use-advanced.ts`, which needs a focused rewrite rather than
-line-by-line patching.
+| `useIntersectionObserver` and `useInterval` wrote a ref during render | A ref write is a side effect; React may discard a render pass under concurrent features or run it twice in StrictMode, so the write can happen for a pass that never commits | Assigned in an effect |
+| `usePrevious` read a ref during render | Same hazard in reverse — the ref may hold a value written by a discarded pass | Held in state, compared with `Object.is` |
+| `useMediaQuery` and `useThemeDetector` used `useState` plus an effect | Rendered once with a default and then corrected it, causing a flash of the wrong layout on every mount | `useSyncExternalStore` with an explicit server snapshot |
+| `usePagination` corrected the page number in an effect | Rendered one frame on an out-of-range page — an empty table after a filter shrank the results — then re-rendered | Clamped during render |
+| `succession` seeded plans from employees in an effect | Rendered empty, then re-rendered with content; re-ran whenever `plans.length` changed | Derived with `useMemo`, with a separate override for user edits |
+| `celebrations` mutated a `Date` in place with `setFullYear` | Mutating a locally created object makes the compiler bail out of the whole component | Constructs the next year's date directly |
+| `offboarding` and `onboarding` memos called plain component-scope helpers | Recreated every render, so the compiler could not trace the memo to its real dependency | Helpers wrapped in `useCallback` |
 
 ### 1.1 Data layer
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -71,10 +71,13 @@ export default function OffboardingPage() {
     return result;
   }, [exitEmployees, search]);
 
-  const getClearanceCount = (empId: string) => {
+  // Memoised so the React Compiler can see that the memos below depend on
+  // `clearances` through it. As a plain function it was recreated every render,
+  // and the compiler bailed out of optimising the whole component.
+  const getClearanceCount = useCallback((empId: string) => {
     const c = clearances[empId] || {};
     return CLEARANCE_STEPS.filter(s => c[s.key]).length;
-  };
+  }, [clearances]);
 
   const getClearancePercent = (empId: string) => {
     return Math.round((getClearanceCount(empId) / CLEARANCE_STEPS.length) * 100);

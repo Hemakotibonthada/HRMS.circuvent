@@ -78,8 +78,13 @@ export function useSearchFilter<T>(
 
 // ─── USE PAGINATION ──────────────────────────────────────────────────
 export function usePagination<T>(items: T[], pageSize: number = 10) {
-  const [currentPage, setCurrentPage] = useState(1);
+  const [requestedPage, setRequestedPage] = useState(1);
   const totalPages = Math.ceil(items.length / pageSize);
+
+  // Clamped during render rather than corrected by an effect. The effect
+  // version rendered one frame on an out-of-range page — showing an empty
+  // table after a filter shrank the result set — and then re-rendered.
+  const currentPage = totalPages > 0 ? Math.min(requestedPage, totalPages) : 1;
 
   const paginatedItems = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -87,12 +92,8 @@ export function usePagination<T>(items: T[], pageSize: number = 10) {
   }, [items, currentPage, pageSize]);
 
   const goToPage = useCallback((page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
-  }, [totalPages]);
-
-  useEffect(() => {
-    if (currentPage > totalPages && totalPages > 0) setCurrentPage(totalPages);
-  }, [currentPage, totalPages]);
+    setRequestedPage(Math.max(1, page));
+  }, []);
 
   return {
     items: paginatedItems,

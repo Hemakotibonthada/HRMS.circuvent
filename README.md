@@ -158,18 +158,19 @@ silent bug costs money or leaks another company's data.
 
 ## Known issues
 
-`npm run lint` reports 15 errors and roughly 940 warnings that predate the pipeline. ESLint had
+`npm run lint` reports 5 errors and roughly 936 warnings that predate the pipeline. ESLint had
 never actually run: `FlatCompat` threw `Converting circular structure to JSON` against
 `eslint-plugin-react-hooks@7`, so the config was silently broken.
 
-Fixing it exposed 44 real problems, of which **29 are now fixed** — every `Math.random()` and
-`Date.now()` call made during render. Those were not only hydration-mismatch sources; the
-`Math.random()` ones fabricated metrics and displayed them as measured figures. See
-[`docs/ROADMAP.md`](./docs/ROADMAP.md) for the full before/after table.
+Fixing it exposed 44 real problems, of which **39 are now fixed** — every `Math.random()` and
+`Date.now()` call made during render, every ref written or read during render, and every case of
+state being corrected by an effect that could be derived instead. The `Math.random()` ones were
+not only hydration-mismatch sources; they fabricated metrics and displayed them as measured
+figures. See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the full before/after tables.
 
-The remaining 15 are tracked as Phase 2.4: five React Compiler memoisation bailouts (a performance
-loss, not a correctness bug) and ten in `src/hooks/use-advanced.ts` and two other shared hooks,
-which need a focused rewrite rather than line-by-line patching.
+The remaining 5 are all `preserve-manual-memoization`: the React Compiler declining to optimise a
+component because it would memoise differently from the hand-written `useMemo`. That is a lost
+optimisation rather than a correctness bug.
 
 CI reports all of this but does not gate on it; `lint:strict` holds new code to zero.
 
