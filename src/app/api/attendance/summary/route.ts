@@ -1,4 +1,6 @@
-// GET /api/attendance — attendance history, and /summary for a month's totals.
+// GET /api/attendance/summary — a month's totals, aggregated in SQL.
+// The Firestore path pulled every record for the month into the browser and
+// counted there, which does not survive a few thousand employees.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
@@ -9,11 +11,8 @@ import { requireApiContext } from "@/lib/api-context";
 
 const schema = z.object({
   employeeId: z.string().uuid().optional(),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  status: z.string().max(32).optional(),
-  page: z.coerce.number().int().min(1).optional(),
-  pageSize: z.coerce.number().int().min(1).max(200).optional(),
+  month: z.coerce.number().int().min(1).max(12),
+  year: z.coerce.number().int().min(2000).max(2100),
 });
 
 export async function GET(request: NextRequest) {
@@ -28,30 +27,27 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const parsed = schema.safeParse(Object.fromEntries(searchParams));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid query" }, { status: 400 });
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "month and year are required" },
+      { status: 400 }
+    );
   }
 
-  // Attendance is personal data; only managers and above see a colleague's.
   const privileged = ["owner", "admin", "hr", "manager"].includes(ctx.role);
-  const employeeId = privileged ? parsed.data.employeeId : ctx.userId;
+  const employeeId = privileged ? parsed.data.employeeId ?? ctx.userId : ctx.userId;
 
   try {
-    const page = await new NeonAttendanceRepository(ctx).list({
-      page: parsed.data.page,
-      pageSize: parsed.data.pageSize,
-      filters: {
-        ...(employeeId ? { employeeId } : {}),
-        status: parsed.data.status,
-        from: parsed.data.from,
-        to: parsed.data.to,
-      },
-    });
-    return NextResponse.json(page);
+    const summary = await new NeonAttendanceRepository(ctx).summary(
+      employeeId,
+      parsed.data.month,
+      parsed.data.year
+    );
+    return NextResponse.json(summary);
   } catch (error) {
     if (error instanceof RepositoryError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    console.error("Attendance list failed:", error);
+    console.error("Attendance summary failed:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -1,6 +1,11 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    // ES2020 for BigInt literals. Payroll amounts are stored as bigint minor
+    // units because float arithmetic loses precision — 0.1 + 0.2 is not 0.3,
+    // and across a few thousand payslips those errors become a reconciliation
+    // finance cannot close. Next.js 16 and React 19 both target well above
+    // this, and every browser Next 16 supports has had BigInt since 2018.
+    "target": "ES2020",
     "lib": [
       "dom",
       "dom.iterable",

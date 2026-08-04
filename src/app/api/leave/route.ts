@@ -1,108 +1,149 @@
-import { NextRequest, NextResponse } from "next/server";
-import { verifyRequest, authErrorResponse } from "@/lib/server-auth";
+// ═══════════════════════════════════════════════════════════════
+// HRMS API — leave requests
+// ═══════════════════════════════════════════════════════════════
+// Replaces a stub that returned `data: []`.
+//
+// The rule that shapes both handlers: an employee may act on their own leave
+// and nobody else's. The employee id is taken from the token for ordinary
+// users and only accepted from the body for HR and admins, who legitimately
+// apply on someone's behalf.
 
-// ═══════════════════════════════════════════════════════════════
-// HRMS API — Leave Management
-// Leave request CRUD and approval workflow
-// ═══════════════════════════════════════════════════════════════
+import { NextResponse, type NextRequest } from "next/server";
+import { z } from "zod";
+import { NeonLeaveRepository } from "@/db/repositories/leave.neon";
+import { RepositoryError } from "@/db/repositories/types";
+import { authErrorResponse } from "@/lib/server-auth";
+import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
+
+const LEAVE_TYPES = [
+  "casual",
+  "sick",
+  "earned",
+  "maternity",
+  "paternity",
+  "compensatory",
+  "unpaid",
+  "bereavement",
+  "wfh",
+  "marriage",
+  "study",
+] as const;
+
+const applySchema = z.object({
+  employeeId: z.string().uuid().optional(),
+  leaveType: z.enum(LEAVE_TYPES),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startDate must be YYYY-MM-DD"),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "endDate must be YYYY-MM-DD"),
+  isHalfDay: z.boolean().optional(),
+  halfDayPeriod: z.enum(["first_half", "second_half"]).optional(),
+  reason: z.string().trim().min(3, "Give a reason").max(1000),
+  handoverToId: z.string().uuid().optional(),
+  contactDuringLeave: z.string().trim().max(64).optional(),
+});
+
+const listSchema = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(200).optional(),
+  sortBy: z.enum(["startDate", "appliedAt", "status", "totalDays"]).optional(),
+  sortDirection: z.enum(["asc", "desc"]).optional(),
+});
+
+const PRIVILEGED = ["owner", "admin", "hr", "manager"];
+
+function fail(error: unknown) {
+  if (error instanceof RepositoryError) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+  console.error("Leave API failure:", error);
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+}
 
 export async function GET(request: NextRequest) {
+  let ctx;
   try {
-    await verifyRequest(request);
+    ctx = await requireApiContext(request);
   } catch (e) {
     const { body, status } = authErrorResponse(e);
     return NextResponse.json(body, { status });
   }
-  const { searchParams } = new URL(request.url);
-  const employeeId = searchParams.get("employeeId");
-  const status = searchParams.get("status");
-  const type = searchParams.get("type");
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "20");
 
-  return NextResponse.json({
-    data: [],
-    pagination: { page, limit, total: 0, totalPages: 0 },
-    filters: { employeeId, status, type },
-  });
+  const { searchParams } = new URL(request.url);
+  const parsed = listSchema.safeParse(Object.fromEntries(searchParams));
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid query" }, { status: 400 });
+  }
+
+  // An ordinary employee sees only their own requests, whatever they ask for.
+  // Scoping this in the handler rather than trusting a query parameter is the
+  // whole point of routing through the server.
+  const requestedEmployee = searchParams.get("employeeId") ?? undefined;
+  const employeeId = PRIVILEGED.includes(ctx.role) ? requestedEmployee : ctx.userId;
+
+  try {
+    const repo = new NeonLeaveRepository(ctx);
+    const page = await repo.list({
+      ...parsed.data,
+      filters: {
+        ...(employeeId ? { employeeId } : {}),
+        status: searchParams.get("status") ?? undefined,
+        leaveType: searchParams.get("leaveType") ?? undefined,
+        from: searchParams.get("from") ?? undefined,
+        to: searchParams.get("to") ?? undefined,
+      },
+    });
+    return NextResponse.json(page);
+  } catch (error) {
+    return fail(error);
+  }
 }
 
 export async function POST(request: NextRequest) {
+  let ctx;
   try {
-    await verifyRequest(request);
+    ctx = await requireApiContext(request);
   } catch (e) {
     const { body, status } = authErrorResponse(e);
     return NextResponse.json(body, { status });
   }
-  try {
-    const body = await request.json();
-    const required = ["employeeId", "leaveType", "startDate", "endDate", "reason"];
-    const missing = required.filter((f) => !body[f]);
-    if (missing.length > 0) {
-      return NextResponse.json({ error: `Missing: ${missing.join(", ")}` }, { status: 400 });
-    }
 
-    const start = new Date(body.startDate);
-    const end = new Date(body.endDate);
-    if (end < start) {
-      return NextResponse.json({ error: "End date must be after start date" }, { status: 400 });
-    }
-
-    // Calculate working days
-    let days = 0;
-    const current = new Date(start);
-    while (current <= end) {
-      const dow = current.getDay();
-      if (dow !== 0 && dow !== 6) days++;
-      current.setDate(current.getDate() + 1);
-    }
-    if (body.halfDay) days = 0.5;
-
-    const leaveRequest = {
-      id: `LR-${Date.now()}`,
-      ...body,
-      totalDays: days,
-      status: "pending",
-      appliedOn: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    };
-
-    return NextResponse.json({ data: leaveRequest, message: "Leave request submitted" }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  const limit = checkRateLimit(`leave:${clientIdentifier(request, ctx.userId)}`, 20, 60_000);
+  if (!limit.allowed) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
-}
 
-export async function PATCH(request: NextRequest) {
+  let raw: unknown;
   try {
-    await verifyRequest(request);
-  } catch (e) {
-    const { body, status } = authErrorResponse(e);
-    return NextResponse.json(body, { status });
-  }
-  try {
-    const body = await request.json();
-    const { id, action, approvedBy, reason } = body;
-
-    if (!id || !action) {
-      return NextResponse.json({ error: "Missing id or action" }, { status: 400 });
-    }
-
-    if (!["approve", "reject", "cancel"].includes(action)) {
-      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-    }
-
-    if (action === "reject" && !reason) {
-      return NextResponse.json({ error: "Rejection reason required" }, { status: 400 });
-    }
-
-    const statusMap: Record<string, string> = { approve: "approved", reject: "rejected", cancel: "cancelled" };
-
-    return NextResponse.json({
-      data: { id, status: statusMap[action], approvedBy, rejectionReason: reason },
-      message: `Leave request ${statusMap[action]}`,
-    });
+    raw = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    return NextResponse.json({ error: "Request body is not valid JSON" }, { status: 400 });
+  }
+
+  const parsed = applySchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        error: "Validation failed",
+        issues: parsed.error.issues.map((i) => ({ field: i.path.join("."), message: i.message })),
+      },
+      { status: 400 }
+    );
+  }
+
+  // Applying for someone else is an HR action. Silently rewriting the id to
+  // the caller would hide the attempt; refusing it makes the boundary explicit.
+  const target = parsed.data.employeeId ?? ctx.userId;
+  if (target !== ctx.userId && !["owner", "admin", "hr"].includes(ctx.role)) {
+    return NextResponse.json(
+      { error: "You can only apply for your own leave" },
+      { status: 403 }
+    );
+  }
+
+  try {
+    const repo = new NeonLeaveRepository(ctx);
+    const created = await repo.apply({ ...parsed.data, employeeId: target });
+    return NextResponse.json(created, { status: 201 });
+  } catch (error) {
+    return fail(error);
   }
 }

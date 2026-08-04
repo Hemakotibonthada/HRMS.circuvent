@@ -129,3 +129,194 @@ export interface EmployeeRepository
   listDirectReports(managerId: string): Promise<EmployeeRecord[]>;
   countByStatus(): Promise<Record<string, number>>;
 }
+
+// ─── Leave ───────────────────────────────────────────────────
+
+export type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
+
+export interface LeaveRequestRecord {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  isHalfDay: boolean;
+  halfDayPeriod?: string;
+  reason: string;
+  status: LeaveStatus;
+  appliedAt: string;
+  approvedById?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+  handoverToId?: string;
+  organizationId: string;
+}
+
+export interface LeaveApply {
+  employeeId: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  isHalfDay?: boolean;
+  halfDayPeriod?: "first_half" | "second_half";
+  reason: string;
+  handoverToId?: string;
+  contactDuringLeave?: string;
+}
+
+export interface LeaveBalanceRecord {
+  employeeId: string;
+  year: number;
+  leaveType: string;
+  opening: number;
+  accrued: number;
+  used: number;
+  pending: number;
+  carryForward: number;
+  lapsed: number;
+  /** opening + accrued + carryForward − used − pending − lapsed. */
+  available: number;
+}
+
+export interface LeaveRepository
+  extends Repository<LeaveRequestRecord, LeaveApply, Partial<LeaveApply>> {
+  /**
+   * Applies for leave, reserving the days against the balance in the same
+   * transaction. Rejects when the balance is insufficient or the dates overlap
+   * an existing request.
+   */
+  apply(data: LeaveApply): Promise<LeaveRequestRecord>;
+  approve(id: string, approverId: string): Promise<LeaveRequestRecord>;
+  reject(id: string, approverId: string, reason: string): Promise<LeaveRequestRecord>;
+  cancel(id: string, reason: string): Promise<LeaveRequestRecord>;
+  balances(employeeId: string, year: number): Promise<LeaveBalanceRecord[]>;
+  /** Requests awaiting this manager's decision. */
+  pendingFor(managerId: string): Promise<LeaveRequestRecord[]>;
+}
+
+// ─── Attendance ──────────────────────────────────────────────
+
+export interface AttendanceRecordDto {
+  id: string;
+  employeeId: string;
+  workDate: string;
+  clockInAt?: string;
+  clockOutAt?: string;
+  status: string;
+  workedMinutes?: number;
+  overtimeMinutes: number;
+  lateByMinutes: number;
+  earlyLeaveByMinutes: number;
+  clockInMethod?: string;
+  isWithinGeofence?: boolean;
+  isRegularized: boolean;
+  organizationId: string;
+}
+
+export interface ClockInRequest {
+  employeeId: string;
+  method: "biometric" | "web" | "mobile" | "manual" | "geo_fence";
+  latitude?: number;
+  longitude?: number;
+  photoUrl?: string;
+  ipAddress?: string;
+  /** Supplied by tests and back-dated corrections; defaults to now. */
+  at?: Date;
+}
+
+export interface ClockOutRequest {
+  employeeId: string;
+  method: "biometric" | "web" | "mobile" | "manual" | "geo_fence";
+  latitude?: number;
+  longitude?: number;
+  at?: Date;
+}
+
+export interface AttendanceSummaryDto {
+  employeeId: string;
+  month: number;
+  year: number;
+  presentDays: number;
+  absentDays: number;
+  lateDays: number;
+  halfDays: number;
+  leaveDays: number;
+  wfhDays: number;
+  totalWorkedMinutes: number;
+  totalOvertimeMinutes: number;
+}
+
+export interface AttendanceRepository
+  extends Repository<AttendanceRecordDto, ClockInRequest, Partial<AttendanceRecordDto>> {
+  clockIn(request: ClockInRequest): Promise<AttendanceRecordDto>;
+  clockOut(request: ClockOutRequest): Promise<AttendanceRecordDto>;
+  today(employeeId: string): Promise<AttendanceRecordDto | null>;
+  summary(employeeId: string, month: number, year: number): Promise<AttendanceSummaryDto>;
+  regularize(id: string, reason: string, approverId: string): Promise<AttendanceRecordDto>;
+}
+
+// ─── Payroll ─────────────────────────────────────────────────
+
+export type PayrollRunStatus =
+  | "draft"
+  | "processing"
+  | "processed"
+  | "approved"
+  | "paid"
+  | "on_hold"
+  | "error";
+
+export interface PayrollRunRecord {
+  id: string;
+  periodMonth: number;
+  periodYear: number;
+  runType: string;
+  status: PayrollRunStatus;
+  employeeCount: number;
+  /** Major currency units for display. */
+  totalGross: number;
+  totalDeductions: number;
+  totalNet: number;
+  processedById?: string;
+  processedAt?: string;
+  approvedById?: string;
+  approvedAt?: string;
+  paidAt?: string;
+  organizationId: string;
+}
+
+export interface PayrollRecordDto {
+  id: string;
+  runId: string;
+  employeeId: string;
+  employeeName?: string;
+  workingDays: number;
+  presentDays: number;
+  lopDays: number;
+  gross: number;
+  totalDeductions: number;
+  netPay: number;
+  status: string;
+  anomalies: string[];
+  payslipUrl?: string;
+}
+
+export interface PayrollRepository {
+  listRuns(query?: ListQuery): Promise<Page<PayrollRunRecord>>;
+  getRun(id: string): Promise<PayrollRunRecord | null>;
+  /** Creates a draft run for the period. One regular run per period. */
+  createRun(periodMonth: number, periodYear: number, runType?: string): Promise<PayrollRunRecord>;
+  /** Computes every employee's payslip for the run and marks it processed. */
+  processRun(id: string, processedById: string): Promise<PayrollRunRecord>;
+  /**
+   * Second-person approval. Rejects when the approver is the processor —
+   * enforced by a CHECK constraint as well, so it cannot be bypassed.
+   */
+  approveRun(id: string, approverId: string): Promise<PayrollRunRecord>;
+  markPaid(id: string, transactionRef?: string): Promise<PayrollRunRecord>;
+  listRecords(runId: string, query?: ListQuery): Promise<Page<PayrollRecordDto>>;
+  /** An employee's own payslip history. */
+  payslipsFor(employeeId: string): Promise<PayrollRecordDto[]>;
+}

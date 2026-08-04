@@ -50,6 +50,9 @@ const eslintConfig = [
       "src/lib/api-context.ts",
       "src/middleware.ts",
       "src/app/api/employees/**/*.ts",
+      "src/app/api/leave/**/*.ts",
+      "src/app/api/attendance/**/*.ts",
+      "src/app/api/payroll/**/*.ts",
       "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],
     rules: {

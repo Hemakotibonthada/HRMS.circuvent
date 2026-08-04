@@ -1,19 +1,17 @@
-// GET /api/attendance — attendance history, and /summary for a month's totals.
+// GET /api/leave/balances — an employee's leave entitlement for a year.
+// Balances drive what someone can apply for, so an employee reads their own
+// and managers upward read anyone's.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { NeonAttendanceRepository } from "@/db/repositories/attendance.neon";
+import { NeonLeaveRepository } from "@/db/repositories/leave.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
 
 const schema = z.object({
   employeeId: z.string().uuid().optional(),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  status: z.string().max(32).optional(),
-  page: z.coerce.number().int().min(1).optional(),
-  pageSize: z.coerce.number().int().min(1).max(200).optional(),
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -31,27 +29,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid query" }, { status: 400 });
   }
 
-  // Attendance is personal data; only managers and above see a colleague's.
   const privileged = ["owner", "admin", "hr", "manager"].includes(ctx.role);
-  const employeeId = privileged ? parsed.data.employeeId : ctx.userId;
+  const employeeId = privileged ? parsed.data.employeeId ?? ctx.userId : ctx.userId;
+  const year = parsed.data.year ?? new Date().getFullYear();
 
   try {
-    const page = await new NeonAttendanceRepository(ctx).list({
-      page: parsed.data.page,
-      pageSize: parsed.data.pageSize,
-      filters: {
-        ...(employeeId ? { employeeId } : {}),
-        status: parsed.data.status,
-        from: parsed.data.from,
-        to: parsed.data.to,
-      },
-    });
-    return NextResponse.json(page);
+    const balances = await new NeonLeaveRepository(ctx).balances(employeeId, year);
+    return NextResponse.json({ employeeId, year, balances });
   } catch (error) {
     if (error instanceof RepositoryError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    console.error("Attendance list failed:", error);
+    console.error("Leave balance lookup failed:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
