@@ -45,6 +45,7 @@ const eslintConfig = [
     // New code has no backlog, so it is held to the target standard.
     files: [
       "src/db/**/*.ts",
+      "src/lib/auth/**/*.ts",
       "src/lib/firebase-env.ts",
       "src/lib/api-context.ts",
       "src/app/api/employees/**/*.ts",
