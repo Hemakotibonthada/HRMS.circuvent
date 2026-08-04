@@ -38,17 +38,23 @@ changing a single UI component. Everything after this rides on this base.
 | 1.3.2 | 15-min access JWT + rotating 30-day refresh token, stored hashed | ✅ |
 | 1.3.3 | `.circuvent.com` cookie scoping for cross-app SSO | ✅ |
 | 1.3.4 | TOTP MFA + single-use backup codes | ✅ |
+| 1.3.5 | Edge middleware verifying the access JWT, replacing client-side `AuthGuard` | ✅ |
+| 1.3.6 | Firestore → Neon data migration script (idempotent, dry-run, reconciling) | ✅ |
 | 1.4.1 | Hardcoded Firebase key fallbacks removed; missing config now fails fast | ✅ |
-| 1.4.3 | Per-user rate limiting on employee API routes (in-memory; Redis later) | ✅ |
-| 1.4.6 | Zod validation at every employee API boundary | ✅ |
+| 1.4.3 | Per-user rate limiting on employee + login API routes (in-memory; Redis later) | ✅ |
+| 1.4.6 | Zod validation at every employee and auth API boundary | ✅ |
 | 1.4.7 | Hash-chained, insert-only audit log with tamper detection | ✅ |
-| 1.5.1 | Vitest + 78 tests across payroll, RBAC, dual-write and auth | ✅ |
+| 1.5.1 | Vitest + 107 tests across payroll, RBAC, dual-write, auth, middleware, stores | ✅ |
 | 1.5.5 | GitHub Actions `verify` workflow + gitleaks secret scanning | ✅ |
+| 1.2.6 | `startSync` routes employees through the repository when `DATA_BACKEND != firestore` | ✅ |
 | — | `npm run db:verify` — migrations + 7 tenant-isolation assertions on PGlite | ✅ |
 | — | Real `/api/employees` CRUD, replacing a stub that returned `[]` | ✅ |
+| — | `/api/auth/login`, `/refresh`, `/logout`, `/me` | ✅ |
+| — | README with setup, architecture, commands and known issues | ✅ |
 | 1.1.1 | Create the Neon project and branches | ⏳ needs Neon MCP (CLI restart) |
-| 1.3.5–1.3.7 | Login/refresh/logout routes, edge middleware, Firebase user import | ⏳ next |
-| 1.2.5–1.2.6 | Reconciliation job; point Zustand stores at repositories | ⏳ next |
+| 1.2.5 | Nightly reconciliation job on the Oracle worker VM | ⏳ next |
+| 1.6.x | Vercel projects, DNS cutover, Oracle VMs, backups | ⏳ next |
+| — | Extend the repository pattern to leave, attendance and payroll | ⏳ next |
 
 ### Found during Phase 1 verification
 
@@ -58,6 +64,9 @@ Enabling the pipeline surfaced defects that were previously invisible:
 |---|---|---|
 | `generatePayslip` produced `NaN` net pay when a month had 0 working days — `Infinity × 0` propagated through `lopDeduction` into a bank payment instruction | `src/lib/payroll-engine.ts` | Fixed — guarded the divisor |
 | `goals.create` duplicated in `MANAGER_PERMISSIONS` | `src/lib/rbac.ts` | Fixed |
+| `updateAndSync` never reverted its optimistic write — a failed save left the UI showing an edit that was never persisted | `src/stores/unified-store.ts` | Fixed — captures the prior row and restores it |
+| `removeAndSync` never restored a deleted row — it vanished from the list but remained in the database and reappeared on refresh | `src/stores/unified-store.ts` | Fixed — restores the previous list, preserving order |
+| `startSync` set `loading: true` with no error path, so a permission or network failure left the UI spinning forever | `src/stores/unified-store.ts`, `src/lib/firestore-service.ts` | Fixed — added an `onError` channel |
 | ESLint had never actually run: `FlatCompat` threw `Converting circular structure to JSON` against `eslint-plugin-react-hooks@7` | `eslint.config.mjs` | Fixed — use `eslint-config-next`'s native flat configs |
 | `.firebase/` deploy output was being linted, producing ~44,000 spurious problems | `eslint.config.mjs` | Fixed — added to `ignores` |
 | **44 pre-existing `react-hooks` errors**, incl. `Math.random()` / `Date.now()` called during render across 20 dashboard pages — a hydration-mismatch source | `src/app/(dashboard)/**`, `src/hooks/use-advanced.ts` | ⏳ Phase 2.4 backlog |
