@@ -34,6 +34,13 @@ const PUBLIC_PREFIXES = [
   // is what lets an integration with no browser use it at all — it is not an
   // exemption from authentication.
   "/api/v1",
+  // A candidate signing an offer letter has no account and no session. Their
+  // only credential is the single-use token in the emailed link, which the
+  // handler verifies against a stored hash in constant time. Requiring a
+  // session here would make the whole e-signature flow unusable for exactly
+  // the people it exists for.
+  "/api/sign",
+  "/sign",
 ];
 
 function isPublic(pathname: string): boolean {

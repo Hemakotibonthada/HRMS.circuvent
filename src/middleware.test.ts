@@ -82,6 +82,34 @@ describe("middleware", () => {
       const response = await middleware(makeRequest("/api/v1nonsense"));
       expect(response.status).toBe(401);
     });
+
+    it("passes the signing routes through, since a candidate has no session", async () => {
+      // Someone signing an offer letter has no account. Their credential is
+      // the single-use token in the emailed link, which the handler verifies
+      // against a stored hash. Requiring a session here would make the whole
+      // e-signature flow unusable for exactly the people it exists for.
+      for (const path of [
+        "/api/sign/6b1f0b4a-0000-4000-8000-000000000000",
+        "/sign/6b1f0b4a-0000-4000-8000-000000000000",
+      ]) {
+        const response = await middleware(makeRequest(path));
+        expect(response.status, `${path} should reach its handler`).toBe(200);
+      }
+    });
+
+    it("does not extend the signing exemption to a lookalike path", async () => {
+      // A prefix match that caught /api/signatures would expose every
+      // signature record in the system without a session. API paths are
+      // refused outright; page paths redirect to sign-in. Neither may pass.
+      for (const path of ["/api/signatures", "/api/signing-keys"]) {
+        const response = await middleware(makeRequest(path));
+        expect(response.status, `${path} must not be public`).toBe(401);
+      }
+
+      const page = await middleware(makeRequest("/signatures"));
+      expect(page.status, "/signatures must not be public").toBe(307);
+      expect(page.headers.get("location")).toContain("/login");
+    });
   });
 
   describe("unauthenticated access", () => {

@@ -72,6 +72,9 @@ const eslintConfig = [
       "src/app/api/roster/**/*.ts",
       "src/lib/learning-rules.ts",
       "src/app/api/learning/**/*.ts",
+      "src/lib/document-rules.ts",
+      "src/app/api/documents/**/*.ts",
+      "src/app/api/sign/**/*.ts",
       "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],
     rules: {
