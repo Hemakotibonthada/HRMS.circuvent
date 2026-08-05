@@ -68,6 +68,8 @@ const eslintConfig = [
       "src/lib/referral-rules.ts",
       "src/lib/benefits-rules.ts",
       "src/app/api/benefits/**/*.ts",
+      "src/lib/rostering.ts",
+      "src/app/api/roster/**/*.ts",
       "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],
     rules: {

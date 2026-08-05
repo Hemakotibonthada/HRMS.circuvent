@@ -213,15 +213,31 @@ async function main() {
     SET app.superuser = 'on';
     SET app.org_id = '${orgA}';
   `);
-  let referralSelfApprovalBlocked = false;
   const referrer = "44444444-4444-4444-4444-444444444444";
+
+  // Seeded in its own statement. Batching it with the INSERT under test would
+  // roll it back when that INSERT is correctly rejected — and every later
+  // check would then pass on a foreign-key error rather than on the constraint
+  // it claims to be testing.
+  await db.exec(`
+    INSERT INTO hrms.employees
+      (id, org_id, employee_code, first_name, last_name, work_email, designation, join_date)
+    VALUES ('${referrer}', '${orgA}', 'CIR-0001', 'Asha', 'Rao', 'asha@example.com', 'Engineer', '2026-01-01')
+    ON CONFLICT DO NOTHING;
+  `);
+
+  const seededReferrer = await db.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM hrms.employees WHERE id = '${referrer}'`
+  );
+  checks.push({
+    name: "the referral fixture employee exists before the constraint checks",
+    pass: seededReferrer.rows[0].count === "1",
+    detail: `expected 1, got ${seededReferrer.rows[0].count}`,
+  });
+
+  let referralSelfApprovalBlocked = false;
   try {
     await db.exec(`
-      INSERT INTO hrms.employees
-        (id, org_id, employee_code, first_name, last_name, work_email, designation, join_date)
-      VALUES ('${referrer}', '${orgA}', 'CIR-0001', 'Asha', 'Rao', 'asha@example.com', 'Engineer', '2026-01-01')
-      ON CONFLICT DO NOTHING;
-
       INSERT INTO hrms.referrals
         (org_id, referrer_id, candidate_name, candidate_email, position_title, payout_approved_by_id)
       VALUES ('${orgA}', '${referrer}', 'Priya', 'priya@example.com', 'Engineer', '${referrer}')
@@ -254,13 +270,15 @@ async function main() {
   });
 
   // 11. A signature must record the hash of what was signed.
+  await db.exec(`
+    INSERT INTO hrms.generated_documents (id, org_id, title, category)
+    VALUES ('55555555-5555-5555-5555-555555555555', '${orgA}', 'Offer', 'offer')
+    ON CONFLICT DO NOTHING;
+  `);
+
   let signatureNeedsHash = false;
   try {
     await db.exec(`
-      INSERT INTO hrms.generated_documents (id, org_id, title, category)
-      VALUES ('55555555-5555-5555-5555-555555555555', '${orgA}', 'Offer', 'offer')
-      ON CONFLICT DO NOTHING;
-
       INSERT INTO hrms.document_signatures
         (org_id, document_id, signatory_email, signatory_role, signed_at)
       VALUES ('${orgA}', '55555555-5555-5555-5555-555555555555', 'a@b.com', 'employee', now())
@@ -272,6 +290,135 @@ async function main() {
     name: "a signature must record the document hash it signed",
     pass: signatureNeedsHash,
     detail: signatureNeedsHash ? "rejected" : "signature without a content hash was allowed",
+  });
+
+  // 12. Two live assignments for the same person, day and pattern would have
+  //     someone believing they owe two shifts at once.
+  const patternId = "66666666-6666-6666-6666-666666666666";
+  const rosterId = "77777777-7777-7777-7777-777777777777";
+  await db.exec(`
+    INSERT INTO hrms.shift_patterns (id, org_id, name, code, start_time, end_time)
+    VALUES ('${patternId}', '${orgA}', 'Day', 'DAY', '09:00', '17:00')
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO hrms.rosters (id, org_id, name, period_start, period_end)
+    VALUES ('${rosterId}', '${orgA}', 'April', '2026-04-01', '2026-04-30')
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO hrms.roster_assignments
+      (org_id, roster_id, employee_id, pattern_id, shift_date, starts_at, ends_at, duration_minutes)
+    VALUES ('${orgA}', '${rosterId}', '${referrer}', '${patternId}', '2026-04-06',
+            '2026-04-06T09:00:00Z', '2026-04-06T17:00:00Z', 420);
+  `);
+
+  let doubleBookingBlocked = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.roster_assignments
+        (org_id, roster_id, employee_id, pattern_id, shift_date, starts_at, ends_at, duration_minutes)
+      VALUES ('${orgA}', '${rosterId}', '${referrer}', '${patternId}', '2026-04-06',
+              '2026-04-06T09:00:00Z', '2026-04-06T17:00:00Z', 420)
+    `);
+  } catch {
+    doubleBookingBlocked = true;
+  }
+  checks.push({
+    name: "an employee cannot hold two live assignments for the same shift",
+    pass: doubleBookingBlocked,
+    detail: doubleBookingBlocked ? "rejected" : "a duplicate live assignment was allowed",
+  });
+
+  // 13. A swapped-out row must not block the replacement, or a swap could
+  //     never be recorded at all.
+  let swapHistoryAllowed = true;
+  try {
+    await db.exec(`
+      UPDATE hrms.roster_assignments SET status = 'swapped_out'
+      WHERE employee_id = '${referrer}' AND shift_date = '2026-04-06';
+
+      INSERT INTO hrms.roster_assignments
+        (org_id, roster_id, employee_id, pattern_id, shift_date, starts_at, ends_at, duration_minutes)
+      VALUES ('${orgA}', '${rosterId}', '${referrer}', '${patternId}', '2026-04-06',
+              '2026-04-06T09:00:00Z', '2026-04-06T17:00:00Z', 420)
+    `);
+  } catch (e) {
+    swapHistoryAllowed = false;
+    console.error(e);
+  }
+  checks.push({
+    name: "a swapped-out assignment does not block its replacement",
+    pass: swapHistoryAllowed,
+    detail: swapHistoryAllowed ? "allowed" : "the partial index is too broad to record a swap",
+  });
+
+  // 14. A shift that ends before it starts would compute negative hours and
+  //     flow into pay.
+  let backwardsShiftBlocked = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.roster_assignments
+        (org_id, roster_id, employee_id, pattern_id, shift_date, starts_at, ends_at, duration_minutes)
+      VALUES ('${orgA}', '${rosterId}', '${referrer}', '${patternId}', '2026-04-07',
+              '2026-04-07T17:00:00Z', '2026-04-07T09:00:00Z', 420)
+    `);
+  } catch {
+    backwardsShiftBlocked = true;
+  }
+  checks.push({
+    name: "a shift cannot end before it starts",
+    pass: backwardsShiftBlocked,
+    detail: backwardsShiftBlocked ? "rejected" : "a backwards shift was allowed",
+  });
+
+  // 15. A roster marked published without a publisher cannot be defended if it
+  //     is ever questioned.
+  let publishNeedsPublisher = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.rosters (org_id, name, period_start, period_end, status)
+      VALUES ('${orgA}', 'May', '2026-05-01', '2026-05-31', 'published')
+    `);
+  } catch {
+    publishNeedsPublisher = true;
+  }
+  checks.push({
+    name: "a published roster must record who published it",
+    pass: publishNeedsPublisher,
+    detail: publishNeedsPublisher ? "rejected" : "publication without a publisher was allowed",
+  });
+
+  // 16. Approving your own swap defeats the point of approval.
+  let swapSelfApprovalBlocked = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.shift_swap_requests
+        (org_id, assignment_id, requested_by_id, approved_by_id)
+      SELECT '${orgA}', id, '${referrer}', '${referrer}'
+      FROM hrms.roster_assignments WHERE shift_date = '2026-04-06' LIMIT 1
+    `);
+  } catch {
+    swapSelfApprovalBlocked = true;
+  }
+  checks.push({
+    name: "a shift swap cannot be approved by its requester",
+    pass: swapSelfApprovalBlocked,
+    detail: swapSelfApprovalBlocked ? "rejected" : "self-approval was allowed",
+  });
+
+  // 17. Zero contracted hours would divide by zero in the fairness sort and
+  //     silently exclude someone from every roster.
+  let contractedHoursChecked = false;
+  try {
+    await db.exec(`
+      UPDATE hrms.employees SET contracted_hours_per_week = 0 WHERE id = '${referrer}'
+    `);
+  } catch {
+    contractedHoursChecked = true;
+  }
+  checks.push({
+    name: "contracted hours must be greater than zero",
+    pass: contractedHoursChecked,
+    detail: contractedHoursChecked ? "rejected" : "zero contracted hours was allowed",
   });
 
   console.log("");

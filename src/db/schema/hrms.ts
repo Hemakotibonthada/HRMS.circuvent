@@ -221,6 +221,17 @@ export const employees = hrms.table(
     exitReason: text("exit_reason"),
     noticePeriodDays: integer("notice_period_days").default(60),
 
+    /**
+     * Contracted hours per week.
+     *
+     * Needed by rostering to allocate fairly — without it a part-time employee
+     * and a full-time one look identical to the scheduler, and the part-timer
+     * gets rostered into a full week.
+     */
+    contractedHoursPerWeek: numeric("contracted_hours_per_week", { precision: 5, scale: 2 })
+      .notNull()
+      .default("40.00"),
+
     /** Annual cost to company in minor units. */
     ctcMinor: bigint("ctc_minor", { mode: "bigint" }),
     currency: text("currency").notNull().default("INR"),
