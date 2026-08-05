@@ -70,6 +70,8 @@ const eslintConfig = [
       "src/app/api/benefits/**/*.ts",
       "src/lib/rostering.ts",
       "src/app/api/roster/**/*.ts",
+      "src/lib/learning-rules.ts",
+      "src/app/api/learning/**/*.ts",
       "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],
     rules: {
