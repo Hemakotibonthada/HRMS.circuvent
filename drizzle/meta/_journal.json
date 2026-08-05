@@ -15,6 +15,20 @@
       "when": 1785817264307,
       "tag": "0001_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785950256618,
+      "tag": "0002_talent_referrals_benefits_learning",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785950278651,
+      "tag": "0003_rls_for_talent_tables",
+      "breakpoints": true
     }
   ]
 }

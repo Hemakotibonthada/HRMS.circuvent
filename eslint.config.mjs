@@ -64,6 +64,8 @@ const eslintConfig = [
       "src/app/api/payroll/**/*.ts",
       "src/app/api/reports/**/*.ts",
       "src/app/api/workflows/**/*.ts",
+      "src/app/api/referrals/**/*.ts",
+      "src/lib/referral-rules.ts",
       "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],
     rules: {

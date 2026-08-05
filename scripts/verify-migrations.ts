@@ -179,6 +179,101 @@ async function main() {
     detail: makerCheckerEnforced ? "rejected" : "same-user approval was allowed",
   });
 
+  // 8. Every org-scoped table must be covered. A table added without RLS
+  //    returns every tenant's rows to every caller, and the omission is
+  //    invisible until someone notices another company's data.
+  await db.exec("RESET ROLE;");
+  const uncovered = await db.query<{ table_schema: string; table_name: string }>(`
+    SELECT c.table_schema, c.table_name
+    FROM information_schema.columns c
+    JOIN information_schema.tables t
+      ON t.table_schema = c.table_schema
+     AND t.table_name   = c.table_name
+     AND t.table_type   = 'BASE TABLE'
+    WHERE c.column_name = 'org_id'
+      AND c.table_schema IN ('identity', 'hrms')
+      AND NOT EXISTS (
+        SELECT 1 FROM pg_policies p
+        WHERE p.schemaname = c.table_schema
+          AND p.tablename  = c.table_name
+          AND p.policyname = 'tenant_isolation'
+      )
+  `);
+  checks.push({
+    name: "every org-scoped table has a tenant_isolation policy",
+    pass: uncovered.rows.length === 0,
+    detail:
+      uncovered.rows.length === 0
+        ? "all covered"
+        : `missing on: ${uncovered.rows.map((r) => `${r.table_schema}.${r.table_name}`).join(", ")}`,
+  });
+
+  // 9. A referral bonus must not be approvable by the person who earns it.
+  await db.exec(`
+    SET app.superuser = 'on';
+    SET app.org_id = '${orgA}';
+  `);
+  let referralSelfApprovalBlocked = false;
+  const referrer = "44444444-4444-4444-4444-444444444444";
+  try {
+    await db.exec(`
+      INSERT INTO hrms.employees
+        (id, org_id, employee_code, first_name, last_name, work_email, designation, join_date)
+      VALUES ('${referrer}', '${orgA}', 'CIR-0001', 'Asha', 'Rao', 'asha@example.com', 'Engineer', '2026-01-01')
+      ON CONFLICT DO NOTHING;
+
+      INSERT INTO hrms.referrals
+        (org_id, referrer_id, candidate_name, candidate_email, position_title, payout_approved_by_id)
+      VALUES ('${orgA}', '${referrer}', 'Priya', 'priya@example.com', 'Engineer', '${referrer}')
+    `);
+  } catch {
+    referralSelfApprovalBlocked = true;
+  }
+  checks.push({
+    name: "referral bonus cannot be approved by its referrer",
+    pass: referralSelfApprovalBlocked,
+    detail: referralSelfApprovalBlocked ? "rejected" : "self-approval was allowed",
+  });
+
+  // 10. A bonus marked paid must name the payroll run that paid it, or the
+  //     money cannot be traced at reconciliation.
+  let paidRequiresRun = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.referrals
+        (org_id, referrer_id, candidate_name, candidate_email, position_title, payout_status)
+      VALUES ('${orgA}', '${referrer}', 'Sam', 'sam@example.com', 'Engineer', 'paid')
+    `);
+  } catch {
+    paidRequiresRun = true;
+  }
+  checks.push({
+    name: "a paid referral bonus must reference a payroll run",
+    pass: paidRequiresRun,
+    detail: paidRequiresRun ? "rejected" : "paid without a run reference was allowed",
+  });
+
+  // 11. A signature must record the hash of what was signed.
+  let signatureNeedsHash = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.generated_documents (id, org_id, title, category)
+      VALUES ('55555555-5555-5555-5555-555555555555', '${orgA}', 'Offer', 'offer')
+      ON CONFLICT DO NOTHING;
+
+      INSERT INTO hrms.document_signatures
+        (org_id, document_id, signatory_email, signatory_role, signed_at)
+      VALUES ('${orgA}', '55555555-5555-5555-5555-555555555555', 'a@b.com', 'employee', now())
+    `);
+  } catch {
+    signatureNeedsHash = true;
+  }
+  checks.push({
+    name: "a signature must record the document hash it signed",
+    pass: signatureNeedsHash,
+    detail: signatureNeedsHash ? "rejected" : "signature without a content hash was allowed",
+  });
+
   console.log("");
   for (const c of checks) {
     console.log(`  ${c.pass ? "ok   " : "FAIL "} ${c.name}${c.pass ? "" : ` — ${c.detail}`}`);
