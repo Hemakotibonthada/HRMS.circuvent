@@ -97,8 +97,25 @@ describe("middleware", () => {
       }
     });
 
-    it("does not extend the signing exemption to a lookalike path", async () => {
-      // A prefix match that caught /api/signatures would expose every
+    it("passes the SCIM routes through, since the caller is an identity provider", async () => {
+      // Okta and Entra have no browser and no session. Every SCIM handler
+      // calls authenticateScim before touching data, so this is a different
+      // authentication path rather than an exemption from one.
+      for (const path of [
+        "/api/scim/v2/Users",
+        "/api/scim/v2/ServiceProviderConfig",
+      ]) {
+        const response = await middleware(makeRequest(path));
+        expect(response.status, `${path} should reach its handler`).toBe(200);
+      }
+    });
+
+    it("does not extend the SCIM exemption to a lookalike path", async () => {
+      const response = await middleware(makeRequest("/api/scimulator"));
+      expect(response.status).toBe(401);
+    });
+
+    it("does not extend the signing exemption to a lookalike path", async () => {      // A prefix match that caught /api/signatures would expose every
       // signature record in the system without a session. API paths are
       // refused outright; page paths redirect to sign-in. Neither may pass.
       for (const path of ["/api/signatures", "/api/signing-keys"]) {

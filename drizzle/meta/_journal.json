@@ -71,6 +71,20 @@
       "when": 1785984510468,
       "tag": "0009_rls_for_governance",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785984510469,
+      "tag": "0010_federation",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785984510470,
+      "tag": "0011_rls_for_federation",
+      "breakpoints": true
     }
   ]
 }

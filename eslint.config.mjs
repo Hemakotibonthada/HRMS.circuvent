@@ -79,6 +79,9 @@ const eslintConfig = [
       "src/app/api/custom-fields/**/*.ts",
       "src/lib/governance.ts",
       "src/app/api/governance/**/*.ts",
+      "src/lib/scim.ts",
+      "src/lib/sso.ts",
+      "src/app/api/scim/**/*.ts",
       "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],
     rules: {

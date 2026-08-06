@@ -721,6 +721,126 @@ async function main() {
     detail: holdNeedsReview ? "rejected" : "an indefinite hold was allowed",
   });
 
+  // 28-31. Federation. sso_connections holds client secrets and scim_tokens
+  //        holds credentials that can create and disable accounts, so a
+  //        missing policy here would let one tenant read another's ability to
+  //        authenticate.
+  let plaintextEndpointBlocked = false;
+  try {
+    await db.exec(`
+      INSERT INTO identity.sso_connections
+        (org_id, name, domains, issuer, client_id, client_secret,
+         authorization_endpoint, token_endpoint, jwks_uri)
+      VALUES ('${orgA}', 'Insecure', '["example.com"]'::jsonb, 'https://idp.test', 'c', 's',
+              'http://idp.test/authorize', 'https://idp.test/token', 'https://idp.test/jwks')
+    `);
+  } catch {
+    plaintextEndpointBlocked = true;
+  }
+  checks.push({
+    name: "an SSO connection cannot use a plaintext endpoint",
+    pass: plaintextEndpointBlocked,
+    detail: plaintextEndpointBlocked ? "rejected" : "an http:// endpoint was allowed",
+  });
+
+  // An active connection routing no domains can never be selected, so it is a
+  // configuration someone believes is working and is not.
+  let emptyDomainsBlocked = false;
+  try {
+    await db.exec(`
+      INSERT INTO identity.sso_connections
+        (org_id, name, domains, issuer, client_id, client_secret,
+         authorization_endpoint, token_endpoint, jwks_uri, is_active)
+      VALUES ('${orgA}', 'Unrouted', '[]'::jsonb, 'https://idp.test', 'c', 's',
+              'https://idp.test/authorize', 'https://idp.test/token', 'https://idp.test/jwks', true)
+    `);
+  } catch {
+    emptyDomainsBlocked = true;
+  }
+  checks.push({
+    name: "an active SSO connection must route at least one domain",
+    pass: emptyDomainsBlocked,
+    detail: emptyDomainsBlocked ? "rejected" : "an unroutable active connection was allowed",
+  });
+
+  await db.exec(`
+    INSERT INTO identity.sso_connections
+      (id, org_id, name, domains, issuer, client_id, client_secret,
+       authorization_endpoint, token_endpoint, jwks_uri)
+    VALUES ('dddddddd-0000-4000-8000-000000000001', '${orgA}', 'Works',
+            '["example.com"]'::jsonb, 'https://idp.test', 'c', 's',
+            'https://idp.test/authorize', 'https://idp.test/token', 'https://idp.test/jwks');
+  `);
+
+  // A sign-in attempt that never expires is a replayable credential.
+  let longLivedStateBlocked = false;
+  try {
+    await db.exec(`
+      INSERT INTO identity.sso_auth_states
+        (org_id, connection_id, state, nonce, code_verifier, redirect_uri, expires_at)
+      VALUES ('${orgA}', 'dddddddd-0000-4000-8000-000000000001', 's', 'n', 'v',
+              'https://app.test/cb', now() + interval '2 hours')
+    `);
+  } catch {
+    longLivedStateBlocked = true;
+  }
+  checks.push({
+    name: "an SSO sign-in attempt cannot be long-lived",
+    pass: longLivedStateBlocked,
+    detail: longLivedStateBlocked ? "rejected" : "a two-hour auth state was allowed",
+  });
+
+  // Only the hash is stored. A value that is not a SHA-256 digest means
+  // something wrote the secret itself into the column.
+  let plaintextTokenBlocked = false;
+  try {
+    await db.exec(`
+      INSERT INTO identity.scim_tokens (org_id, name, token_hash, token_prefix)
+      VALUES ('${orgA}', 'Okta', 'plaintext-secret-value', 'plain')
+    `);
+  } catch {
+    plaintextTokenBlocked = true;
+  }
+  checks.push({
+    name: "a SCIM token column rejects anything that is not a hash",
+    pass: plaintextTokenBlocked,
+    detail: plaintextTokenBlocked ? "rejected" : "a plaintext token was stored",
+  });
+
+  // The record of what the directory told us to do and when.
+  await db.exec(`
+    INSERT INTO identity.scim_sync_log (org_id, operation, status_code)
+    VALUES ('${orgA}', 'patch', 200);
+  `);
+
+  let scimLogImmutable = false;
+  try {
+    await db.exec(`UPDATE identity.scim_sync_log SET operation = 'tampered'`);
+  } catch {
+    scimLogImmutable = true;
+  }
+  checks.push({
+    name: "the SCIM sync log rejects UPDATE",
+    pass: scimLogImmutable,
+    detail: scimLogImmutable ? "rejected" : "the provisioning record is editable",
+  });
+
+  // The placeholder SSO tables must be gone, not left beside the real ones.
+  const oldSso = await db.query<{ column_name: string }>(`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_schema = 'identity'
+      AND table_name = 'sso_connections'
+      AND column_name IN ('oidc_client_id', 'x509_certificate', 'jit_provisioning')
+  `);
+  checks.push({
+    name: "the placeholder SSO columns are replaced, not duplicated",
+    pass: oldSso.rows.length === 0,
+    detail:
+      oldSso.rows.length === 0
+        ? "replaced"
+        : `still present: ${oldSso.rows.map((r) => r.column_name).join(", ")}`,
+  });
+
   console.log("");
   for (const c of checks) {
     console.log(`  ${c.pass ? "ok   " : "FAIL "} ${c.name}${c.pass ? "" : ` — ${c.detail}`}`);

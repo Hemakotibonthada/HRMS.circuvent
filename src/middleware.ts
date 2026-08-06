@@ -41,6 +41,10 @@ const PUBLIC_PREFIXES = [
   // the people it exists for.
   "/api/sign",
   "/sign",
+  // SCIM authenticates by a bearer token issued to the identity provider, not
+  // by a session — the caller is Okta or Entra, which has no browser. Every
+  // handler calls authenticateScim before touching data.
+  "/api/scim",
 ];
 
 function isPublic(pathname: string): boolean {

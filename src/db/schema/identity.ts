@@ -124,6 +124,14 @@ export const users = identity.table(
     avatarUrl: text("avatar_url"),
     phone: text("phone"),
     status: userStatusEnum("status").notNull().default("active"),
+    /**
+     * The identity provider's stable identifier for this user.
+     *
+     * Set by SCIM provisioning. Kept separate from the email because a
+     * directory can change someone's address, and matching on email would
+     * then create a second account rather than updating the first.
+     */
+    externalId: text("external_id"),
     /** TOTP secret, encrypted at rest. Null until MFA is enrolled. */
     mfaSecret: text("mfa_secret"),
     mfaEnabledAt: timestamp("mfa_enabled_at", { withTimezone: true }),
@@ -246,54 +254,14 @@ export const authTokens = identity.table(
 );
 
 // ─── Enterprise SSO ──────────────────────────────────────────
-
-export const ssoProtocolEnum = identity.enum("sso_protocol", ["saml", "oidc"]);
-
-export const ssoConnections = identity.table(
-  "sso_connections",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    orgId: uuid("org_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-    protocol: ssoProtocolEnum("protocol").notNull(),
-    displayName: text("display_name").notNull(),
-    /** Email domains routed to this IdP, enabling IdP discovery by address. */
-    emailDomains: jsonb("email_domains").notNull().default(sql`'[]'::jsonb`),
-    metadataUrl: text("metadata_url"),
-    entityId: text("entity_id"),
-    ssoUrl: text("sso_url"),
-    x509Certificate: text("x509_certificate"),
-    oidcIssuer: text("oidc_issuer"),
-    oidcClientId: text("oidc_client_id"),
-    oidcClientSecret: text("oidc_client_secret"),
-    attributeMapping: jsonb("attribute_mapping").notNull().default(sql`'{}'::jsonb`),
-    /** Create the user on first successful assertion. */
-    jitProvisioning: boolean("jit_provisioning").notNull().default(true),
-    enabled: boolean("enabled").notNull().default(false),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [index("sso_connections_org_idx").on(t.orgId)]
-);
-
-/** SCIM 2.0 bearer tokens for directory-driven provisioning. */
-export const scimTokens = identity.table(
-  "scim_tokens",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    orgId: uuid("org_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    tokenHash: text("token_hash").notNull(),
-    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
-    expiresAt: timestamp("expires_at", { withTimezone: true }),
-    revokedAt: timestamp("revoked_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [uniqueIndex("scim_tokens_token_hash_key").on(t.tokenHash)]
-);
+//
+// The connection, identity-link, auth-state, SCIM token and SCIM log tables
+// live in ./federation.ts, in this same `identity` schema.
+//
+// They were originally sketched here as two placeholder tables that nothing
+// read. Those are gone rather than left alongside the real ones: two homes for
+// one concept is how a field ends up written to one and read from the other,
+// which is exactly the defect the referral module shipped with.
 
 // ─── API keys for the public API ─────────────────────────────
 
