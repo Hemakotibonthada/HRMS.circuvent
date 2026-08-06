@@ -92,8 +92,6 @@ export const organizations = identity.table(
     plan: subscriptionPlanEnum("plan").notNull().default("starter"),
     /** Per-tenant feature flags, keyed by flag name. */
     features: jsonb("features").notNull().default(sql`'{}'::jsonb`),
-    /** Tenant-defined custom field definitions, keyed by entity name. */
-    customFields: jsonb("custom_fields").notNull().default(sql`'{}'::jsonb`),
     settings: jsonb("settings").notNull().default(sql`'{}'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

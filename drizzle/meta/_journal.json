@@ -36,6 +36,27 @@
       "when": 1785953080455,
       "tag": "0004_scheduling",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785953080456,
+      "tag": "0005_rls_for_scheduling_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785956787056,
+      "tag": "0006_custom_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785956787057,
+      "tag": "0007_rls_for_custom_fields",
+      "breakpoints": true
     }
   ]
 }

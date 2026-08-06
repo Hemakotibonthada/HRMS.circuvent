@@ -219,16 +219,41 @@ that enterprise buyers actually evaluate on.
 
 ### 2.3 HR domain depth
 
+**Delivered so far** (all on `develop`, each with pure rules + tests, a Neon repository, API routes, RLS and DB constraints):
+
+| Module | State | Notes |
+|---|---|---|
+| **Referrals** | ✅ | State machine, instalment scheduling, duplicate attribution, ATS linkage. Bonus frozen at submission; eligibility re-checked at approval. |
+| **Benefits** | ✅ | Plans, enrolment windows, dependants, claims, proration, life-event exceptions. |
+| **Shift rostering** | ✅ | Constraint engine (rolling 7-day weeks, night shifts, rest, consecutive days), greedy generation reporting its gaps, two-step swaps re-checked at approval. |
+| **Learning** | ✅ | Prerequisites, duration-weighted progress, server-side grading, recertification from completion date, org-wide compliance report including staff with no enrolment. |
+| **Documents & e-signature** | ✅ | Token rendering that refuses on a blank, frozen content hash, ordered signing envelope, public token-authenticated signing route. |
+| **Custom fields** | ✅ | Definitions and values as real rows; type changes refused once values exist; uniqueness enforced by a trigger-maintained partial index, not an application check. |
+
+**Still to build:**
+
 | Area | Additions |
 |---|---|
 | **Payroll** | Multi-country engine, off-cycle runs, retro/arrears, full Indian statutory filing (Form 16, 24Q, PF ECR, ESI, PT, LWF), payroll approval workflow with maker-checker, bank advice file generation, payslip PDF with digital signature. |
-| **Time & attendance** | Geofenced punch, selfie/face verification, biometric device integration, rule-based rostering, shift swap marketplace, overtime rules engine, regularisation workflow. |
+| **Time & attendance** | Geofenced punch, selfie/face verification, biometric device integration, overtime rules engine, regularisation workflow. |
 | **Performance** | Cascading OKRs, 9-box talent grid, calibration sessions, continuous check-ins, 360° with anonymity guarantees, competency framework mapping. |
 | **Compensation** | Merit cycle planning, budget pools, comp-ratio analysis, benchmarking, equity/ESOP tracking, total-rewards statement. |
 | **Workforce planning** | Headcount budgeting vs actuals, scenario modelling, req-to-hire pipeline, span-of-control analysis. |
-| **Learning** | SCORM/xAPI, learning paths, skill-gap analysis, certification expiry tracking, external LMS connectors. |
-| **Benefits** | Open enrolment windows, dependant management, claims, insurer integration. |
+| **Learning** | SCORM/xAPI, learning paths, skill-gap analysis, external LMS connectors. |
 | **Case management** | HR helpdesk with SLA, knowledge-base deflection, investigation workflows for grievances/incidents. |
+| **Data governance** | Retention schedules, subject-access export, right-to-erasure across fixed and custom fields. |
+| **Assets** | Issue, return, depreciation, audit. |
+
+### Defects found and fixed while building these
+
+| Defect | Consequence had it shipped |
+|---|---|
+| `scripts/verify-migrations.ts` batched fixture rows into the same `exec` as the statement under test | When the statement was correctly rejected, the fixture rolled back with it — two checks were passing on a foreign-key error, not the constraint they claimed to test. |
+| `0005_rls_for_scheduling_tables.sql` was never added to `drizzle/meta/_journal.json` | `db:verify` reads the directory so it passed, but `drizzle-kit migrate` reads the journal — the migration would never have run in production. Now guarded by a check. |
+| Two `custom_fields` jsonb columns existed with no reader | A second home for the same concept is how a field ends up written to one place and read from the other. Both dropped. |
+| Application-level uniqueness check on custom fields was racy | Two concurrent requests both pass the `SELECT` and both insert. Replaced with a partial unique index over a trigger-maintained flag. |
+| `canChangeType` message read "1 record already hold a value" | Cosmetic, but it was the visible half of a guard nobody would trust. |
+
 
 ### 2.4 Production-grade UX
 

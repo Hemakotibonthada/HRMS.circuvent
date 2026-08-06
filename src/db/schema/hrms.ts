@@ -249,9 +249,6 @@ export const employees = hrms.table(
     pfNumber: text("pf_number"),
     esiNumber: text("esi_number"),
 
-    /** Values for org-defined custom fields (identity.organizations.custom_fields). */
-    customFields: jsonb("custom_fields").notNull().default(sql`'{}'::jsonb`),
-
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),

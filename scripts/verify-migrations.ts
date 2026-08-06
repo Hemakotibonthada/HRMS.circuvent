@@ -83,6 +83,31 @@ async function main() {
 
   const checks: { name: string; pass: boolean; detail: string }[] = [];
 
+  // 0. Every migration file must be listed in the journal.
+  //
+  // This script applies whatever it finds on disk, but `drizzle-kit migrate`
+  // applies only what the journal names. A hand-written migration that is
+  // never added to the journal therefore passes here and silently never runs
+  // in production — which is exactly what happened to the scheduling RLS
+  // migration before this check existed.
+  const journal = JSON.parse(
+    readFileSync(join(MIGRATIONS_DIR, "meta", "_journal.json"), "utf8")
+  ) as { entries: { tag: string }[] };
+
+  const journalled = new Set(journal.entries.map((e) => e.tag));
+  const unjournalled = loadMigrations()
+    .map((m) => m.name.replace(/\.sql$/, ""))
+    .filter((tag) => !journalled.has(tag));
+
+  checks.push({
+    name: "every migration file is listed in the journal",
+    pass: unjournalled.length === 0,
+    detail:
+      unjournalled.length === 0
+        ? "all listed"
+        : `missing from _journal.json: ${unjournalled.join(", ")} — these would never run in production`,
+  });
+
   // 1. Scoping to one org must hide the other's rows.
   await db.exec(`SET app.org_id = '${orgA}';`);
   const scoped = await db.query<{ count: string }>(
@@ -419,6 +444,143 @@ async function main() {
     name: "contracted hours must be greater than zero",
     pass: contractedHoursChecked,
     detail: contractedHoursChecked ? "rejected" : "zero contracted hours was allowed",
+  });
+
+  // 18-21. Custom field uniqueness. Enforced by a partial unique index over a
+  //        trigger-maintained flag, because an application-level check is racy
+  //        — two concurrent requests both pass the SELECT and both insert.
+  const uniqueField = "88888888-8888-8888-8888-888888888888";
+  const plainField = "99999999-9999-9999-9999-999999999999";
+  const entityA = "aaaaaaa1-0000-4000-8000-000000000001";
+  const entityB = "aaaaaaa1-0000-4000-8000-000000000002";
+
+  await db.exec(`
+    INSERT INTO hrms.custom_field_definitions
+      (id, org_id, entity_type, key, label, data_type, is_unique)
+    VALUES
+      ('${uniqueField}', '${orgA}', 'employee', 'passport_no', 'Passport', 'text', true),
+      ('${plainField}',  '${orgA}', 'employee', 'shirt_size',  'Shirt',    'text', false)
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO hrms.custom_field_values
+      (org_id, definition_id, entity_type, entity_id, value, value_text)
+    VALUES ('${orgA}', '${uniqueField}', 'employee', '${entityA}', '"X123"'::jsonb, 'X123');
+  `);
+
+  let duplicateBlocked = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.custom_field_values
+        (org_id, definition_id, entity_type, entity_id, value, value_text)
+      VALUES ('${orgA}', '${uniqueField}', 'employee', '${entityB}', '"X123"'::jsonb, 'X123')
+    `);
+  } catch {
+    duplicateBlocked = true;
+  }
+  checks.push({
+    name: "a unique custom field rejects a duplicate value",
+    pass: duplicateBlocked,
+    detail: duplicateBlocked ? "rejected" : "the trigger did not stamp is_unique, so the index does not cover it",
+  });
+
+  let sharedAllowed = true;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.custom_field_values
+        (org_id, definition_id, entity_type, entity_id, value, value_text)
+      VALUES
+        ('${orgA}', '${plainField}', 'employee', '${entityA}', '"L"'::jsonb, 'L'),
+        ('${orgA}', '${plainField}', 'employee', '${entityB}', '"L"'::jsonb, 'L')
+    `);
+  } catch {
+    sharedAllowed = false;
+  }
+  checks.push({
+    name: "a non-unique custom field allows the same value on two records",
+    pass: sharedAllowed,
+    detail: sharedAllowed ? "allowed" : "the uniqueness index is too broad",
+  });
+
+  // Two employees with no passport number are not duplicates of each other.
+  let emptiesAllowed = true;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.custom_field_values
+        (org_id, definition_id, entity_type, entity_id, value, value_text)
+      VALUES
+        ('${orgA}', '${uniqueField}', 'employee', 'aaaaaaa1-0000-4000-8000-000000000003', NULL, NULL),
+        ('${orgA}', '${uniqueField}', 'employee', 'aaaaaaa1-0000-4000-8000-000000000004', NULL, NULL)
+    `);
+  } catch {
+    emptiesAllowed = false;
+  }
+  checks.push({
+    name: "two records with no value are not treated as duplicates",
+    pass: emptiesAllowed,
+    detail: emptiesAllowed ? "allowed" : "the index covers null values",
+  });
+
+  // Turning uniqueness on must reach rows already stored, or every existing
+  // value stays unenforced.
+  const laterUnique = "bbbbbbb1-0000-4000-8000-000000000001";
+  await db.exec(`
+    INSERT INTO hrms.custom_field_definitions
+      (id, org_id, entity_type, key, label, data_type, is_unique)
+    VALUES ('${laterUnique}', '${orgA}', 'employee', 'locker_no', 'Locker', 'text', false)
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO hrms.custom_field_values
+      (org_id, definition_id, entity_type, entity_id, value, value_text)
+    VALUES
+      ('${orgA}', '${laterUnique}', 'employee', '${entityA}', '"L1"'::jsonb, 'L1'),
+      ('${orgA}', '${laterUnique}', 'employee', '${entityB}', '"L2"'::jsonb, 'L2');
+
+    UPDATE hrms.custom_field_definitions SET is_unique = true WHERE id = '${laterUnique}';
+  `);
+
+  const propagated = await db.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM hrms.custom_field_values
+     WHERE definition_id = '${laterUnique}' AND is_unique`
+  );
+  checks.push({
+    name: "enabling uniqueness propagates to values already stored",
+    pass: propagated.rows[0].count === "2",
+    detail: `${propagated.rows[0].count} of 2 existing values now covered`,
+  });
+
+  // And enabling it on a field whose values are already duplicated must fail
+  // rather than leave a constraint that the stored data violates.
+  let retroactiveUniqueBlocked = false;
+  try {
+    await db.exec(
+      `UPDATE hrms.custom_field_definitions SET is_unique = true WHERE id = '${plainField}'`
+    );
+  } catch {
+    retroactiveUniqueBlocked = true;
+  }
+  checks.push({
+    name: "uniqueness cannot be enabled on a field whose values already clash",
+    pass: retroactiveUniqueBlocked,
+    detail: retroactiveUniqueBlocked
+      ? "rejected"
+      : "the flag was set despite duplicate values already stored",
+  });
+
+  // 22. The jsonb placeholders these tables replace must be gone. Two homes
+  //     for one concept is how a field is written to one and read from the
+  //     other.
+  const leftovers = await db.query<{ table_name: string }>(`
+    SELECT table_name FROM information_schema.columns
+    WHERE column_name = 'custom_fields'
+      AND table_schema IN ('identity', 'hrms')
+  `);
+  checks.push({
+    name: "the replaced custom_fields jsonb columns are dropped",
+    pass: leftovers.rows.length === 0,
+    detail:
+      leftovers.rows.length === 0
+        ? "removed"
+        : `still present on: ${leftovers.rows.map((r) => r.table_name).join(", ")}`,
   });
 
   console.log("");
