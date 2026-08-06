@@ -57,6 +57,20 @@
       "when": 1785956787057,
       "tag": "0007_rls_for_custom_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785984510467,
+      "tag": "0008_governance",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785984510468,
+      "tag": "0009_rls_for_governance",
+      "breakpoints": true
     }
   ]
 }

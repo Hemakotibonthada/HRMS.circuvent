@@ -108,6 +108,23 @@ async function main() {
         : `missing from _journal.json: ${unjournalled.join(", ")} — these would never run in production`,
   });
 
+  // A tag listed twice makes `drizzle-kit migrate` attempt the same file
+  // twice, which fails on the second attempt and leaves the run half-applied.
+  // Hand-editing the journal alongside `drizzle-kit generate` is how it
+  // happens.
+  const tagCounts = new Map<string, number>();
+  for (const entry of journal.entries) {
+    tagCounts.set(entry.tag, (tagCounts.get(entry.tag) ?? 0) + 1);
+  }
+  const duplicated = [...tagCounts].filter(([, n]) => n > 1).map(([tag]) => tag);
+
+  checks.push({
+    name: "no migration is listed in the journal twice",
+    pass: duplicated.length === 0,
+    detail:
+      duplicated.length === 0 ? "all unique" : `listed more than once: ${duplicated.join(", ")}`,
+  });
+
   // 1. Scoping to one org must hide the other's rows.
   await db.exec(`SET app.org_id = '${orgA}';`);
   const scoped = await db.query<{ count: string }>(
@@ -581,6 +598,127 @@ async function main() {
       leftovers.rows.length === 0
         ? "removed"
         : `still present on: ${leftovers.rows.map((r) => r.table_name).join(", ")}`,
+  });
+
+  // 23-27. Governance. Erasure is the only operation here that destroys data
+  //        on purpose, so the database enforces the checks around it rather
+  //        than trusting the route to.
+  const verifier = "cccccccc-0000-4000-8000-000000000001";
+  const approver = "cccccccc-0000-4000-8000-000000000002";
+
+  let approvalNeedsIdentity = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.data_subject_requests
+        (org_id, request_type, subject_email, due_on, approved_at, approved_by_id)
+      VALUES ('${orgA}', 'erasure', 'ex@example.com', '2026-05-01', now(), '${approver}')
+    `);
+  } catch {
+    approvalNeedsIdentity = true;
+  }
+  checks.push({
+    name: "an erasure cannot be approved before identity is verified",
+    pass: approvalNeedsIdentity,
+    detail: approvalNeedsIdentity ? "rejected" : "approval without identity verification was allowed",
+  });
+
+  let separateApprover = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.data_subject_requests
+        (org_id, request_type, subject_email, due_on,
+         identity_verified_at, identity_verified_by_id, approved_at, approved_by_id)
+      VALUES ('${orgA}', 'erasure', 'ex2@example.com', '2026-05-01',
+              now(), '${verifier}', now(), '${verifier}')
+    `);
+  } catch {
+    separateApprover = true;
+  }
+  checks.push({
+    name: "the same person cannot both verify identity and approve an erasure",
+    pass: separateApprover,
+    detail: separateApprover ? "rejected" : "single-person erasure approval was allowed",
+  });
+
+  let completionNeedsApproval = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.data_subject_requests
+        (org_id, request_type, subject_email, due_on, completed_at)
+      VALUES ('${orgA}', 'erasure', 'ex3@example.com', '2026-05-01', now())
+    `);
+  } catch {
+    completionNeedsApproval = true;
+  }
+  checks.push({
+    name: "an erasure cannot be completed without approval",
+    pass: completionNeedsApproval,
+    detail: completionNeedsApproval ? "rejected" : "unapproved completion was allowed",
+  });
+
+  // The erasure log is the evidence that a destruction was authorised and
+  // scoped. A log that can be edited proves nothing.
+  await db.exec(`
+    INSERT INTO hrms.erasure_log (org_id, entity_type, area, method, basis)
+    VALUES ('${orgA}', 'employee', 'profile', 'anonymise', 'Subject request');
+  `);
+
+  let erasureLogImmutable = false;
+  try {
+    await db.exec(`UPDATE hrms.erasure_log SET basis = 'tampered'`);
+  } catch {
+    erasureLogImmutable = true;
+  }
+  checks.push({
+    name: "the erasure log rejects UPDATE",
+    pass: erasureLogImmutable,
+    detail: erasureLogImmutable ? "rejected" : "the destruction record is editable",
+  });
+
+  let erasureLogUndeletable = false;
+  try {
+    await db.exec(`DELETE FROM hrms.erasure_log`);
+  } catch {
+    erasureLogUndeletable = true;
+  }
+  checks.push({
+    name: "the erasure log rejects DELETE",
+    pass: erasureLogUndeletable,
+    detail: erasureLogUndeletable ? "rejected" : "the destruction record can be removed",
+  });
+
+  // A consent row is either a grant or a withdrawal, never both and never
+  // neither — "consented at no time" is not a state.
+  let consentSingleOutcome = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.consent_records (org_id, subject_email, purpose, policy_version)
+      VALUES ('${orgA}', 'a@b.com', 'marketing', 1)
+    `);
+  } catch {
+    consentSingleOutcome = true;
+  }
+  checks.push({
+    name: "a consent row must be either a grant or a withdrawal",
+    pass: consentSingleOutcome,
+    detail: consentSingleOutcome ? "rejected" : "a row that is neither was allowed",
+  });
+
+  // A legal hold with no review date is one nobody ever lifts, and an
+  // indefinite hold quietly defeats the retention schedule.
+  let holdNeedsReview = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.legal_holds (org_id, reference, reason, entity_type)
+      VALUES ('${orgA}', 'LIT-1', 'Pending tribunal claim', 'employee')
+    `);
+  } catch {
+    holdNeedsReview = true;
+  }
+  checks.push({
+    name: "a legal hold must carry a review date",
+    pass: holdNeedsReview,
+    detail: holdNeedsReview ? "rejected" : "an indefinite hold was allowed",
   });
 
   console.log("");
