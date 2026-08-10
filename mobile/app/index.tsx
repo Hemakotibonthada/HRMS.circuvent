@@ -5,6 +5,7 @@ import { Button } from "@/components/Button";
 import { ApiError, OfflineError, evaluateClockIn, type Geofence } from "@/lib/contracts";
 import { readPosition } from "@/lib/location";
 import { useSession } from "@/lib/session";
+import { useSync } from "@/lib/sync";
 import { useTheme } from "@/theme/ThemeProvider";
 
 interface TodayResponse {
@@ -47,6 +48,7 @@ function formatDuration(minutes?: number): string {
 export default function TodayScreen() {
   const theme = useTheme();
   const { api, user, signOut } = useSession();
+  const { submit, pending } = useSync();
 
   const [today, setToday] = useState<TodayResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -107,8 +109,12 @@ export default function TodayScreen() {
           }
         }
 
-        await api.post(
-          `/api/attendance/clock`,
+        // Written to the queue first, then sent. Not sent-then-queued-on-
+        // failure: the app can be killed between the tap and the response —
+        // locking the phone and pocketing it does exactly that — and the
+        // punch has to survive it.
+        const { sent } = await submit(
+          direction === "in" ? "attendance.clock_in" : "attendance.clock_out",
           {
             action: direction,
             method: "mobile",
@@ -118,23 +124,28 @@ export default function TodayScreen() {
             capturedAt: outcome.position.capturedAt,
             isMocked: outcome.position.isMocked,
           },
-          // Idempotency key: a retry or a double-tap must not produce two
-          // punches. Scoped to the person, the day and the direction.
-          `clock-${direction}-${user?.employeeId ?? user?.id}-${new Date().toISOString().slice(0, 10)}`
+          {
+            // Idempotency key: a retry or a double-tap must not produce two
+            // punches. Scoped to the person, the day and the direction.
+            id: `clock-${direction}-${user?.employeeId ?? user?.id}-${new Date().toISOString().slice(0, 10)}`,
+            // Orders this punch behind the same employee's earlier ones. A
+            // clock-out that overtakes its clock-in records an impossible day.
+            streamKey: `attendance-${user?.employeeId ?? user?.id}`,
+          }
         );
 
-        setMessage({
-          tone: "success",
-          text: direction === "in" ? "Clocked in" : "Clocked out",
-        });
-        await load();
+        setMessage(
+          sent
+            ? { tone: "success", text: direction === "in" ? "Clocked in" : "Clocked out" }
+            : {
+                tone: "info",
+                text: "Saved on this device. It will be sent when you have a connection.",
+              }
+        );
+
+        if (sent) await load();
       } catch (error) {
-        if (error instanceof OfflineError) {
-          setMessage({
-            tone: "info",
-            text: "Saved. This will be sent as soon as you have a connection.",
-          });
-        } else if (error instanceof ApiError) {
+        if (error instanceof ApiError) {
           setMessage({ tone: "error", text: error.message });
         } else {
           setMessage({ tone: "error", text: "Something went wrong. Please try again." });
@@ -143,7 +154,7 @@ export default function TodayScreen() {
         setBusy(false);
       }
     },
-    [api, today, user, load]
+    [submit, today, user, load]
   );
 
   const record = today?.record;
@@ -228,6 +239,25 @@ export default function TodayScreen() {
               }}
             >
               Your manager will check today&apos;s location. Nothing is needed from you.
+            </Text>
+          ) : null}
+
+          {pending.length > 0 ? (
+            // Shown rather than hidden. Someone whose punch is sitting on the
+            // device needs to know it has not reached the server yet — that is
+            // the difference between "I clocked in" and "I can prove it".
+            <Text
+              accessibilityLiveRegion="polite"
+              style={{
+                color: theme.colors.textMuted,
+                fontSize: theme.fontSize.footnote,
+                lineHeight: theme.lineHeight.footnote,
+                marginTop: theme.spacing.md,
+              }}
+            >
+              {pending.length === 1
+                ? "1 action waiting to be sent"
+                : `${pending.length} actions waiting to be sent`}
             </Text>
           ) : null}
 

@@ -49,7 +49,14 @@ export function relativeLuminance(hex: string): number {
 
 /** Contrast ratio between two colours, 1 (identical) to 21 (black on white). */
 export function contrastRatio(a: string, b: string): number {
-  const [lighter, darker] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+  // Math.max/min rather than destructuring a sorted array: with
+  // noUncheckedIndexedAccess an index into an array is possibly undefined,
+  // and the compiler is right to say so even when the array is a literal
+  // pair. This says the same thing without a claim TypeScript has to trust.
+  const first = relativeLuminance(a);
+  const second = relativeLuminance(b);
+  const lighter = Math.max(first, second);
+  const darker = Math.min(first, second);
   return (lighter + 0.05) / (darker + 0.05);
 }
 

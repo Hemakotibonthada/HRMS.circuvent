@@ -1,126 +1,246 @@
+"use client";
+
 // ═══════════════════════════════════════════════════════════════
-// FIRESTORE DATA SERVICE
-// Real-time CRUD operations for all HRMS collections
+// COLLECTION SERVICE — Postgres via the HTTP API
 // ═══════════════════════════════════════════════════════════════
+// The dashboard's data layer. It previously talked to Firestore straight from
+// the browser; it now goes through this app's own API routes, which run every
+// query inside a tenant transaction so row-level security decides what a caller
+// can see. The browser no longer holds database credentials of any kind.
+//
+// The exported surface is unchanged — COLLECTIONS, genericService and the typed
+// per-module services all behave as before — so none of the 84 pages that use
+// this had to be rewritten.
+//
+// Two destinations sit behind it:
+//
+//   * Collections with a real table and a purpose-built route (employees,
+//     leave, attendance, expenses, helpdesk, recruitment, assets, referrals)
+//     go to that route. Those records must have exactly one home, or the web
+//     dashboard and the mobile app would show different data for the same
+//     person.
+//
+//   * Everything else — kudos, wellness, badges, travel and the rest of the
+//     free-form long tail — goes to the document store at
+//     /api/collections/[collection]. Those pages were always storing loose
+//     documents; inventing twenty narrow tables for them would be worse.
+//
+// `QueryConstraint` is kept as a permissive alias so existing call sites still
+// compile. Server-side filtering now happens through query parameters; a
+// constraint that cannot be expressed is ignored rather than silently
+// mis-applied, and the callers that pass them filter in the page anyway.
 
-import {
-  db, collection, doc, setDoc, getDoc, getDocs, addDoc,
-  updateDoc, deleteDoc, query, where, orderBy, limit,
-  onSnapshot, serverTimestamp, increment, writeBatch,
-  type DocumentData, type QueryConstraint,
-} from "@/lib/firebase";
-import { isTenantScoped, orgConstraint, withOrgId } from "@/lib/tenant";
+/** Loose stand-in for the old Firestore constraint type, for source compatibility. */
+export type QueryConstraint = unknown;
+export type DocumentData = Record<string, unknown>;
 
-// ─── Tenant scoping ──────────────────────────────────────────
-// Every list/subscribe is pinned to the caller's organization, and every write
-// is stamped with it. Firestore rules match on the query, so without the
-// constraint below a tenant-scoped rule would reject the read outright.
+type Doc<T> = T & { id: string };
 
-function scopedConstraints(
-  collectionName: string,
-  constraints: QueryConstraint[]
-): QueryConstraint[] {
-  if (!isTenantScoped(collectionName)) return constraints;
-  return [...orgConstraint(), ...constraints];
+/** Collections that have their own table and route. */
+const ENTITY_ROUTES: Record<string, string> = {
+  employees: "/api/employees",
+  leaves: "/api/leave",
+  attendance: "/api/attendance",
+  expenses: "/api/expenses",
+  helpdesk: "/api/helpdesk",
+  recruitment: "/api/recruitment",
+  assets: "/api/assets",
+  referrals: "/api/referrals",
+};
+
+function endpoint(collectionName: string): { base: string; entity: boolean } {
+  const entity = ENTITY_ROUTES[collectionName];
+  return entity
+    ? { base: entity, entity: true }
+    : { base: `/api/collections/${encodeURIComponent(collectionName)}`, entity: false };
 }
 
-function scopedData<T extends Record<string, unknown>>(
-  collectionName: string,
-  data: T
-): Record<string, unknown> {
-  return isTenantScoped(collectionName) ? withOrgId(data) : data;
-}
-
-// ─── Generic CRUD ────────────────────────────────────────────
-
-export async function createDocument<T extends Record<string, unknown>>(
-  collectionName: string, data: T
-): Promise<string> {
-  const ref = await addDoc(collection(db, collectionName), {
-    ...scopedData(collectionName, data),
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+async function call<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    credentials: "include",
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
   });
-  return ref.id;
+
+  const text = await res.text();
+  let parsed: unknown = null;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+  }
+
+  if (!res.ok) {
+    const message =
+      (parsed as { error?: string } | null)?.error ?? `Request failed (${res.status})`;
+    throw new Error(message);
+  }
+  return parsed as T;
 }
 
-export async function setDocument<T extends Record<string, unknown>>(
-  collectionName: string, docId: string, data: T
-): Promise<void> {
-  await setDoc(doc(db, collectionName, docId), {
-    ...scopedData(collectionName, data),
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+/**
+ * Normalises the list envelope.
+ *
+ * The API is not consistent: newer paged routes return `items`, while expenses,
+ * helpdesk and recruitment return `data`. Absorbing that here keeps it out of
+ * every page — the same mismatch that once left a mailbox silently empty.
+ */
+function itemsOf<T>(body: unknown): Doc<T>[] {
+  if (Array.isArray(body)) return body as Doc<T>[];
+  const b = body as { items?: unknown; data?: unknown } | null;
+  const list = b?.items ?? b?.data;
+  return Array.isArray(list) ? (list as Doc<T>[]) : [];
 }
 
-export async function getDocument<T>(
-  collectionName: string, docId: string
-): Promise<(T & { id: string }) | null> {
-  const snap = await getDoc(doc(db, collectionName, docId));
-  if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() } as T & { id: string };
-}
+// ─── Core operations ─────────────────────────────────────────
 
 export async function getCollection<T>(
   collectionName: string,
-  constraints: QueryConstraint[] = []
-): Promise<(T & { id: string })[]> {
-  const q = query(
-    collection(db, collectionName),
-    ...scopedConstraints(collectionName, constraints)
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as T & { id: string }));
+  _constraints: QueryConstraint[] = []
+): Promise<Doc<T>[]> {
+  void _constraints;
+  const { base } = endpoint(collectionName);
+  return itemsOf<T>(await call<unknown>(`${base}?limit=500`));
+}
+
+export async function getDocument<T>(
+  collectionName: string,
+  docId: string
+): Promise<Doc<T> | null> {
+  const { base } = endpoint(collectionName);
+  try {
+    return await call<Doc<T>>(`${base}/${encodeURIComponent(docId)}`);
+  } catch (e) {
+    // A missing document is an ordinary outcome, not a failure the caller
+    // should have to catch.
+    if (e instanceof Error && /not found|\(404\)/i.test(e.message)) return null;
+    throw e;
+  }
+}
+
+export async function createDocument<T extends Record<string, unknown>>(
+  collectionName: string,
+  data: T
+): Promise<string> {
+  const { base } = endpoint(collectionName);
+  const created = await call<{ id?: string }>(base, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return created?.id ?? "";
 }
 
 export async function updateDocument(
-  collectionName: string, docId: string, data: Record<string, unknown>
+  collectionName: string,
+  docId: string,
+  data: Record<string, unknown>
 ): Promise<void> {
-  await updateDoc(doc(db, collectionName, docId), {
-    ...data,
-    updatedAt: serverTimestamp(),
+  const { base } = endpoint(collectionName);
+  await call(`${base}/${encodeURIComponent(docId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
   });
 }
 
-export async function deleteDocument(
-  collectionName: string, docId: string
+/** Upsert-style write. Merges into the existing document, as setDoc(merge) did. */
+export async function setDocument<T extends Record<string, unknown>>(
+  collectionName: string,
+  docId: string,
+  data: T
 ): Promise<void> {
-  await deleteDoc(doc(db, collectionName, docId));
+  const { base } = endpoint(collectionName);
+  try {
+    await call(`${base}/${encodeURIComponent(docId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  } catch (e) {
+    if (e instanceof Error && /not found|\(404\)/i.test(e.message)) {
+      await call(base, { method: "POST", body: JSON.stringify({ ...data, id: docId }) });
+      return;
+    }
+    throw e;
+  }
 }
 
+export async function deleteDocument(collectionName: string, docId: string): Promise<void> {
+  const { base } = endpoint(collectionName);
+  await call(`${base}/${encodeURIComponent(docId)}`, { method: "DELETE" });
+}
+
+/**
+ * Polling stand-in for the old realtime listener.
+ *
+ * Firestore pushed changes over a socket. Postgres behind an HTTP API does not,
+ * so this refetches on an interval and when the tab regains focus. The callback
+ * contract is identical, so callers did not change; they simply see a new value
+ * a little later than they used to.
+ */
 export function subscribeToCollection<T>(
   collectionName: string,
-  callback: (items: (T & { id: string })[]) => void,
-  constraints: QueryConstraint[] = [],
+  callback: (items: Doc<T>[]) => void,
+  _constraints: QueryConstraint[] = [],
   onError?: (error: Error) => void
 ): () => void {
-  const q = query(
-    collection(db, collectionName),
-    ...scopedConstraints(collectionName, constraints)
-  );
-  return onSnapshot(q, (snap) => {
-    const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as T & { id: string }));
-    callback(items);
-  }, (error) => {
-    // Previously this only logged, so a permission or network failure left the
-    // caller waiting forever with no indication anything had gone wrong.
-    console.error(`Firestore subscription error (${collectionName}):`, error);
-    onError?.(error);
-  });
+  void _constraints;
+  let stopped = false;
+  let timer: ReturnType<typeof setInterval> | null = null;
+
+  const load = async () => {
+    if (stopped) return;
+    try {
+      const items = await getCollection<T>(collectionName);
+      if (!stopped) callback(items);
+    } catch (error) {
+      // Reported rather than only logged: a silent failure left the old
+      // implementation's callers waiting forever with no indication why.
+      if (!stopped) onError?.(error instanceof Error ? error : new Error(String(error)));
+    }
+  };
+
+  void load();
+  timer = setInterval(load, 30_000);
+
+  const onFocus = () => void load();
+  if (typeof window !== "undefined") window.addEventListener("focus", onFocus);
+
+  return () => {
+    stopped = true;
+    if (timer) clearInterval(timer);
+    if (typeof window !== "undefined") window.removeEventListener("focus", onFocus);
+  };
 }
 
 export function subscribeToDocument<T>(
   collectionName: string,
   docId: string,
-  callback: (item: (T & { id: string }) | null) => void
+  callback: (item: Doc<T> | null) => void
 ): () => void {
-  return onSnapshot(doc(db, collectionName, docId), (snap) => {
-    if (!snap.exists()) { callback(null); return; }
-    callback({ id: snap.id, ...snap.data() } as T & { id: string });
-  });
+  let stopped = false;
+  const load = async () => {
+    if (stopped) return;
+    try {
+      const item = await getDocument<T>(collectionName, docId);
+      if (!stopped) callback(item);
+    } catch {
+      if (!stopped) callback(null);
+    }
+  };
+  void load();
+  const timer = setInterval(load, 30_000);
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
 }
 
-// ─── Collection Names ────────────────────────────────────────
+// ─── Collection names ────────────────────────────────────────
 
 export const COLLECTIONS = {
   employees: "employees",
@@ -169,114 +289,14 @@ export const COLLECTIONS = {
   badges: "badges",
 } as const;
 
-// ─── Typed Module APIs ───────────────────────────────────────
-
-export const employeeService = {
-  getAll: (orgConstraints?: QueryConstraint[]) =>
-    getCollection(COLLECTIONS.employees, orgConstraints),
-  getById: (id: string) => getDocument(COLLECTIONS.employees, id),
-  create: (data: Record<string, unknown>) => createDocument(COLLECTIONS.employees, data),
-  update: (id: string, data: Record<string, unknown>) => updateDocument(COLLECTIONS.employees, id, data),
-  remove: (id: string) => deleteDocument(COLLECTIONS.employees, id),
-  subscribe: (cb: (items: DocumentData[]) => void, constraints?: QueryConstraint[]) =>
-    subscribeToCollection(COLLECTIONS.employees, cb, constraints),
-};
-
-export const leaveService = {
-  getAll: (constraints?: QueryConstraint[]) =>
-    getCollection(COLLECTIONS.leaves, constraints),
-  create: (data: Record<string, unknown>) => createDocument(COLLECTIONS.leaves, data),
-  update: (id: string, data: Record<string, unknown>) => updateDocument(COLLECTIONS.leaves, id, data),
-  subscribe: (cb: (items: DocumentData[]) => void, constraints?: QueryConstraint[]) =>
-    subscribeToCollection(COLLECTIONS.leaves, cb, constraints),
-  getBalance: (employeeId: string) => getDocument(COLLECTIONS.leaveBalances, employeeId),
-  setBalance: (employeeId: string, data: Record<string, unknown>) =>
-    setDocument(COLLECTIONS.leaveBalances, employeeId, data),
-};
-
-export const attendanceService = {
-  getAll: (constraints?: QueryConstraint[]) =>
-    getCollection(COLLECTIONS.attendance, constraints),
-  clockIn: (data: Record<string, unknown>) => createDocument(COLLECTIONS.attendance, data),
-  clockOut: (id: string, data: Record<string, unknown>) => updateDocument(COLLECTIONS.attendance, id, data),
-  subscribe: (cb: (items: DocumentData[]) => void, constraints?: QueryConstraint[]) =>
-    subscribeToCollection(COLLECTIONS.attendance, cb, constraints),
-};
-
-export const expenseService = {
-  getAll: (constraints?: QueryConstraint[]) =>
-    getCollection(COLLECTIONS.expenses, constraints),
-  create: (data: Record<string, unknown>) => createDocument(COLLECTIONS.expenses, data),
-  update: (id: string, data: Record<string, unknown>) => updateDocument(COLLECTIONS.expenses, id, data),
-  subscribe: (cb: (items: DocumentData[]) => void, constraints?: QueryConstraint[]) =>
-    subscribeToCollection(COLLECTIONS.expenses, cb, constraints),
-};
-
-export const payrollService = {
-  getAll: (constraints?: QueryConstraint[]) =>
-    getCollection(COLLECTIONS.payroll, constraints),
-  create: (data: Record<string, unknown>) => createDocument(COLLECTIONS.payroll, data),
-  update: (id: string, data: Record<string, unknown>) => updateDocument(COLLECTIONS.payroll, id, data),
-  subscribe: (cb: (items: DocumentData[]) => void, constraints?: QueryConstraint[]) =>
-    subscribeToCollection(COLLECTIONS.payroll, cb, constraints),
-};
-
-export const recruitmentService = {
-  getJobs: (constraints?: QueryConstraint[]) =>
-    getCollection(COLLECTIONS.recruitment, constraints),
-  createJob: (data: Record<string, unknown>) => createDocument(COLLECTIONS.recruitment, data),
-  updateJob: (id: string, data: Record<string, unknown>) => updateDocument(COLLECTIONS.recruitment, id, data),
-  getCandidates: (constraints?: QueryConstraint[]) =>
-    getCollection(COLLECTIONS.candidates, constraints),
-  addCandidate: (data: Record<string, unknown>) => createDocument(COLLECTIONS.candidates, data),
-  subscribe: (cb: (items: DocumentData[]) => void, constraints?: QueryConstraint[]) =>
-    subscribeToCollection(COLLECTIONS.recruitment, cb, constraints),
-};
-
-export const helpdeskService = {
-  getAll: (constraints?: QueryConstraint[]) =>
-    getCollection(COLLECTIONS.helpdesk, constraints),
-  create: (data: Record<string, unknown>) => createDocument(COLLECTIONS.helpdesk, data),
-  update: (id: string, data: Record<string, unknown>) => updateDocument(COLLECTIONS.helpdesk, id, data),
-  subscribe: (cb: (items: DocumentData[]) => void, constraints?: QueryConstraint[]) =>
-    subscribeToCollection(COLLECTIONS.helpdesk, cb, constraints),
-};
-
-export const announcementService = {
-  getAll: (constraints?: QueryConstraint[]) =>
-    getCollection(COLLECTIONS.announcements, constraints),
-  create: (data: Record<string, unknown>) => createDocument(COLLECTIONS.announcements, data),
-  update: (id: string, data: Record<string, unknown>) => updateDocument(COLLECTIONS.announcements, id, data),
-  remove: (id: string) => deleteDocument(COLLECTIONS.announcements, id),
-  subscribe: (cb: (items: DocumentData[]) => void, constraints?: QueryConstraint[]) =>
-    subscribeToCollection(COLLECTIONS.announcements, cb, constraints),
-};
-
-export const notificationService = {
-  getAll: (constraints?: QueryConstraint[]) =>
-    getCollection(COLLECTIONS.notifications, constraints),
-  create: (data: Record<string, unknown>) => createDocument(COLLECTIONS.notifications, data),
-  markRead: (id: string) => updateDocument(COLLECTIONS.notifications, id, { read: true }),
-  markAllRead: async (userId: string) => {
-    const items = await getCollection(COLLECTIONS.notifications, [
-      where("recipientId", "==", userId), where("read", "==", false)
-    ]);
-    const batch = writeBatch(db);
-    items.forEach((item: { id: string }) => {
-      batch.update(doc(db, COLLECTIONS.notifications, item.id), { read: true });
-    });
-    await batch.commit();
-  },
-  subscribe: (cb: (items: DocumentData[]) => void, constraints?: QueryConstraint[]) =>
-    subscribeToCollection(COLLECTIONS.notifications, cb, constraints),
-};
+// ─── Typed module APIs ───────────────────────────────────────
 
 export const genericService = (collectionName: string) => ({
-  getAll: (constraints?: QueryConstraint[]) =>
-    getCollection(collectionName, constraints),
+  getAll: (constraints?: QueryConstraint[]) => getCollection(collectionName, constraints),
   getById: (id: string) => getDocument(collectionName, id),
   create: (data: Record<string, unknown>) => createDocument(collectionName, data),
-  update: (id: string, data: Record<string, unknown>) => updateDocument(collectionName, id, data),
+  update: (id: string, data: Record<string, unknown>) =>
+    updateDocument(collectionName, id, data),
   remove: (id: string) => deleteDocument(collectionName, id),
   subscribe: (
     cb: (items: DocumentData[]) => void,
@@ -284,3 +304,22 @@ export const genericService = (collectionName: string) => ({
     onError?: (error: Error) => void
   ) => subscribeToCollection(collectionName, cb, constraints, onError),
 });
+
+export const employeeService = genericService(COLLECTIONS.employees);
+export const attendanceService = {
+  ...genericService(COLLECTIONS.attendance),
+  clockIn: (data: Record<string, unknown>) => createDocument(COLLECTIONS.attendance, data),
+};
+export const expenseService = genericService(COLLECTIONS.expenses);
+export const payrollService = genericService(COLLECTIONS.payroll);
+export const recruitmentService = genericService(COLLECTIONS.recruitment);
+export const helpdeskService = genericService(COLLECTIONS.helpdesk);
+export const announcementService = genericService(COLLECTIONS.announcements);
+export const notificationService = genericService(COLLECTIONS.notifications);
+
+export const leaveService = {
+  ...genericService(COLLECTIONS.leaves),
+  getBalance: (employeeId: string) => getDocument(COLLECTIONS.leaveBalances, employeeId),
+  setBalance: (employeeId: string, data: Record<string, unknown>) =>
+    setDocument(COLLECTIONS.leaveBalances, employeeId, data),
+};

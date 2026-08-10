@@ -1449,6 +1449,40 @@ async function main() {
     detail: signalsMustBeArray ? "rejected" : "a bare object would break every reader",
   });
 
+  // ── Document store ─────────────────────────────────────────
+  // The long-tail collections table is schemaless by design, which makes the
+  // two constraints on it the only thing standing between it and a dumping
+  // ground where "kudos", "Kudos" and "kudos_v2" all mean the same thing.
+  let collectionShape = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.doc_store (org_id, collection, data)
+      VALUES ('${orgA}', 'Kudos-V2', '{}'::jsonb)
+    `);
+  } catch {
+    collectionShape = true;
+  }
+  checks.push({
+    name: "a doc_store collection name must be lower snake case",
+    pass: collectionShape,
+    detail: collectionShape ? "rejected" : "case and punctuation drift would go unnoticed",
+  });
+
+  let docObjectShape = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.doc_store (org_id, collection, data)
+      VALUES ('${orgA}', 'kudos', '[1,2,3]'::jsonb)
+    `);
+  } catch {
+    docObjectShape = true;
+  }
+  checks.push({
+    name: "a doc_store document must be a JSON object",
+    pass: docObjectShape,
+    detail: docObjectShape ? "rejected" : "data->>'field' would silently return null",
+  });
+
   console.log("");
   for (const c of checks) {
     console.log(`  ${c.pass ? "ok   " : "FAIL "} ${c.name}${c.pass ? "" : ` — ${c.detail}`}`);

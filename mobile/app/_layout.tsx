@@ -4,6 +4,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { SessionProvider, useSession } from "@/lib/session";
+import { SyncProvider } from "@/lib/sync";
 import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
 
 /**
@@ -73,7 +74,9 @@ export default function RootLayout() {
             it makes the clock invisible in one of the two modes. */}
         <StatusBar style="auto" />
         <SessionProvider>
-          <AuthGate />
+          <SyncProvider>
+            <AuthGate />
+          </SyncProvider>
         </SessionProvider>
       </ThemeProvider>
     </SafeAreaProvider>

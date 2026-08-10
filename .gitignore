@@ -50,3 +50,6 @@ emulator-data/
 .vscode/
 *.swp
 *.swo
+mobile/node_modules/
+mobile/.expo/
+mobile/expo-env.d.ts

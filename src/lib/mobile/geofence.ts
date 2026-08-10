@@ -133,6 +133,19 @@ export function locateWithin(
 
   const nearest = ranked[0];
 
+  // Unreachable — `fences.length === 0` returned above — but stated rather
+  // than assumed. Under noUncheckedIndexedAccess an array index is possibly
+  // undefined, and the alternative is a non-null assertion that would keep
+  // being correct only for as long as the guard above stays where it is.
+  if (!nearest) {
+    return {
+      fence: null,
+      distanceMetres: null,
+      confidence: "uncertain",
+      message: "No work locations are configured",
+    };
+  }
+
   // Certainly inside: even the far edge of the uncertainty circle is within
   // the fence.
   if (nearest.distance + accuracy <= nearest.fence.radiusMetres) {

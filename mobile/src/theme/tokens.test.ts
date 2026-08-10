@@ -197,14 +197,19 @@ describe("scale sanity", () => {
 
   it("gives every line height room for its font size", () => {
     for (const key of Object.keys(fontSize) as (keyof typeof fontSize)[]) {
-      expect(lineHeight[key], `lineHeight.${key}`).toBeGreaterThan(fontSize[key]);
+      const size: number = fontSize[key];
+      const height: number = lineHeight[key];
+      expect(height, `lineHeight.${key}`).toBeGreaterThan(size);
     }
   });
 
   it("ascends monotonically", () => {
-    const values = Object.values(spacing);
+    const values: number[] = Object.values(spacing);
     for (let i = 1; i < values.length; i++) {
-      expect(values[i]).toBeGreaterThan(values[i - 1]);
+      const current = values[i];
+      const previous = values[i - 1];
+      if (current === undefined || previous === undefined) continue;
+      expect(current).toBeGreaterThan(previous);
     }
   });
 });
