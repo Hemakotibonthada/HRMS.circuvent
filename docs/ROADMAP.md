@@ -308,16 +308,41 @@ One Expo/Turborepo monorepo, six apps, one shared design system — templated fr
 |---|---|---|
 | 3.1.5 | Offline sync engine with conflict handling — `src/lib/mobile/offline-queue.ts` | ✅ |
 | 3.1.3 | Typed API client with single-flight token refresh — `src/lib/mobile/api-client.ts` | ✅ |
-| 3.1.1 | Turborepo + pnpm workspace scaffold | ⏳ |
-| 3.1.2 | `packages/ui` — design system ported from `WebSite/mobile/design-system` | ⏳ |
-| 3.1.4 | `packages/auth` — biometric unlock, `expo-secure-store` token storage | ⏳ |
+| 3.1.8 | Geofence evaluation shared by phone and server — `src/lib/mobile/geofence.ts` | ✅ |
+| 3.1.9 | Expo app scaffold under `mobile/`, sharing the core via `@shared/*` | ✅ |
+| 3.1.10 | Design tokens with an enforced WCAG contrast contract — `mobile/src/theme/` | ✅ |
+| 3.1.4 | `expo-secure-store` token storage, `expo-sqlite` queue storage | ✅ |
+| 3.1.2 | Accessible primitives — `Button`, `TextField` | ✅ |
+| 3.1.11 | Session and sync providers, auth gate, sign-in | ✅ |
+| 3.1.12 | Clock in/out with device-side geofence pre-check and offline queueing | ✅ |
+| 3.1.13 | Leave list, balances, apply form, request detail | ✅ |
+| 3.1.4b | Biometric unlock (`expo-local-authentication`) | ⏳ |
 | 3.1.6 | `packages/push` — Expo Notifications registration and handling | ⏳ |
 | 3.1.7 | EAS Build + Submit pipelines; OTA updates via EAS Update | ⏳ |
+| 3.1.1 | Turborepo workspace, once a second mobile app exists | ⏳ |
 
-The two hardest pieces are done and tested. They live in the HRMS repo as isomorphic TypeScript
-(no React Native imports) so they share types with the web app and are covered by the existing test
-setup; the Expo app imports them. `WebSite/mobile` (Expo 51, an IoT app) is a useful reference for
-`eas.json` and build config, not a template for HRMS.
+The Expo app lives at `mobile/`. It is a separate package with its own `tsconfig.json` and
+`node_modules`, and it is typechecked by `npm run verify` through `scripts/typecheck-mobile.mjs`
+(which skips with a message if its dependencies are not installed, so web-only work does not
+require a React Native install).
+
+The platform-neutral core — API client, offline queue, geofence — stays in `src/lib/mobile/` and
+is imported as `@shared/*`. Shared rather than copied: there were briefly two geofence
+implementations with different Earth radii, and they disagreed about whether someone standing at
+the edge of an office was at work. **The `@shared/*` alias must be declared in both
+`mobile/tsconfig.json` and `mobile/metro.config.js`** — with only the first, typechecks pass and
+the app crashes at runtime.
+
+`mobile/src/theme/tokens.test.ts` asserts a contrast ratio for every colour pair the app uses, so
+a palette tweak that drops below WCAG AA fails `npm run verify` and names the pair.
+
+Background location is blocked outright in `app.json`. An HR app that can follow staff home is a
+surveillance tool, and the only credible promise that it does not is one the OS enforces.
+
+**Not done:** biometric unlock, push notifications, payslips, shifts, an approvals inbox, and EAS
+build configuration. No app has been run on a device — the app typechecks and its pure logic is
+tested, but nothing here has been exercised against a real Neon database or a real phone.
+
 
 ### 3.2 App rollout order
 
