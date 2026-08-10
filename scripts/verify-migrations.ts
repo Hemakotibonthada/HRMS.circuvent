@@ -1256,6 +1256,129 @@ async function main() {
     detail: selfParentBlocked ? "rejected" : "a self-referencing goal was allowed",
   });
 
+  // 45-48. ATS. Hiring decisions get challenged, sometimes formally, so the
+  //        record has to stay defensible: history that cannot be rewritten,
+  //        scorecards that cannot be revised after reading the panel, and
+  //        offers that cannot be self-approved.
+  const jobId = "bbbbbbb2-0000-4000-8000-000000000001";
+  const candidateId = "bbbbbbb2-0000-4000-8000-000000000002";
+  const applicationId = "bbbbbbb2-0000-4000-8000-000000000003";
+
+  await db.exec(`
+    INSERT INTO hrms.job_postings (id, org_id, title, slug)
+    VALUES ('${jobId}', '${orgA}', 'Engineer', 'engineer-eng-001');
+
+    INSERT INTO hrms.candidates (id, org_id, first_name, last_name, email)
+    VALUES ('${candidateId}', '${orgA}', 'Priya', 'Sharma', 'priya@example.com');
+
+    INSERT INTO hrms.applications (id, org_id, job_id, candidate_id)
+    VALUES ('${applicationId}', '${orgA}', '${jobId}', '${candidateId}');
+
+    INSERT INTO hrms.application_events (org_id, application_id, event_type)
+    VALUES ('${orgA}', '${applicationId}', 'applied');
+  `);
+
+  // A history that can be rewritten answers nothing, and its having been
+  // rewritten is itself the finding.
+  let applicationHistoryImmutable = false;
+  try {
+    await db.exec(`UPDATE hrms.application_events SET event_type = 'tampered'`);
+  } catch {
+    applicationHistoryImmutable = true;
+  }
+  checks.push({
+    name: "the application history rejects UPDATE",
+    pass: applicationHistoryImmutable,
+    detail: applicationHistoryImmutable
+      ? "rejected"
+      : "the record a discrimination claim asks for is editable",
+  });
+
+  // A six in one card silently pulls a panel average above what anyone gave.
+  let scoreRangeChecked = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.interview_scorecards
+        (org_id, application_id, interviewer_id, scores, recommendation, submitted_at)
+      VALUES ('${orgA}', '${applicationId}', '${referrer}', '{"c1": 7}'::jsonb, 'hire', now())
+    `);
+  } catch {
+    scoreRangeChecked = true;
+  }
+  checks.push({
+    name: "a scorecard rating must be on the five-point scale",
+    pass: scoreRangeChecked,
+    detail: scoreRangeChecked ? "rejected" : "an out-of-range score was allowed",
+  });
+
+  await db.exec(`
+    INSERT INTO hrms.interview_scorecards
+      (org_id, application_id, interviewer_id, scores, recommendation, submitted_at)
+    VALUES ('${orgA}', '${applicationId}', '${referrer}', '{"c1": 4}'::jsonb, 'hire', now());
+  `);
+
+  // A revision made after reading the panel is exactly the convergence the
+  // visibility rule exists to prevent.
+  let scorecardFinal = false;
+  try {
+    await db.exec(`UPDATE hrms.interview_scorecards SET recommendation = 'strong_hire'`);
+  } catch {
+    scorecardFinal = true;
+  }
+  checks.push({
+    name: "a submitted scorecard cannot be revised",
+    pass: scorecardFinal,
+    detail: scorecardFinal ? "rejected" : "an interviewer could change their mind after seeing others",
+  });
+
+  // An offer commits the company to a salary; one person drafting and
+  // approving it has no check on it at all.
+  let offerSeparateApprover = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.offers
+        (org_id, application_id, candidate_id, designation, annual_ctc_minor,
+         created_by_id, approved_by_id, approved_at)
+      VALUES ('${orgA}', '${applicationId}', '${candidateId}', 'Engineer', 120000000,
+              '${referrer}', '${referrer}', now())
+    `);
+  } catch {
+    offerSeparateApprover = true;
+  }
+  checks.push({
+    name: "an offer cannot be approved by the person who drafted it",
+    pass: offerSeparateApprover,
+    detail: offerSeparateApprover ? "rejected" : "self-approval of an offer was allowed",
+  });
+
+  // A candidate holding two live offers with different numbers is a dispute
+  // waiting to happen.
+  await db.exec(`
+    INSERT INTO hrms.offers
+      (org_id, application_id, candidate_id, designation, annual_ctc_minor,
+       status, created_by_id, approved_by_id, approved_at, sent_at)
+    VALUES ('${orgA}', '${applicationId}', '${candidateId}', 'Engineer', 120000000,
+            'sent', '${referrer}', '${verifier}', now(), now());
+  `);
+
+  let oneLiveOffer = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.offers
+        (org_id, application_id, candidate_id, designation, annual_ctc_minor,
+         status, created_by_id, approved_by_id, approved_at, sent_at)
+      VALUES ('${orgA}', '${applicationId}', '${candidateId}', 'Engineer', 150000000,
+              'sent', '${referrer}', '${verifier}', now(), now())
+    `);
+  } catch {
+    oneLiveOffer = true;
+  }
+  checks.push({
+    name: "a candidate cannot hold two live offers on one application",
+    pass: oneLiveOffer,
+    detail: oneLiveOffer ? "rejected" : "two live offers with different figures were allowed",
+  });
+
   console.log("");
   for (const c of checks) {
     console.log(`  ${c.pass ? "ok   " : "FAIL "} ${c.name}${c.pass ? "" : ` — ${c.detail}`}`);
