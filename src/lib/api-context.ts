@@ -11,7 +11,7 @@
 // has no way to express the choice at all.
 
 import type { NextRequest } from "next/server";
-import { AuthError, adminDb, requireRole, verifyRequest } from "@/lib/server-auth";
+import { AuthError, requireRole, verifyRequest } from "@/lib/server-auth";
 import { ACCESS_COOKIE, verifyAccessToken } from "@/lib/auth/tokens";
 import type { TenantContext } from "@/db/client";
 
@@ -23,8 +23,6 @@ export interface ApiContext extends TenantContext {
   email?: string;
   role: ApiRole;
 }
-
-const HRMS_DATABASE = "hrms-circuvent";
 
 const ROLES: ApiRole[] = ["owner", "admin", "hr", "manager", "employee"];
 
@@ -99,28 +97,19 @@ export async function requireApiContext(
     ? await requireRole(request, allowedRoles)
     : await verifyRequest(request);
 
-  const claimOrg = typeof decoded.organizationId === "string" ? decoded.organizationId : null;
-  const claimRole = typeof decoded.role === "string" ? (decoded.role as ApiRole) : null;
-
-  if (claimOrg && claimRole) {
-    return { orgId: claimOrg, userId: decoded.uid, email: decoded.email, role: claimRole };
-  }
-
-  const snap = await adminDb(HRMS_DATABASE).collection("users").doc(decoded.uid).get();
-  if (!snap.exists) {
-    throw new AuthError("No user profile found for this account", 403);
-  }
-
-  const orgId = snap.get("organizationId") as string | undefined;
-  const role = (snap.get("role") as ApiRole | undefined) ?? "employee";
-
-  if (!orgId) {
-    // Without an organization every query would be unscoped. Refuse rather
-    // than fall back to reading everything.
+  const role = asRole(decoded.role);
+  if (!decoded.organizationId || !role) {
+    // Without an organisation every query would be unscoped. Refuse rather than
+    // fall back to reading everything.
     throw new AuthError("Account is not attached to an organization", 403);
   }
 
-  return { orgId, userId: decoded.uid, email: decoded.email, role };
+  return {
+    orgId: decoded.organizationId,
+    userId: decoded.uid,
+    email: decoded.email,
+    role,
+  };
 }
 
 // ─── Rate limiting ───────────────────────────────────────────

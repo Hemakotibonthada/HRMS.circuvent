@@ -1,100 +1,80 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  adminDb,
-  requireUserOrService,
-  authErrorResponse,
-} from "@/lib/server-auth";
+import { authErrorResponse } from "@/lib/server-auth";
+import { requireApiContext } from "@/lib/api-context";
+import { NeonEmployeeRepository } from "@/db/repositories/employee.neon";
+import type { EmployeeRecord } from "@/db/repositories/types";
 
 // ═══════════════════════════════════════════════════════════════
-// CROSS-APP EMPLOYEE SYNC API
-// Allows CV-365 and Mail.circuvent to fetch/validate employee
-// data from the HRMS system. Used for login gating and profile sync.
+// CROSS-APP EMPLOYEE LOOKUP
 // ═══════════════════════════════════════════════════════════════
+// Lets the other Circuvent apps fetch employee details for login gating and
+// profile display. Backed by Postgres; it previously read a Firestore
+// collection that no deployment has credentials for.
+//
+// The response shape is unchanged so existing callers keep working.
 
-// ─── GET: Fetch employee by email or uid ─────────────────────
-// Usage: GET /api/sync/employee?email=user@company.com
-//    or: GET /api/sync/employee?uid=abc123
+function shape(e: EmployeeRecord) {
+  return {
+    id: e.id,
+    firstName: e.firstName,
+    lastName: e.lastName,
+    email: e.email,
+    phone: e.phone,
+    department: e.departmentName,
+    designation: e.designation,
+    joiningDate: e.joinDate,
+    status: e.status,
+    employmentType: e.employmentType,
+    location: e.location,
+    reportingManager: e.reportingToName,
+  };
+}
 
+/** GET /api/sync/employee?email=… or ?uid=… */
 export async function GET(req: NextRequest) {
+  let ctx;
   try {
-    await requireUserOrService(req);
+    // Scoped to the caller's organisation. The old handler authorised the
+    // caller but then searched every employee regardless of tenant.
+    ctx = await requireApiContext(req);
   } catch (e) {
     const { body, status } = authErrorResponse(e);
     return NextResponse.json(body, { status });
   }
 
+  const { searchParams } = new URL(req.url);
+  const email = searchParams.get("email");
+  const uid = searchParams.get("uid");
+
+  if (!email && !uid) {
+    return NextResponse.json(
+      { success: false, error: "Provide 'email' or 'uid' query parameter" },
+      { status: 400 }
+    );
+  }
+
   try {
-    const { searchParams } = new URL(req.url);
-    const email = searchParams.get("email");
-    const uid = searchParams.get("uid");
+    const repo = new NeonEmployeeRepository(ctx);
 
-    if (!email && !uid) {
-      return NextResponse.json(
-        { success: false, error: "Provide 'email' or 'uid' query parameter" },
-        { status: 400 }
-      );
-    }
-
-    const db = adminDb("hrms-circuvent");
-
+    let employee: EmployeeRecord | null = null;
     if (uid) {
-      const snap = await db.collection("employees").doc(uid).get();
-      if (!snap.exists) {
-        return NextResponse.json(
-          { success: false, error: "Employee not found" },
-          { status: 404 }
-        );
-      }
-      const data = snap.data()!;
-      return NextResponse.json({
-        success: true,
-        employee: {
-          id: snap.id,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          email: data.email,
-          phone: data.phone,
-          department: data.department,
-          designation: data.designation,
-          joiningDate: data.joiningDate,
-          status: data.status,
-          employmentType: data.employmentType,
-          location: data.location,
-          reportingManager: data.reportingManager,
-        },
-      });
+      employee = await repo.getById(uid);
+    } else if (email) {
+      const needle = email.toLowerCase().trim();
+      const page = await repo.list({ search: needle, pageSize: 25 });
+      // Exact match after the partial search: "a@x.com" must not resolve to
+      // someone whose address merely contains it.
+      employee = page.items.find((e) => (e.email ?? "").toLowerCase() === needle) ?? null;
     }
 
-    // Search by email
-    const snap = await db.collection("employees").where("email", "==", email).get();
-
-    if (snap.empty) {
+    if (!employee) {
       return NextResponse.json(
         { success: false, error: "Employee not found" },
         { status: 404 }
       );
     }
 
-    const empDoc = snap.docs[0];
-    const data = empDoc.data();
-
-    return NextResponse.json({
-      success: true,
-      employee: {
-        id: empDoc.id,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        phone: data.phone,
-        department: data.department,
-        designation: data.designation,
-        joiningDate: data.joiningDate,
-        status: data.status,
-        employmentType: data.employmentType,
-        location: data.location,
-        reportingManager: data.reportingManager,
-      },
-    });
+    return NextResponse.json({ success: true, employee: shape(employee) });
   } catch (error) {
     console.error("Employee fetch error:", error);
     return NextResponse.json(

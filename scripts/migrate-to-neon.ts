@@ -27,7 +27,7 @@ import { eq, sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import { organizations, userRoles, users } from "../src/db/schema/identity";
 import { departments, employees } from "../src/db/schema/hrms";
-import { adminDb } from "../src/lib/server-auth";
+import { adminDb } from "./firestore-source";
 
 const HRMS_DATABASE = "hrms-circuvent";
 

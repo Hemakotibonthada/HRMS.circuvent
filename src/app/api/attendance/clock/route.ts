@@ -21,6 +21,14 @@ const schema = z.object({
   method: z.enum(["biometric", "web", "mobile", "manual", "geo_fence"]).default("web"),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
+  // The device's own assessment of its fix. Accepted rather than ignored
+  // because the geofence logic treats accuracy as a radius of uncertainty —
+  // without it, a reading accurate to half a kilometre is indistinguishable
+  // from one accurate to five metres, and both get a yes-or-no answer they
+  // do not deserve.
+  accuracyMetres: z.number().min(0).max(100_000).optional(),
+  capturedAt: z.number().int().min(0).optional(),
+  isMocked: z.boolean().optional(),
   photoUrl: z.string().url().max(2048).optional(),
 });
 
@@ -55,7 +63,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { action, method, latitude, longitude, photoUrl } = parsed.data;
+  const { action, method, latitude, longitude, accuracyMetres, capturedAt, isMocked, photoUrl } =
+    parsed.data;
 
   try {
     const repo = new NeonAttendanceRepository(ctx);
@@ -66,6 +75,9 @@ export async function POST(request: NextRequest) {
             method,
             latitude,
             longitude,
+            accuracyMetres,
+            capturedAt,
+            isMocked,
             photoUrl,
             ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
           })
@@ -92,10 +104,16 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const record = await new NeonAttendanceRepository(ctx).today(ctx.userId);
+    const { record, fence } = await new NeonAttendanceRepository(ctx).todayWithFence(ctx.userId);
     // 200 with null rather than 404: "not clocked in yet" is the expected
     // state at the start of a day, not an error.
-    return NextResponse.json({ record });
+    //
+    // The fence goes with it so the app can warn someone standing in the
+    // wrong place before they tap, rather than after. Handing the client the
+    // boundary does not weaken anything — the punch is validated server-side
+    // regardless, and a client determined to lie does not need to be told
+    // where the office is to do it.
+    return NextResponse.json({ record, fence });
   } catch (error) {
     if (error instanceof RepositoryError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

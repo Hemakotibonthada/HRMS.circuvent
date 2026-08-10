@@ -314,6 +314,51 @@ export class NeonAttendanceRepository implements AttendanceRepository {
     });
   }
 
+  /**
+   * Today's record, plus where the employee is expected to be.
+   *
+   * The fence is returned alongside so a mobile client can tell someone they
+   * are in the wrong car park *before* they tap, rather than after a
+   * round-trip that ends in a refusal. It is not a security boundary — the
+   * server checks again on the punch itself, because a client that is told
+   * the fence can also be told to lie about it.
+   */
+  async todayWithFence(employeeId: string): Promise<{
+    record: AttendanceRecordDto | null;
+    fence: { id: string; name: string; latitude: number; longitude: number; radiusMetres: number } | null;
+  }> {
+    return withTenant(this.ctx, async (tx) => {
+      const context = await this.employeeContext(tx, employeeId);
+      const rows = await tx
+        .select()
+        .from(attendanceRecords)
+        .where(
+          and(
+            eq(attendanceRecords.employeeId, employeeId),
+            eq(attendanceRecords.workDate, localDate(new Date(), context.timezone))
+          )
+        )
+        .limit(1);
+
+      return {
+        record: rows[0] ? toRecord(rows[0]) : null,
+        // Null for remote and field staff, whose location has no coordinates.
+        // The client must treat that as "clock in from anywhere", not as an
+        // error, or home-based employees can never punch.
+        fence:
+          context.latitude !== null && context.longitude !== null
+            ? {
+                id: context.locationName,
+                name: context.locationName,
+                latitude: context.latitude,
+                longitude: context.longitude,
+                radiusMetres: context.geofenceRadius,
+              }
+            : null,
+      };
+    });
+  }
+
   async today(employeeId: string): Promise<AttendanceRecordDto | null> {
     return withTenant(this.ctx, async (tx) => {
       const context = await this.employeeContext(tx, employeeId);
