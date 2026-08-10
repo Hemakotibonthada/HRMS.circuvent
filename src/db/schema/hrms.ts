@@ -343,6 +343,21 @@ export const attendanceRecords = hrms.table(
     clockInPhotoUrl: text("clock_in_photo_url"),
     /** False when a mobile punch fell outside the location's geofence. */
     isWithinGeofence: boolean("is_within_geofence"),
+    /**
+     * How firm `is_within_geofence` is: inside / probably_inside / uncertain.
+     * A boolean alone cannot express "the fix was too rough to say", which is
+     * the common case indoors, so it used to be recorded as a confident yes.
+     */
+    geofenceConfidence: text("geofence_confidence"),
+    /**
+     * Set when the punch was accepted but something about it warrants a look —
+     * a mock-provider flag, an implausible fix, an edge-of-fence position.
+     * Accepted rather than refused because every signal has an innocent
+     * explanation, and refusing on a heuristic docks real pay.
+     */
+    requiresLocationReview: boolean("requires_location_review").notNull().default(false),
+    /** The specific spoofing signals, so a reviewer sees why it was flagged. */
+    locationSignals: jsonb("location_signals"),
     ipAddress: text("ip_address"),
 
     isRegularized: boolean("is_regularized").notNull().default(false),
@@ -357,6 +372,11 @@ export const attendanceRecords = hrms.table(
     uniqueIndex("attendance_employee_date_key").on(t.employeeId, t.workDate),
     index("attendance_org_date_idx").on(t.orgId, t.workDate),
     index("attendance_org_status_date_idx").on(t.orgId, t.status, t.workDate),
+    // Partial: the review queue is a small slice of a large table, and the
+    // whole point is to find the few flagged rows quickly.
+    index("attendance_location_review_idx")
+      .on(t.orgId, t.workDate)
+      .where(sql`${t.requiresLocationReview}`),
   ]
 );
 

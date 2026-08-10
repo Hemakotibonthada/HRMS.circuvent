@@ -211,6 +211,10 @@ export interface AttendanceRecordDto {
   earlyLeaveByMinutes: number;
   clockInMethod?: string;
   isWithinGeofence?: boolean;
+  /** "inside" | "probably_inside" | "uncertain" — how firm the above is. */
+  geofenceConfidence?: string;
+  /** Accepted, but a human should look at where this punch came from. */
+  requiresLocationReview: boolean;
   isRegularized: boolean;
   organizationId: string;
 }
@@ -220,6 +224,12 @@ export interface ClockInRequest {
   method: "biometric" | "web" | "mobile" | "manual" | "geo_fence";
   latitude?: number;
   longitude?: number;
+  /** Reported GPS accuracy radius in metres, when the device supplies one. */
+  accuracyMetres?: number;
+  /** Epoch ms the fix was taken; distinguishes a fresh fix from a cached one. */
+  capturedAt?: number;
+  /** Android's mock-provider flag. Absent on iOS, so absence proves nothing. */
+  isMocked?: boolean;
   photoUrl?: string;
   ipAddress?: string;
   /** Supplied by tests and back-dated corrections; defaults to now. */

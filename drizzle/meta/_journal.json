@@ -155,6 +155,13 @@
       "when": 1785984510480,
       "tag": "0021_rls_for_ats",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1785984510481,
+      "tag": "0022_attendance_location_review",
+      "breakpoints": true
     }
   ]
 }

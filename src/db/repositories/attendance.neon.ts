@@ -19,6 +19,12 @@ import { and, asc, count, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
 import { attendanceRecords, employees, locations, shifts } from "@/db/schema/hrms";
 import {
+  distanceMetres,
+  evaluateClockIn,
+  type FenceConfidence,
+  type SpoofSignal,
+} from "@/lib/mobile/geofence";
+import {
   NotFoundError,
   RepositoryError,
   type AttendanceRecordDto,
@@ -47,6 +53,8 @@ function toRecord(row: Row): AttendanceRecordDto {
     earlyLeaveByMinutes: row.earlyLeaveByMinutes,
     clockInMethod: row.clockInMethod ?? undefined,
     isWithinGeofence: row.isWithinGeofence ?? undefined,
+    geofenceConfidence: row.geofenceConfidence ?? undefined,
+    requiresLocationReview: row.requiresLocationReview,
     isRegularized: row.isRegularized,
     organizationId: row.orgId,
   };
@@ -55,9 +63,13 @@ function toRecord(row: Row): AttendanceRecordDto {
 /**
  * Great-circle distance in metres.
  *
- * The haversine formula, rather than a flat-earth approximation, because a
- * geofence radius is small enough that the error from ignoring curvature is
- * comparable to the radius itself at high latitudes.
+ * Delegates to src/lib/mobile/geofence.ts, which the mobile app also uses and
+ * which is tested against known distances. This was a second haversine
+ * implementation with a different Earth radius — 6,371,000 against the
+ * geofence module's 6,371,008.8 — so the phone and the server disagreed by
+ * about a metre per kilometre. Small, but enough to put someone on opposite
+ * sides of a 50 m office boundary depending on which one you asked, and the
+ * answer decides whether they were at work.
  */
 export function distanceMeters(
   lat1: number,
@@ -65,16 +77,10 @@ export function distanceMeters(
   lat2: number,
   lon2: number
 ): number {
-  const EARTH_RADIUS_M = 6_371_000;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-
-  return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(a)));
+  return distanceMetres(
+    { latitude: lat1, longitude: lon1 },
+    { latitude: lat2, longitude: lon2 }
+  );
 }
 
 /** Minutes since midnight for a `HH:MM:SS` shift time. */
@@ -189,12 +195,9 @@ export class NeonAttendanceRepository implements AttendanceRepository {
         throw new RepositoryError("You have already clocked in today", 409);
       }
 
-      const geofence = this.checkGeofence(request, context);
+      const geofence = this.checkGeofence({ ...request, at }, context);
       if (geofence.required && !geofence.inside) {
-        throw new RepositoryError(
-          `You are ${geofence.distance}m from ${context.locationName}, outside the ${context.geofenceRadius}m clock-in area`,
-          403
-        );
+        throw new RepositoryError(geofence.message, 403);
       }
 
       let lateByMinutes = 0;
@@ -219,6 +222,9 @@ export class NeonAttendanceRepository implements AttendanceRepository {
         clockInLongitude: request.longitude?.toString(),
         clockInPhotoUrl: request.photoUrl,
         isWithinGeofence: geofence.required ? geofence.inside : null,
+        geofenceConfidence: geofence.confidence,
+        requiresLocationReview: geofence.requiresReview,
+        locationSignals: geofence.signals.length ? geofence.signals : null,
         ipAddress: request.ipAddress,
       };
 
@@ -440,16 +446,53 @@ export class NeonAttendanceRepository implements AttendanceRepository {
 
   // ─── Internals ─────────────────────────────────────────────
 
+  /**
+   * Whether a punch is inside the employee's work location.
+   *
+   * Delegates the judgement to src/lib/mobile/geofence.ts so the phone and the
+   * server reach the same answer from the same code. That module treats the
+   * device's reported accuracy as a radius of uncertainty, which is the part
+   * this previously got wrong: a fix accurate to 500 m that lands 10 m from
+   * the office was accepted as "inside", and one accurate to 500 m that lands
+   * 60 m outside a 50 m fence was refused. Both were guesses dressed up as
+   * facts, and the second one costs somebody a day's pay.
+   */
   private checkGeofence(
-    request: { latitude?: number; longitude?: number; method: string },
+    request: {
+      latitude?: number;
+      longitude?: number;
+      accuracyMetres?: number;
+      capturedAt?: number;
+      isMocked?: boolean;
+      method: string;
+      at?: Date;
+    },
     context: EmployeeContext
-  ): { required: boolean; inside: boolean; distance: number } {
+  ): {
+    required: boolean;
+    inside: boolean;
+    distance: number;
+    confidence: FenceConfidence | null;
+    requiresReview: boolean;
+    signals: SpoofSignal[];
+    message: string;
+  } {
     const required =
       (request.method === "mobile" || request.method === "geo_fence") &&
       context.latitude !== null &&
       context.longitude !== null;
 
-    if (!required) return { required: false, inside: true, distance: 0 };
+    if (!required) {
+      return {
+        required: false,
+        inside: true,
+        distance: 0,
+        confidence: null,
+        requiresReview: false,
+        signals: [],
+        message: "",
+      };
+    }
 
     // Coordinates are mandatory once a geofence applies; treating "no
     // coordinates" as "inside" would make the check trivially bypassable by
@@ -458,10 +501,42 @@ export class NeonAttendanceRepository implements AttendanceRepository {
       throw new RepositoryError("Location is required to clock in from mobile", 400);
     }
 
-    const distance = Math.round(
-      distanceMeters(request.latitude, request.longitude, context.latitude!, context.longitude!)
+    const verdict = evaluateClockIn(
+      {
+        latitude: request.latitude,
+        longitude: request.longitude,
+        accuracyMetres: request.accuracyMetres,
+        capturedAt: request.capturedAt,
+        isMocked: request.isMocked,
+      },
+      [
+        {
+          id: context.locationName,
+          name: context.locationName,
+          latitude: context.latitude!,
+          longitude: context.longitude!,
+          radiusMetres: context.geofenceRadius,
+        },
+      ],
+      { now: request.at?.getTime() }
     );
-    return { required: true, inside: distance <= context.geofenceRadius, distance };
+
+    const distance = Math.round(
+      distanceMetres(
+        { latitude: request.latitude, longitude: request.longitude },
+        { latitude: context.latitude!, longitude: context.longitude! }
+      )
+    );
+
+    return {
+      required: true,
+      inside: verdict.allowed,
+      distance,
+      confidence: verdict.confidence,
+      requiresReview: verdict.requiresReview,
+      signals: verdict.signals,
+      message: verdict.message,
+    };
   }
 
   private async employeeContext(

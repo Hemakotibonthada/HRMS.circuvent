@@ -1379,6 +1379,76 @@ async function main() {
     detail: oneLiveOffer ? "rejected" : "two live offers with different figures were allowed",
   });
 
+  // ── Attendance location review ─────────────────────────────
+  // A punch flagged for review with nothing recorded about why is an alert
+  // nobody can action, and alerts nobody can action teach people to dismiss
+  // alerts.
+  let reviewNeedsReason = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.attendance_records
+        (org_id, employee_id, work_date, status, requires_location_review)
+      VALUES ('${orgA}', '${referrer}', '2026-03-02', 'present', true)
+    `);
+  } catch {
+    reviewNeedsReason = true;
+  }
+  checks.push({
+    name: "a punch flagged for review must record why",
+    pass: reviewNeedsReason,
+    detail: reviewNeedsReason ? "rejected" : "an unactionable review flag was allowed",
+  });
+
+  // "uncertain" is itself the reason, so this one must be accepted — the
+  // check above must not be so strict that the common indoor case is blocked.
+  let uncertainAccepted = true;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.attendance_records
+        (org_id, employee_id, work_date, status, requires_location_review, geofence_confidence)
+      VALUES ('${orgA}', '${referrer}', '2026-03-03', 'present', true, 'uncertain')
+    `);
+  } catch {
+    uncertainAccepted = false;
+  }
+  checks.push({
+    name: "an uncertain fix is a sufficient reason for review on its own",
+    pass: uncertainAccepted,
+    detail: uncertainAccepted ? "accepted" : "a genuine indoor punch was rejected",
+  });
+
+  let confidenceVocabulary = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.attendance_records
+        (org_id, employee_id, work_date, status, geofence_confidence)
+      VALUES ('${orgA}', '${referrer}', '2026-03-04', 'present', 'probably-inside')
+    `);
+  } catch {
+    confidenceVocabulary = true;
+  }
+  checks.push({
+    name: "geofence confidence is restricted to the known vocabulary",
+    pass: confidenceVocabulary,
+    detail: confidenceVocabulary ? "rejected" : "a typo would produce an unreviewable row",
+  });
+
+  let signalsMustBeArray = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.attendance_records
+        (org_id, employee_id, work_date, status, location_signals)
+      VALUES ('${orgA}', '${referrer}', '2026-03-05', 'present', '{"code":"mock_provider"}'::jsonb)
+    `);
+  } catch {
+    signalsMustBeArray = true;
+  }
+  checks.push({
+    name: "location signals must be an array",
+    pass: signalsMustBeArray,
+    detail: signalsMustBeArray ? "rejected" : "a bare object would break every reader",
+  });
+
   console.log("");
   for (const c of checks) {
     console.log(`  ${c.pass ? "ok   " : "FAIL "} ${c.name}${c.pass ? "" : ` — ${c.detail}`}`);
