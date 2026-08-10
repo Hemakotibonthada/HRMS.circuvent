@@ -8,6 +8,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { is } from "drizzle-orm";
+import { PgTable, getTableConfig } from "drizzle-orm/pg-core";
+import * as schema from "../src/db/schema";
 
 const MIGRATIONS_DIR = join(process.cwd(), "drizzle");
 
@@ -123,6 +126,81 @@ async function main() {
     pass: duplicated.length === 0,
     detail:
       duplicated.length === 0 ? "all unique" : `listed more than once: ${duplicated.join(", ")}`,
+  });
+
+  // Several migrations are hand-written, because drizzle-kit needs an
+  // interactive terminal to resolve rename-versus-replace and has none here.
+  // That makes drift possible: the TypeScript schema saying one thing and the
+  // migrations another, with the application then querying a column that does
+  // not exist. This compares the two directly.
+  const declared = new Map<string, Set<string>>();
+
+  for (const value of Object.values(schema)) {
+    // `is` is Drizzle's own instanceof, which survives multiple copies of the
+    // package in the tree. A duck-typed check here is what made the first
+    // version of this match nothing at all.
+    if (!is(value, PgTable)) continue;
+
+    const config = getTableConfig(value);
+    const qualified = `${config.schema ?? "public"}.${config.name}`;
+    declared.set(qualified, new Set(config.columns.map((c) => c.name)));
+  }
+
+  const actual = await db.query<{ table_schema: string; table_name: string; column_name: string }>(`
+    SELECT table_schema, table_name, column_name
+    FROM information_schema.columns
+    WHERE table_schema IN ('identity', 'hrms')
+  `);
+
+  const built = new Map<string, Set<string>>();
+  for (const row of actual.rows) {
+    const key = `${row.table_schema}.${row.table_name}`;
+    built.set(key, (built.get(key) ?? new Set()).add(row.column_name));
+  }
+
+  const missingTables: string[] = [];
+  const missingColumns: string[] = [];
+
+  for (const [table, columns] of declared) {
+    const existing = built.get(table);
+    if (!existing) {
+      missingTables.push(table);
+      continue;
+    }
+    for (const column of columns) {
+      if (!existing.has(column)) missingColumns.push(`${table}.${column}`);
+    }
+  }
+
+  checks.push({
+    name: "every table the TypeScript schema declares exists in the migrations",
+    pass: missingTables.length === 0,
+    detail:
+      missingTables.length === 0
+        ? `${declared.size} tables matched`
+        : `declared but never created: ${missingTables.join(", ")}`,
+  });
+
+  // Guards the guard. If the reflection above ever stops recognising Drizzle
+  // tables — a library upgrade changing the internal shape would do it — the
+  // two drift checks would pass over an empty set and report success while
+  // checking nothing.
+  checks.push({
+    name: "the drift check actually reflected the schema",
+    pass: declared.size >= 50,
+    detail:
+      declared.size >= 50
+        ? `${declared.size} tables reflected, ${[...declared.values()].reduce((n, c) => n + c.size, 0)} columns`
+        : `only ${declared.size} tables reflected — the drift check is passing over nothing`,
+  });
+
+  checks.push({
+    name: "every column the TypeScript schema declares exists in the migrations",
+    pass: missingColumns.length === 0,
+    detail:
+      missingColumns.length === 0
+        ? "no drift"
+        : `declared but never created: ${missingColumns.join(", ")}`,
   });
 
   // 1. Scoping to one org must hide the other's rows.

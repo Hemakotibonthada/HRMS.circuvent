@@ -82,6 +82,8 @@ const eslintConfig = [
       "src/lib/scim.ts",
       "src/lib/sso.ts",
       "src/app/api/scim/**/*.ts",
+      "src/lib/compensation.ts",
+      "src/app/api/compensation/**/*.ts",
       "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],
     rules: {
