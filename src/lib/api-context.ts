@@ -12,6 +12,7 @@
 
 import type { NextRequest } from "next/server";
 import { AuthError, adminDb, requireRole, verifyRequest } from "@/lib/server-auth";
+import { ACCESS_COOKIE, verifyAccessToken } from "@/lib/auth/tokens";
 import type { TenantContext } from "@/db/client";
 
 export type ApiRole = "owner" | "admin" | "hr" | "manager" | "employee";
@@ -25,17 +26,75 @@ export interface ApiContext extends TenantContext {
 
 const HRMS_DATABASE = "hrms-circuvent";
 
+const ROLES: ApiRole[] = ["owner", "admin", "hr", "manager", "employee"];
+
+function asRole(value: unknown): ApiRole | null {
+  return typeof value === "string" && (ROLES as string[]).includes(value)
+    ? (value as ApiRole)
+    : null;
+}
+
+/**
+ * The suite session token, from either transport.
+ *
+ * The browser holds it in the `cv_access` cookie. Native apps have no usable
+ * cookie jar, so they send the same token as a bearer credential. Both are the
+ * same signed JWT verified the same way, so accepting both costs nothing in
+ * trust.
+ *
+ * Bearer is read first: a native caller that presents one should be judged on
+ * it rather than on a cookie that happened to ride along with the request.
+ */
+async function sessionContext(request: NextRequest): Promise<ApiContext | null> {
+  const authorization = request.headers.get("authorization");
+  const bearer =
+    authorization && /^Bearer /i.test(authorization) ? authorization.slice(7).trim() : null;
+  const token = bearer || request.cookies.get(ACCESS_COOKIE)?.value || null;
+  if (!token) return null;
+
+  const claims = await verifyAccessToken(token);
+  if (!claims) return null;
+
+  const role = asRole(claims.role);
+  // An unrecognised role must not be treated as a valid identity: it would
+  // then fail every allowedRoles check silently rather than being refused.
+  if (!role) return null;
+
+  return { orgId: claims.org, userId: claims.sub, email: claims.email, role };
+}
+
 /**
  * Resolves the caller's organization and role.
  *
- * While DATA_BACKEND is firestore or dual, this reads the profile from
- * Firestore. Once the identity service lands (Phase 1.3) org_id and role are
- * claims on the JWT and this becomes a pure token read with no database call.
+ * The organization is derived from the verified token, never from the request
+ * body or a query parameter. This is the single most important rule in the
+ * file: the Firestore design let the browser choose its own organization
+ * filter and relied on security rules to catch a lie, whereas here the client
+ * has no way to express the choice at all.
+ *
+ * Two credentials are accepted, in order:
+ *
+ *  1. The suite session JWT (cookie or bearer). It already carries org, role
+ *     and sid, so this path needs no database round trip at all.
+ *  2. A Firebase ID token, kept for existing integrations that still mint one.
+ *
+ * The session path had to be added: `/api/auth/login` issues suite tokens and
+ * the middleware verifies them, but this function only ever accepted Firebase
+ * tokens — so the web app could sign in and then not call its own API, and
+ * mobile had no way in at all.
  */
 export async function requireApiContext(
   request: NextRequest,
   allowedRoles?: ApiRole[]
 ): Promise<ApiContext> {
+  const session = await sessionContext(request);
+  if (session) {
+    if (allowedRoles && !allowedRoles.includes(session.role)) {
+      throw new AuthError("Insufficient permissions", 403);
+    }
+    return session;
+  }
+
   const decoded = allowedRoles
     ? await requireRole(request, allowedRoles)
     : await verifyRequest(request);

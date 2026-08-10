@@ -63,14 +63,21 @@ export async function middleware(request: NextRequest) {
 
   if (isPublic(pathname)) return NextResponse.next();
 
-  const token = request.cookies.get(ACCESS_COOKIE)?.value;
+  // Bearer first, then the cookie. Native apps have no usable cookie jar, so
+  // they present the same signed token as a bearer credential; without this
+  // the outermost gate would reject every mobile request before any route
+  // handler could authorise it.
+  const authorization = request.headers.get("authorization");
+  const bearer =
+    authorization && /^Bearer /i.test(authorization) ? authorization.slice(7).trim() : null;
+  const token = bearer || request.cookies.get(ACCESS_COOKIE)?.value;
   const claims = token ? await verifyAccessToken(token) : null;
 
   if (!claims) {
     // An expired access token with a refresh cookie present is the normal
     // state every 15 minutes, not a sign-out. The client is told to refresh
     // rather than being bounced to the login screen mid-session.
-    const canRefresh = !!request.cookies.get(REFRESH_COOKIE)?.value;
+    const canRefresh = !!request.cookies.get(REFRESH_COOKIE)?.value || !!bearer;
 
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(

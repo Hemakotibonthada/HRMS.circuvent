@@ -12,6 +12,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { refreshSession } from "@/lib/auth/session";
 import {
   ACCESS_COOKIE,
+  ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_COOKIE,
   accessCookieOptions,
   refreshCookieOptions,
@@ -25,7 +26,20 @@ function clearedResponse(error: string, status: number) {
 }
 
 export async function POST(request: NextRequest) {
-  const token = request.cookies.get(REFRESH_COOKIE)?.value;
+  // Native clients hold the refresh token themselves and send it in the body.
+  // Rotation and replay detection below are identical for both transports.
+  let bodyToken: string | null = null;
+  try {
+    const body = (await request.json()) as { refreshToken?: unknown };
+    if (typeof body?.refreshToken === "string" && body.refreshToken.trim()) {
+      bodyToken = body.refreshToken.trim();
+    }
+  } catch {
+    // No body, or not JSON: a cookie-based web refresh.
+  }
+
+  const isNative = bodyToken !== null;
+  const token = bodyToken ?? request.cookies.get(REFRESH_COOKIE)?.value;
   if (!token) return clearedResponse("Not signed in", 401);
 
   let result;
@@ -42,14 +56,24 @@ export async function POST(request: NextRequest) {
     // "reused" means the token had already been rotated — stolen or replayed.
     // refreshSession has already revoked the whole family; the user must sign
     // in again.
-    const status = result.reason === "reused" ? 401 : 401;
     return clearedResponse(
       result.reason === "reused" ? "Session was invalidated. Please sign in again." : "Session expired",
-      status
+      401
     );
   }
 
-  const response = NextResponse.json({ ok: true });
+  const response = NextResponse.json({
+    ok: true,
+    ...(isNative
+      ? {
+          tokens: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+            expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+          },
+        }
+      : {}),
+  });
   response.cookies.set(ACCESS_COOKIE, result.accessToken, accessCookieOptions());
   response.cookies.set(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions());
   return response;

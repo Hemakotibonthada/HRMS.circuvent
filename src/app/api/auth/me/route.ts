@@ -9,7 +9,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ACCESS_COOKIE, verifyAccessToken } from "@/lib/auth/tokens";
 
 export async function GET(request: NextRequest) {
-  const token = request.cookies.get(ACCESS_COOKIE)?.value;
+  // Bearer first, then the cookie: native clients have no cookie jar, and a
+  // caller that presents a token should be judged on it.
+  const authorization = request.headers.get("authorization");
+  const bearer =
+    authorization && /^Bearer /i.test(authorization) ? authorization.slice(7).trim() : null;
+  const token = bearer || request.cookies.get(ACCESS_COOKIE)?.value;
   const claims = token ? await verifyAccessToken(token) : null;
 
   if (!claims) {

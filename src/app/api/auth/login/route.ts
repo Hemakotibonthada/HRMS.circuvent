@@ -15,6 +15,7 @@ import { z } from "zod";
 import { signIn, type SignInFailure } from "@/lib/auth/session";
 import {
   ACCESS_COOKIE,
+  ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_COOKIE,
   accessCookieOptions,
   refreshCookieOptions,
@@ -100,7 +101,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const response = NextResponse.json({ user: result.user });
+  // Native clients have no cookie jar, so they need the tokens themselves.
+  // Returned only when the caller asks: handing a browser a JS-readable access
+  // token would give up exactly the XSS protection the httpOnly cookie exists
+  // to provide, which is the reason this route sets cookies in the first place.
+  const wantsTokens =
+    (raw as { client?: unknown })?.client === "native" ||
+    request.headers.get("x-circuvent-client") === "native";
+
+  const response = NextResponse.json({
+    user: result.user,
+    ...(wantsTokens
+      ? {
+          tokens: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+            expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+          },
+        }
+      : {}),
+  });
   response.cookies.set(ACCESS_COOKIE, result.accessToken, accessCookieOptions());
   response.cookies.set(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions());
   return response;

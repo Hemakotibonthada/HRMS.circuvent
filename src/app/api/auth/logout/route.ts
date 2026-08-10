@@ -16,7 +16,21 @@ import {
 } from "@/lib/auth/tokens";
 
 export async function POST(request: NextRequest) {
-  const token = request.cookies.get(REFRESH_COOKIE)?.value;
+  // Native clients hold the refresh token themselves. Without accepting it
+  // here a native sign-out would clear local state while leaving a valid
+  // 30-day refresh token live on the server — exactly the situation this route
+  // exists to prevent.
+  let bodyToken: string | null = null;
+  try {
+    const body = (await request.json()) as { refreshToken?: unknown };
+    if (typeof body?.refreshToken === "string" && body.refreshToken.trim()) {
+      bodyToken = body.refreshToken.trim();
+    }
+  } catch {
+    // No body: a cookie-based web logout.
+  }
+
+  const token = bodyToken ?? request.cookies.get(REFRESH_COOKIE)?.value;
 
   if (token) {
     try {

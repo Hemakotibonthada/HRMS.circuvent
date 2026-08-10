@@ -248,4 +248,59 @@ describe("middleware", () => {
       expect(response.status).toBe(200);
     });
   });
+
+  describe("bearer tokens (native clients)", () => {
+    // Native apps have no usable cookie jar. They present the same signed
+    // token as a bearer credential, so the middleware has to accept it or
+    // every mobile request is refused before a handler ever runs.
+
+    it("accepts a valid bearer token with no cookie present", async () => {
+      const response = await middleware(
+        makeRequest("/api/employees", {}, { authorization: `Bearer ${await tokenFor("hr")}` })
+      );
+      expect(response.status).toBe(200);
+    });
+
+    it("forwards identity from a bearer token", async () => {
+      const response = await middleware(
+        makeRequest("/api/employees", {}, { authorization: `Bearer ${await tokenFor("hr")}` })
+      );
+      expect(response.headers.get("x-middleware-request-x-user-id")).toBe("user-1");
+      expect(response.headers.get("x-middleware-request-x-org-id")).toBe("org-1");
+      expect(response.headers.get("x-middleware-request-x-user-role")).toBe("hr");
+    });
+
+    it("rejects a tampered bearer token", async () => {
+      const response = await middleware(
+        makeRequest(
+          "/api/employees",
+          {},
+          { authorization: `Bearer ${await tokenFor("admin")}tampered` }
+        )
+      );
+      expect(response.status).toBe(401);
+    });
+
+    it("rejects a malformed authorization header", async () => {
+      for (const value of ["Bearer", "Bearer ", "Basic abc", "abc"]) {
+        const response = await middleware(
+          makeRequest("/api/employees", {}, { authorization: value })
+        );
+        expect(response.status, `${value} should be refused`).toBe(401);
+      }
+    });
+
+    it("prefers the bearer token over a cookie that rode along", async () => {
+      // A native caller presenting a token should be judged on it, not on
+      // whatever cookie happened to be attached to the request.
+      const response = await middleware(
+        makeRequest(
+          "/api/employees",
+          { [ACCESS_COOKIE]: await tokenFor("employee") },
+          { authorization: `Bearer ${await tokenFor("admin")}` }
+        )
+      );
+      expect(response.headers.get("x-middleware-request-x-user-role")).toBe("admin");
+    });
+  });
 });

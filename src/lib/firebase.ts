@@ -50,7 +50,7 @@ import {
   deleteObject,
   uploadBytesResumable,
 } from "firebase/storage";
-import { requireFirebaseEnv } from "./firebase-env";
+import { requireFirebaseEnv, isFirebaseConfigured } from "./firebase-env";
 
 const firebaseConfig = {
   apiKey: requireFirebaseEnv("NEXT_PUBLIC_FIREBASE_API_KEY"),
@@ -63,9 +63,41 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+/**
+ * Firebase is only initialised when it is actually configured.
+ *
+ * The SDK rejects empty credentials at construction time (`auth/invalid-api-key`),
+ * and Next evaluates this module while prerendering, so initialising
+ * unconditionally failed the entire production build whenever the Firebase web
+ * config was absent — which it now is, because the suite is migrating to Neon.
+ *
+ * When unconfigured, the exports below are proxies that throw only if something
+ * genuinely reaches for Firebase. Nothing connects anywhere, and a page that
+ * merely imports this module renders normally.
+ */
+function unconfigured(what: string): never {
+  throw new Error(
+    `Firebase ${what} was used, but the Firebase web configuration is not set. ` +
+      `Set NEXT_PUBLIC_FIREBASE_* in the environment, or migrate this code path to Neon.`
+  );
+}
 
-const auth = getAuth(app);
+function inert<T extends object>(what: string): T {
+  return new Proxy({} as T, {
+    get: () => unconfigured(what),
+    apply: () => unconfigured(what),
+  });
+}
+
+const configured = isFirebaseConfigured();
+
+const app = configured
+  ? getApps().length === 0
+    ? initializeApp(firebaseConfig)
+    : getApps()[0]
+  : inert<ReturnType<typeof initializeApp>>("app");
+
+const auth = configured ? getAuth(app) : inert<ReturnType<typeof getAuth>>("auth");
 
 const globalForFirebase = globalThis as unknown as {
   _firestoreDb?: ReturnType<typeof getFirestore>;
@@ -74,7 +106,9 @@ const globalForFirebase = globalThis as unknown as {
 };
 
 let db: ReturnType<typeof getFirestore>;
-if (globalForFirebase._firestoreDb) {
+if (!configured) {
+  db = inert<ReturnType<typeof getFirestore>>("firestore");
+} else if (globalForFirebase._firestoreDb) {
   db = globalForFirebase._firestoreDb;
 } else {
   try {
@@ -119,16 +153,22 @@ if (typeof window !== "undefined" && process.env.NODE_ENV === "development" && !
 }
 
 const onSnapshot = _onSnapshot;
-const storage = getStorage(app);
+const storage = configured
+  ? getStorage(app)
+  : inert<ReturnType<typeof getStorage>>("storage");
 
-if (process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS === "true" && !globalForFirebase._emulatorsConnected) {
+if (
+  configured &&
+  process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS === "true" &&
+  !globalForFirebase._emulatorsConnected
+) {
   globalForFirebase._emulatorsConnected = true;
   connectAuthEmulator(auth, "http://localhost:9098", { disableWarnings: true });
   connectFirestoreEmulator(db, "localhost", 8086);
   connectStorageEmulator(storage, "localhost", 9198);
 }
 
-const isConfigured = !!process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+const isConfigured = configured;
 let analytics: ReturnType<typeof getAnalytics> | null = null;
 if (typeof window !== "undefined" && isConfigured) {
   isSupported().then((supported) => {
