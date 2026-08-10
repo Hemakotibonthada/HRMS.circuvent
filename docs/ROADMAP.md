@@ -259,6 +259,25 @@ Each of these was live code, not a hypothetical.
 | **`/api/helpdesk` returned `data: []`** after authenticating | Reads as "you have no tickets" rather than "this is not built". |
 | **Racy application-level uniqueness on custom fields** | Two concurrent requests both pass the `SELECT` and both insert. Replaced with a trigger-maintained partial unique index. |
 | **A regex-on-jsonb check for scorecard ranges** | Would have matched digits inside competency names — rejecting valid cards and passing invalid ones. Replaced with a trigger. |
+| **`if (previous?.capturedAt && …)`** in the new geofence spoofing check | A timestamp of `0` is falsy, so the impossible-speed check was skipped entirely for it. Same shape as treating `Number("")` as absent. Now compares against `undefined`. |
+| **Two haversine implementations with different Earth radii** — `attendance.neon.ts` used 6,371,000, `mobile/geofence.ts` uses 6,371,008.8 | The phone and the server disagreed by ~1 m per km, enough to put someone on opposite sides of a 50 m office fence depending on which was asked. Consolidated onto the tested module. |
+| **The mobile API client could never have signed in** | It read `body.accessToken`; `/api/auth/login` returns `body.tokens.accessToken`, and only when the caller declares itself native — which the client never did. Its own tests encoded the wrong shape, so they passed. Fixed and pinned. |
+| **`attendance_review_has_reason_check` passed the row it existed to reject** | `geofence_confidence IN (…)` is `NULL` when the column is `NULL`, and a `CHECK` evaluating to `NULL` passes. Caught by the verifier check written alongside it. |
+
+### Accessibility defects in the shared palette
+
+Measured while converting the web tokens (`src/app/globals.css`, oklch) to sRGB for React
+Native. All four are in the **web** palette and are **not yet fixed there** — changing the web
+theme is a separate change needing its own visual review. The mobile palette
+(`mobile/src/theme/tokens.ts`) corrects them and `tokens.test.ts` asserts every ratio, so it
+cannot regress.
+
+| Pair | Measured | Required | Consequence |
+|---|---|---|---|
+| Dark `--card` on dark `--background` | **1.04:1** | — | The card is not visibly there. Every grouped surface in dark mode is invisible. |
+| Dark `--muted-foreground` on `--card` | **4.09:1** | 4.5:1 | Dates, captions and helper text below AA. |
+| Light `--destructive` on white | **4.11:1** | 4.5:1 | Error messages below AA — the text that matters most when something has gone wrong. |
+| Light `--success` on white | **3.02:1** | 4.5:1 | Barely half the required ratio, on approval and paid states. |
 
 
 

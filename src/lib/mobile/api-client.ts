@@ -53,6 +53,29 @@ export class OfflineError extends Error {
   }
 }
 
+/**
+ * Identifies this client as native to the auth routes.
+ *
+ * /api/auth/login sets httpOnly cookies and, by default, returns *no* tokens
+ * in the body — deliberately, because handing a browser a JS-readable access
+ * token gives up the XSS protection the cookie exists to provide. It only
+ * includes them when the caller declares itself native. React Native has no
+ * dependable cookie jar, so without this header the app receives a 200 with
+ * no tokens and can never sign in.
+ */
+const NATIVE_CLIENT_HEADER = { "x-circuvent-client": "native" } as const;
+
+/** The shape both /api/auth/login and /api/auth/refresh return to native callers. */
+interface TokenPayload {
+  tokens?: { accessToken?: string; refreshToken?: string; expiresIn?: number };
+}
+
+function readTokens(body: TokenPayload): { access: string; refresh: string } | null {
+  const access = body.tokens?.accessToken;
+  const refresh = body.tokens?.refreshToken;
+  return access && refresh ? { access, refresh } : null;
+}
+
 export class MobileApiClient {
   private refreshInFlight: Promise<boolean> | null = null;
   private readonly fetchImpl: typeof fetch;
@@ -164,23 +187,23 @@ export class MobileApiClient {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            // Sent in the body rather than a cookie, since React Native has no
-            // dependable cookie jar across restarts.
-            authorization: `Bearer ${refreshToken}`,
+            ...NATIVE_CLIENT_HEADER,
           },
+          // Sent in the body rather than a cookie, since React Native has no
+          // dependable cookie jar across restarts. The route treats a body
+          // token as its signal that the caller is native, and echoes the
+          // rotated pair back instead of only setting cookies.
           body: JSON.stringify({ refreshToken }),
           signal: AbortSignal.timeout(this.timeoutMs),
         });
 
         if (!response.ok) return false;
 
-        const body = (await response.json()) as {
-          accessToken?: string;
-          refreshToken?: string;
-        };
-        if (!body.accessToken || !body.refreshToken) return false;
+        const body = (await response.json()) as TokenPayload;
+        const pair = readTokens(body);
+        if (!pair) return false;
 
-        await this.options.tokens.setTokens(body.accessToken, body.refreshToken);
+        await this.options.tokens.setTokens(pair.access, pair.refresh);
         return true;
       } catch {
         // A refresh that failed on the network is not proof the session is
@@ -198,14 +221,12 @@ export class MobileApiClient {
   async signIn(email: string, password: string, totpCode?: string): Promise<void> {
     const response = await this.fetchImpl(`${this.options.baseUrl}/api/auth/login`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, password, totpCode, app: "hrms" }),
+      headers: { "content-type": "application/json", ...NATIVE_CLIENT_HEADER },
+      body: JSON.stringify({ email, password, totpCode, app: "hrms", client: "native" }),
       signal: AbortSignal.timeout(this.timeoutMs),
     });
 
-    const body = (await response.json().catch(() => ({}))) as {
-      accessToken?: string;
-      refreshToken?: string;
+    const body = (await response.json().catch(() => ({}))) as TokenPayload & {
       error?: string;
       mfaRequired?: boolean;
     };
@@ -213,13 +234,17 @@ export class MobileApiClient {
     if (!response.ok) {
       throw new ApiError(body.error ?? "Sign-in failed", response.status, body);
     }
-    if (!body.accessToken || !body.refreshToken) {
-      // The web flow sets cookies; mobile needs the tokens in the body. A
-      // response without them means the server is not in mobile mode.
+
+    const pair = readTokens(body);
+    if (!pair) {
+      // The web flow sets cookies and returns no tokens by design. Reaching
+      // here means the native declaration above did not take effect, and
+      // proceeding would leave the app apparently signed in with nothing to
+      // authenticate the next request.
       throw new ApiError("Sign-in did not return tokens", 500, body);
     }
 
-    await this.options.tokens.setTokens(body.accessToken, body.refreshToken);
+    await this.options.tokens.setTokens(pair.access, pair.refresh);
   }
 
   async signOut(): Promise<void> {

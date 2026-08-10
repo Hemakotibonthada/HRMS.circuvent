@@ -136,7 +136,7 @@ describe("token refresh", () => {
     let calls = 0;
     const { api, tokens } = client((url) => {
       if (url.includes("/api/auth/refresh")) {
-        return Response.json({ accessToken: "access-2", refreshToken: "refresh-2" });
+        return Response.json({ ok: true, tokens: { accessToken: "access-2", refreshToken: "refresh-2" } });
       }
       calls++;
       return calls === 1
@@ -161,7 +161,7 @@ describe("token refresh", () => {
         // A real refresh takes a round-trip, which is when the race happens.
         await new Promise((r) => setTimeout(r, 10));
         refreshed = true;
-        return Response.json({ accessToken: "access-2", refreshToken: "refresh-2" });
+        return Response.json({ ok: true, tokens: { accessToken: "access-2", refreshToken: "refresh-2" } });
       }
       return refreshed
         ? Response.json({ ok: true })
@@ -184,7 +184,7 @@ describe("token refresh", () => {
     let dataCalls = 0;
     const { api, onSignedOut } = client((url) => {
       if (url.includes("/api/auth/refresh")) {
-        return Response.json({ accessToken: "a2", refreshToken: "r2" });
+        return Response.json({ ok: true, tokens: { accessToken: "a2", refreshToken: "r2" } });
       }
       dataCalls++;
       return Response.json({ error: "nope" }, { status: 401 });
@@ -237,7 +237,7 @@ describe("sign in and out", () => {
   it("stores both tokens on success", async () => {
     const tokens = new MemoryTokens(null, null);
     const { api } = client(
-      () => Response.json({ accessToken: "a1", refreshToken: "r1" }),
+      () => Response.json({ tokens: { accessToken: "a1", refreshToken: "r1" } }),
       tokens
     );
 
@@ -250,12 +250,45 @@ describe("sign in and out", () => {
     let body: Record<string, unknown> = {};
     const { api } = client((_, init) => {
       body = JSON.parse(String(init?.body));
-      return Response.json({ accessToken: "a", refreshToken: "r" });
+      return Response.json({ tokens: { accessToken: "a", refreshToken: "r" } });
     });
 
     await api.signIn("asha@circuvent.com", "pw", "123456");
     expect(body.totpCode).toBe("123456");
     expect(body.app).toBe("hrms");
+  });
+
+  it("declares itself native, or the server returns no tokens at all", async () => {
+    // /api/auth/login sets httpOnly cookies and omits tokens from the body
+    // unless the caller says it is native. React Native has no cookie jar, so
+    // without this the app gets a 200 and is still signed out. This test
+    // exists because that is exactly what the client did: it read
+    // body.accessToken, the server sent body.tokens.accessToken, and only
+    // when asked. Sign-in could never have succeeded on a device.
+    let headers: Record<string, string> = {};
+    let body: Record<string, unknown> = {};
+    const { api } = client((_, init) => {
+      headers = (init?.headers ?? {}) as Record<string, string>;
+      body = JSON.parse(String(init?.body));
+      return Response.json({ tokens: { accessToken: "a", refreshToken: "r" } });
+    });
+
+    await api.signIn("asha@circuvent.com", "pw");
+    expect(headers["x-circuvent-client"]).toBe("native");
+    expect(body.client).toBe("native");
+  });
+
+  it("refuses a sign-in that returned no tokens rather than appearing to succeed", async () => {
+    // A cookie-only response means the native declaration did not take. Half
+    // signed in is worse than not signed in: every later request 401s and the
+    // user is told their session expired seconds after typing their password.
+    const tokens = new MemoryTokens(null, null);
+    const { api } = client(() => Response.json({ user: { id: "u1" } }), tokens);
+
+    await expect(api.signIn("asha@circuvent.com", "pw")).rejects.toMatchObject({
+      status: 500,
+    });
+    expect(tokens.access).toBeNull();
   });
 
   it("surfaces the server's sign-in error", async () => {

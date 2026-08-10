@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "Circuvent HR",
+    "slug": "circuvent-hrms",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "circuvent",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#F4F4F7"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.circuvent.hrms",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Unlock Circuvent HR without typing your password.",
+        "NSLocationWhenInUseUsageDescription": "Circuvent HR checks you are at your work location when you clock in. Your location is only read at the moment you tap clock in or clock out, and is never tracked in the background.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.circuvent.hrms",
+      "adaptiveIcon": {
+        "backgroundColor": "#F4F4F7"
+      },
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.USE_BIOMETRIC"
+      ],
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
+      ],
+      "allowBackup": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Circuvent HR checks you are at your work location when you clock in."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

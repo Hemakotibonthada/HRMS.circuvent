@@ -41,6 +41,11 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    // The Expo app is a separate package with its own tsconfig, React Native
+    // types and lib target. Left in, its files are compiled against the DOM
+    // lib here and every react-native import fails — noise that would bury
+    // real errors in the web app. `npm run typecheck:mobile` covers it.
+    "mobile"
   ]
 }
