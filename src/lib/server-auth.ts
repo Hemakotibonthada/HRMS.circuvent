@@ -19,6 +19,7 @@ import {
 } from "firebase-admin/app";
 import { getAuth, type DecodedIdToken } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { verifyAccessToken } from "@/lib/auth/tokens";
 
 const ADMIN_APP_NAME = "circuvent-server";
 
@@ -102,9 +103,39 @@ function extractBearerToken(req: Request): string | null {
 }
 
 /** Cryptographically verify the caller's Firebase ID token. */
+/**
+ * Verifies the caller's credential.
+ *
+ * The suite session JWT is checked first, because it is what /api/auth/login
+ * actually issues and what both the web app and the mobile apps carry. Firebase
+ * remains as a fallback for anything still minting an ID token.
+ *
+ * The suite claims are mapped onto the DecodedIdToken shape so the handful of
+ * routes that call this directly — expenses, helpdesk, recruitment — keep
+ * working unchanged. Without this they stayed Firebase-only and returned 401 to
+ * a perfectly valid session.
+ */
 export async function verifyRequest(req: Request): Promise<DecodedIdToken> {
-  const token = extractBearerToken(req);
+  const token = extractBearerToken(req) ?? extractSessionCookie(req);
   if (!token) throw new AuthError("Missing bearer token");
+
+  const claims = await verifyAccessToken(token);
+  if (claims) {
+    return {
+      uid: claims.sub,
+      email: claims.email,
+      organizationId: claims.org,
+      role: claims.role,
+      // Present so downstream reads of the standard fields do not see undefined.
+      aud: "circuvent-suite",
+      auth_time: Math.floor(Date.now() / 1000),
+      exp: claims.exp ?? 0,
+      iat: claims.iat ?? 0,
+      iss: "https://circuvent.com",
+      sub: claims.sub,
+      firebase: { identities: {}, sign_in_provider: "circuvent-session" },
+    } as unknown as DecodedIdToken;
+  }
 
   try {
     return await adminAuth().verifyIdToken(token, true);
@@ -113,9 +144,22 @@ export async function verifyRequest(req: Request): Promise<DecodedIdToken> {
   }
 }
 
+/** The suite session cookie, for same-origin callers that send no header. */
+function extractSessionCookie(req: Request): string | null {
+  const cookie = req.headers.get("cookie");
+  if (!cookie) return null;
+  const match = cookie.match(/(?:^|;\s*)cv_access=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 async function hasRole(decoded: DecodedIdToken, roles: string[]): Promise<boolean> {
   if (decoded.admin === true) return true;
   if (typeof decoded.role === "string" && roles.includes(decoded.role)) return true;
+
+  // For a suite session the role in the token is authoritative. Falling through
+  // to Firestore would throw for lack of Admin credentials and turn a clean
+  // "insufficient permissions" into a 500.
+  if (decoded.firebase?.sign_in_provider === "circuvent-session") return false;
 
   const snap = await adminDb().collection("users").doc(decoded.uid).get();
   const role = snap.exists ? (snap.get("role") as string | undefined) : undefined;
