@@ -229,30 +229,37 @@ that enterprise buyers actually evaluate on.
 | **Learning** | ✅ | Prerequisites, duration-weighted progress, server-side grading, recertification from completion date, org-wide compliance report including staff with no enrolment. |
 | **Documents & e-signature** | ✅ | Token rendering that refuses on a blank, frozen content hash, ordered signing envelope, public token-authenticated signing route. |
 | **Custom fields** | ✅ | Definitions and values as real rows; type changes refused once values exist; uniqueness enforced by a trigger-maintained partial index, not an application check. |
+| **Data governance** | ✅ | Retention schedules, legal holds, erasure as three separate decisions, append-only evidence, consent per policy version. |
+| **SSO + SCIM** | ✅ | OIDC with PKCE, four deprovisioning shapes handled, SAML deliberately not hand-rolled (see `src/lib/sso.ts` header). |
+| **Compensation** | ✅ | Merit matrix by rating × quartile, budget as a hard DB constraint, equity vesting, suppressed-group pay gap. |
+| **Helpdesk SLA** | ✅ | Business-hours clocks, DST-safe, clock pauses only for the requester, confidentiality as a WHERE clause. |
+| **Assets** | ✅ | Depreciation feeding the balance sheet, custody chain, book-value exit clearance. |
+| **Indian statutory** | ✅ | PF (with the EPS cap), ESI contribution periods, per-state PT, gratuity at 15/26, marginal income tax, LWF. |
+| **Performance** | ✅ | Cascading goal rollup, calibration that reports rather than reshapes, 360° anonymity including the reconstruction-by-subtraction case. |
+| **ATS** | ✅ | Pipeline that cannot be skipped, scorecards invisible until submitted, offer approval separation, funnel from the event log. |
 
-**Still to build:**
-
-| Area | Additions |
-|---|---|
-| **Payroll** | Multi-country engine, off-cycle runs, retro/arrears, full Indian statutory filing (Form 16, 24Q, PF ECR, ESI, PT, LWF), payroll approval workflow with maker-checker, bank advice file generation, payslip PDF with digital signature. |
-| **Time & attendance** | Geofenced punch, selfie/face verification, biometric device integration, overtime rules engine, regularisation workflow. |
-| **Performance** | Cascading OKRs, 9-box talent grid, calibration sessions, continuous check-ins, 360° with anonymity guarantees, competency framework mapping. |
-| **Compensation** | Merit cycle planning, budget pools, comp-ratio analysis, benchmarking, equity/ESOP tracking, total-rewards statement. |
-| **Workforce planning** | Headcount budgeting vs actuals, scenario modelling, req-to-hire pipeline, span-of-control analysis. |
-| **Learning** | SCORM/xAPI, learning paths, skill-gap analysis, external LMS connectors. |
-| **Case management** | HR helpdesk with SLA, knowledge-base deflection, investigation workflows for grievances/incidents. |
-| **Data governance** | Retention schedules, subject-access export, right-to-erasure across fixed and custom fields. |
-| **Assets** | Issue, return, depreciation, audit. |
+**Totals:** 1,170 tests, 62 database isolation checks, `npm run verify` green.
 
 ### Defects found and fixed while building these
 
+Each of these was live code, not a hypothetical.
+
 | Defect | Consequence had it shipped |
 |---|---|
-| `scripts/verify-migrations.ts` batched fixture rows into the same `exec` as the statement under test | When the statement was correctly rejected, the fixture rolled back with it — two checks were passing on a foreign-key error, not the constraint they claimed to test. |
-| `0005_rls_for_scheduling_tables.sql` was never added to `drizzle/meta/_journal.json` | `db:verify` reads the directory so it passed, but `drizzle-kit migrate` reads the journal — the migration would never have run in production. Now guarded by a check. |
-| Two `custom_fields` jsonb columns existed with no reader | A second home for the same concept is how a field ends up written to one place and read from the other. Both dropped. |
-| Application-level uniqueness check on custom fields was racy | Two concurrent requests both pass the `SELECT` and both insert. Replaced with a partial unique index over a trigger-maintained flag. |
-| `canChangeType` message read "1 record already hold a value" | Cosmetic, but it was the visible half of a guard nobody would trust. |
+| **Professional tax, Karnataka**: threshold was ₹15,000; it has been ₹25,000 since April 2023 | ₹200 a month deducted from every employee between the two figures who did not owe it. **The existing test asserted the wrong number, pinning the bug in place.** |
+| **Section 87A rebate**: applied below ₹7,00,000; under the Finance Act 2025 it is ₹12,00,000 | Everyone in between taxed on income carrying no liability. At ₹11,00,000 taxable, roughly ₹40,000 taken from someone who owed nothing. Also pinned by a test. |
+| **Maharashtra February PT**: the ₹300 rate was commented "Simplified" and skipped | ₹100 per employee per year short of the ₹2,500 statutory maximum. |
+| **Employer PF**: a single figure with no EPS/PF split, no admin charge, no EDLI | The split *is* what the ECR file reports; employer cost understated. |
+| **ESI**: hard-stopped at the wage ceiling | Someone crossing mid-period lost cover partway through a claim. |
+| **Declining-balance depreciation** never reached salvage | Assets never fully depreciated, sitting above their agreed residual for ever. |
+| **Two drift checks passed over an empty set** | Caught by a companion check asserting the reflection found something. Now genuinely compares 79 tables and 1,233 columns. |
+| **`0005_rls_for_scheduling_tables.sql` missing from drizzle's journal** | `db:verify` reads the directory and passed; `drizzle-kit migrate` reads the journal, so it would never have run in production. Now guarded. |
+| **Verifier fixtures batched with the statement under test** | When that statement was correctly rejected the fixture rolled back with it — two checks were passing on a foreign-key error, not the constraint they claimed to test. |
+| **Four placeholder tables/columns with zero readers** (`custom_fields` jsonb ×2, `sso_connections`, `scim_tokens`, `tickets`) | Two homes for one concept is how a value is written to one and read from the other — the defect the referral module shipped with. All removed. |
+| **`/api/helpdesk` returned `data: []`** after authenticating | Reads as "you have no tickets" rather than "this is not built". |
+| **Racy application-level uniqueness on custom fields** | Two concurrent requests both pass the `SELECT` and both insert. Replaced with a trigger-maintained partial unique index. |
+| **A regex-on-jsonb check for scorecard ranges** | Would have matched digits inside competency names — rejecting valid cards and passing invalid ones. Replaced with a trigger. |
+
 
 
 ### 2.4 Production-grade UX
