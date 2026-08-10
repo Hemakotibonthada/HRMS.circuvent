@@ -8,3 +8,4 @@ export * from "./federation";
 export * from "./compensation";
 export * from "./helpdesk";
 export * from "./assets";
+export * from "./performance";

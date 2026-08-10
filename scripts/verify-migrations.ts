@@ -1129,6 +1129,133 @@ async function main() {
     detail: assetEventsImmutable ? "rejected" : "the custody chain is editable",
   });
 
+  // 41-44. Performance. Anonymity in 360° feedback is a promise made to people
+  //        before they answer honestly about their manager, and a rating
+  //        decides pay. Both are enforced by the database.
+  const cycleId = "abcdef00-0000-4000-8000-000000000001";
+  const reviewId = "abcdef00-0000-4000-8000-000000000002";
+  const sessionId = "abcdef00-0000-4000-8000-000000000003";
+
+  await db.exec(`
+    INSERT INTO hrms.review_cycles (id, org_id, name, period_start, period_end)
+    VALUES ('${cycleId}', '${orgA}', 'FY26', '2026-04-01', '2027-03-31');
+
+    INSERT INTO hrms.performance_reviews (id, org_id, cycle_id, employee_id)
+    VALUES ('${reviewId}', '${orgA}', '${cycleId}', '${referrer}');
+
+    INSERT INTO hrms.calibration_sessions (id, org_id, cycle_id, name)
+    VALUES ('${sessionId}', '${orgA}', '${cycleId}', 'Engineering');
+  `);
+
+  // Nobody gives themselves peer feedback: it would let a subject pad their
+  // own report from an account the anonymity rules then protect.
+  let selfPeerBlocked = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.feedback_requests
+        (org_id, cycle_id, subject_id, respondent_id, relationship)
+      VALUES ('${orgA}', '${cycleId}', '${referrer}', '${referrer}', 'peer')
+    `);
+  } catch {
+    selfPeerBlocked = true;
+  }
+  checks.push({
+    name: "nobody can be asked for peer feedback on themselves",
+    pass: selfPeerBlocked,
+    detail: selfPeerBlocked ? "rejected" : "self-nomination as a peer was allowed",
+  });
+
+  // Responses are written once. A rewrite would let someone be persuaded to
+  // revise what they said.
+  const requestId = "abcdef00-0000-4000-8000-000000000004";
+
+  // Seeded first: the request below has a foreign key to it, and batching the
+  // two would fail on the reference rather than on anything under test.
+  await db.exec(`
+    INSERT INTO hrms.employees
+      (id, org_id, employee_code, first_name, last_name, work_email, designation, join_date)
+    VALUES ('${verifier}', '${orgA}', 'CIR-0002', 'Ravi', 'Kumar', 'ravi@example.com', 'Engineer', '2026-01-01')
+    ON CONFLICT DO NOTHING;
+  `);
+
+  await db.exec(`
+    INSERT INTO hrms.feedback_requests
+      (id, org_id, cycle_id, subject_id, respondent_id, relationship)
+    VALUES ('${requestId}', '${orgA}', '${cycleId}', '${referrer}', '${verifier}', 'peer');
+
+    INSERT INTO hrms.feedback_responses (org_id, request_id, subject_id, relationship, comments)
+    VALUES ('${orgA}', '${requestId}', '${referrer}', 'peer', 'Original comment');
+  `);
+
+  let feedbackFinal = false;
+  try {
+    await db.exec(`UPDATE hrms.feedback_responses SET comments = 'Revised under pressure'`);
+  } catch {
+    feedbackFinal = true;
+  }
+  checks.push({
+    name: "360 feedback cannot be rewritten after submission",
+    pass: feedbackFinal,
+    detail: feedbackFinal ? "rejected" : "a submitted response could be revised",
+  });
+
+  // An unexplained downgrade is indefensible at appeal, and an appeal is where
+  // this row is read.
+  let justificationRequired = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.calibration_adjustments
+        (org_id, session_id, review_id, employee_id, rating_after, justification)
+      VALUES ('${orgA}', '${sessionId}', '${reviewId}', '${referrer}', 3, 'n/a')
+    `);
+  } catch {
+    justificationRequired = true;
+  }
+  checks.push({
+    name: "a calibration change needs a real justification",
+    pass: justificationRequired,
+    detail: justificationRequired ? "rejected" : "an unexplained downgrade was allowed",
+  });
+
+  await db.exec(`
+    INSERT INTO hrms.calibration_adjustments
+      (org_id, session_id, review_id, employee_id, rating_before, rating_after, justification)
+    VALUES ('${orgA}', '${sessionId}', '${reviewId}', '${referrer}', 4, 3,
+            'Moderated against peers in the same grade across Engineering');
+  `);
+
+  let adjustmentsImmutable = false;
+  try {
+    await db.exec(`UPDATE hrms.calibration_adjustments SET rating_before = 3`);
+  } catch {
+    adjustmentsImmutable = true;
+  }
+  checks.push({
+    name: "the calibration record rejects UPDATE",
+    pass: adjustmentsImmutable,
+    detail: adjustmentsImmutable
+      ? "rejected"
+      : "the answer to 'why was my rating lowered?' is editable",
+  });
+
+  // A goal that is its own parent makes the rollup recurse until the request
+  // hangs.
+  let selfParentBlocked = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.performance_goals (id, org_id, employee_id, parent_goal_id, title)
+      VALUES ('abcdef00-0000-4000-8000-000000000005', '${orgA}', '${referrer}',
+              'abcdef00-0000-4000-8000-000000000005', 'Recursive goal')
+    `);
+  } catch {
+    selfParentBlocked = true;
+  }
+  checks.push({
+    name: "a goal cannot be its own parent",
+    pass: selfParentBlocked,
+    detail: selfParentBlocked ? "rejected" : "a self-referencing goal was allowed",
+  });
+
   console.log("");
   for (const c of checks) {
     console.log(`  ${c.pass ? "ok   " : "FAIL "} ${c.name}${c.pass ? "" : ` — ${c.detail}`}`);

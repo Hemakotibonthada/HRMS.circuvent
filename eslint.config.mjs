@@ -88,6 +88,8 @@ const eslintConfig = [
       "src/app/api/helpdesk/**/*.ts",
       "src/lib/assets.ts",
       "src/lib/statutory-india.ts",
+      "src/lib/performance.ts",
+      "src/app/api/performance/**/*.ts",
       "src/app/api/assets/**/*.ts",
       "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],

@@ -127,6 +127,20 @@
       "when": 1785984510476,
       "tag": "0017_rls_for_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785984510477,
+      "tag": "0018_performance",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785984510478,
+      "tag": "0019_rls_for_performance",
+      "breakpoints": true
     }
   ]
 }
