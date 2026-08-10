@@ -17,11 +17,9 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { groupModulesByCategory } from "@/lib/constants";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth, signOutSession } from "@/hooks/use-auth";
 import { useRBAC } from "@/hooks/use-rbac";
 import { getRoleLabel, getRoleBadgeColor } from "@/lib/rbac";
-import { firebaseSignOut, auth } from "@/lib/firebase";
-import { isLocalCredentialsMode, clearLocalSession } from "@/lib/local-auth";
 import { useAppStore } from "@/stores/app-store";
 
 export function AppSidebar() {
@@ -42,12 +40,7 @@ export function AppSidebar() {
   })).filter(cat => cat.items.length > 0);
 
   const handleSignOut = async () => {
-    if (isLocalCredentialsMode()) {
-      clearLocalSession();
-      window.dispatchEvent(new Event("local-auth-change"));
-    } else {
-      await firebaseSignOut(auth);
-    }
+    await signOutSession();
     router.push("/login");
   };
 

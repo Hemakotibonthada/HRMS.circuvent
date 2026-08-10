@@ -8,13 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { auth, signInWithEmailAndPassword } from "@/lib/firebase";
-import {
-  isLocalCredentialsMode,
-  validateLocalCredentials,
-  setLocalSession,
-  LOCAL_USERS,
-} from "@/lib/local-auth";
 import { toast } from "sonner";
 
 export default function LoginPage() {
@@ -24,8 +17,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const isLocalMode = isLocalCredentialsMode();
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
@@ -34,39 +25,46 @@ export default function LoginPage() {
     }
     setLoading(true);
 
-    // LOCAL CREDENTIALS MODE
-    if (isLocalMode) {
-      // Small delay to mimic network
-      await new Promise((r) => setTimeout(r, 400));
-      const localUser = validateLocalCredentials(email, password);
-      if (localUser) {
-        setLocalSession(localUser);
-        window.dispatchEvent(new Event("local-auth-change"));
-        toast.success(`Welcome back, ${localUser.displayName}!`);
-        router.push("/dashboard");
-      } else {
-        toast.error("Invalid email or password");
-      }
-      setLoading(false);
-      return;
-    }
-
-    // FIREBASE MODE
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      toast.success("Welcome back!");
-      router.push("/dashboard");
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Login failed";
-      if (message.includes("invalid-credential") || message.includes("wrong-password")) {
-        toast.error("Invalid email or password");
-      } else if (message.includes("user-not-found")) {
-        toast.error("No account found with this email");
-      } else if (message.includes("too-many-requests")) {
-        toast.error("Too many attempts. Try again later.");
-      } else {
-        toast.error("Login failed. Please try again.");
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        mfaRequired?: boolean;
+        passwordResetRequired?: boolean;
+        retryAfterSeconds?: number;
+        user?: { displayName?: string };
+      };
+
+      if (!res.ok) {
+        // The server already decides what is safe to disclose — an unknown
+        // account and a wrong password deliberately produce the same message —
+        // so its wording is shown rather than second-guessed here.
+        if (body.mfaRequired) {
+          toast.error("Enter your two-step verification code to continue.");
+        } else if (body.passwordResetRequired) {
+          toast.error("Your password must be reset before signing in.");
+          router.push("/forgot-password");
+        } else if (body.retryAfterSeconds) {
+          toast.error(
+            `Too many attempts. Try again in ${Math.ceil(body.retryAfterSeconds / 60)} minute(s).`
+          );
+        } else {
+          toast.error(body.error || "Login failed. Please try again.");
+        }
+        return;
       }
+
+      // Tells every useAuth instance to re-read the session it now has.
+      window.dispatchEvent(new Event("circuvent-auth-change"));
+      toast.success(body.user?.displayName ? `Welcome back, ${body.user.displayName}!` : "Welcome back!");
+      router.push("/dashboard");
+    } catch {
+      toast.error("Could not reach the sign-in service. Check your connection.");
     } finally {
       setLoading(false);
     }
@@ -155,38 +153,6 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-
-            {/* Quick login buttons for local mode */}
-            {isLocalMode && (
-              <div className="mt-5 border-t pt-4">
-                <p className="text-xs text-center text-muted-foreground mb-3 flex items-center justify-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Local Credentials Mode
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {LOCAL_USERS.map((localUser) => (
-                    <Button
-                      key={localUser.email}
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-9 justify-start gap-2"
-                      onClick={() => {
-                        // Only prefills the email — the dev password comes from
-                        // NEXT_PUBLIC_LOCAL_DEV_PASSWORD and is never bundled here.
-                        setEmail(localUser.email);
-                        setPassword(process.env.NEXT_PUBLIC_LOCAL_DEV_PASSWORD ?? "");
-                      }}
-                    >
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-violet-500 to-purple-600 text-[9px] text-white font-bold">
-                        {localUser.displayName.split(" ").map(n => n[0]).join("").slice(0, 2)}
-                      </span>
-                      <span className="truncate">{localUser.displayName}</span>
-                      <span className="ml-auto rounded bg-muted px-1 py-0.5 text-[9px] capitalize text-muted-foreground">{localUser.role}</span>
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <p className="mt-6 text-center text-sm text-muted-foreground">
               Don&apos;t have an account?{" "}

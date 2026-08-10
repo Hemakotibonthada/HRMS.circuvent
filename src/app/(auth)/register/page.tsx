@@ -8,10 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import {
-  auth, createUserWithEmailAndPassword, updateProfile,
-  db, doc, setDoc, serverTimestamp
-} from "@/lib/firebase";
 import { toast } from "sonner";
 
 export default function RegisterPage() {
@@ -35,64 +31,37 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(cred.user, { displayName: name });
-
-      const orgSlug = company.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
-      // Create organization
-      const orgRef = doc(db, "organizations", cred.user.uid + "-org");
-      await setDoc(orgRef, {
-        name: company,
-        slug: orgSlug,
-        ownerId: cred.user.uid,
-        adminIds: [cred.user.uid],
-        memberIds: [cred.user.uid],
-        plan: "starter",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      // The organisation, the owner account and its roles are created together
+      // in one server transaction. Doing it here meant a half-made tenant
+      // whenever any single write failed.
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name, company, email, password }),
       });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        signedIn?: boolean;
+        message?: string;
+      };
 
-      // Create user profile
-      await setDoc(doc(db, "users", cred.user.uid), {
-        uid: cred.user.uid,
-        displayName: name,
-        email,
-        role: "owner",
-        organizationId: orgRef.id,
-        createdAt: serverTimestamp(),
-      });
+      if (!res.ok) {
+        toast.error(body.error || "Registration failed. Please try again.");
+        return;
+      }
 
-      // Create trial subscription
-      const now = new Date();
-      const trialEnd = new Date(now);
-      trialEnd.setDate(trialEnd.getDate() + 14);
-      await setDoc(doc(db, "subscriptions", orgRef.id), {
-        organizationId: orgRef.id,
-        ownerId: cred.user.uid,
-        plan: "starter",
-        status: "trial",
-        maxEmployees: 25,
-        currentEmployees: 1,
-        pricePerEmployee: 3,
-        currency: "USD",
-        billingCycle: "monthly",
-        trialEndsAt: trialEnd.toISOString(),
-        currentPeriodStart: now.toISOString(),
-        currentPeriodEnd: trialEnd.toISOString(),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      if (body.signedIn === false) {
+        toast.success(body.message || "Account created. Please sign in.");
+        router.push("/login");
+        return;
+      }
 
+      window.dispatchEvent(new Event("circuvent-auth-change"));
       toast.success("Account created! Welcome to Circuvent HRMS.");
       router.push("/dashboard");
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Registration failed";
-      if (msg.includes("email-already-in-use")) {
-        toast.error("An account with this email already exists");
-      } else {
-        toast.error("Registration failed. Please try again.");
-      }
+    } catch {
+      toast.error("Could not reach the sign-up service. Check your connection.");
     } finally {
       setLoading(false);
     }

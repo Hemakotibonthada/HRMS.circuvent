@@ -52,6 +52,8 @@ const eslintConfig = [
       "src/lib/intelligence/**/*.ts",
       "src/lib/mobile/**/*.ts",
       "mobile/src/theme/**/*.ts",
+      "mobile/src/lib/leave-rules.ts",
+      "mobile/src/lib/leave-rules.test.ts",
       "src/lib/api-keys.ts",
       "src/lib/api-v1-context.ts",
       "src/lib/firebase-env.ts",

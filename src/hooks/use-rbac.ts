@@ -1,20 +1,14 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import {
-  isLocalCredentialsMode,
-  getLocalSession,
-} from "@/lib/local-auth";
 import {
   type Role,
   type Permission,
   hasPermission,
   hasAnyPermission,
   canAccessModule,
-  ROLE_PERMISSIONS,
 } from "@/lib/rbac";
-import { db, doc, getDoc } from "@/lib/firebase";
 
 export interface RBACContext {
   role: Role;
@@ -28,80 +22,45 @@ export interface RBACContext {
   isEmployee: boolean;
 }
 
+const KNOWN: Role[] = ["admin", "hr", "manager", "employee"];
+
 /**
- * Hook that provides RBAC context for the current user.
- * For local-creds mode: reads role from localStorage session.
- * For Firebase mode: looks up role from Firestore `users/{uid}` document.
- * Falls back to "employee" if no role document exists.
+ * RBAC for the current user, taken from the session.
+ *
+ * The role is a claim on the signed session token, so it needs no lookup and
+ * cannot disagree with what the API will enforce on the same request.
+ *
+ * The previous implementation read a Firestore `users/{uid}` document and, when
+ * that document was missing, guessed from the email address — anyone whose
+ * address merely contained "admin" was treated as an administrator by the whole
+ * dashboard. Server routes never honoured that guess, so the UI offered actions
+ * the API then refused; worse, it was a real privilege inference from a string
+ * a user can often choose.
+ *
+ * This is still only a UI concern. Every route re-checks the role server-side,
+ * because a client can always claim anything.
  */
 export function useRBAC(): RBACContext {
-  const { user } = useAuth();
-  const [firebaseRole, setFirebaseRole] = useState<Role | null>(null);
-  const [roleLoading, setRoleLoading] = useState(false);
-
-  // Fetch role from Firestore for Firebase users
-  useEffect(() => {
-    if (isLocalCredentialsMode() || !user?.uid) {
-      setFirebaseRole(null);
-      return;
-    }
-
-    let cancelled = false;
-    setRoleLoading(true);
-
-    async function fetchRole() {
-      try {
-        // Check users collection for role assignment
-        const userDoc = await getDoc(doc(db, "users", user!.uid));
-        if (!cancelled) {
-          if (userDoc.exists()) {
-            const data = userDoc.data();
-            const role = data?.role as Role;
-            if (role && (role === "admin" || role === "hr" || role === "manager" || role === "employee")) {
-              setFirebaseRole(role);
-            } else {
-              setFirebaseRole("employee");
-            }
-          } else {
-            // No user doc — check by email pattern for convenience
-            const email = user!.email || "";
-            if (email.startsWith("admin@") || email.includes("admin")) {
-              setFirebaseRole("admin");
-            } else if (email.startsWith("hr@") || email.includes("hr@")) {
-              setFirebaseRole("hr");
-            } else {
-              setFirebaseRole("employee");
-            }
-          }
-        }
-      } catch {
-        if (!cancelled) setFirebaseRole("employee");
-      } finally {
-        if (!cancelled) setRoleLoading(false);
-      }
-    }
-
-    fetchRole();
-    return () => { cancelled = true; };
-  }, [user]);
+  const { user, loading } = useAuth();
 
   const role: Role = useMemo(() => {
-    if (isLocalCredentialsMode()) {
-      const localUser = getLocalSession();
-      return (localUser?.role as Role) || "employee";
-    }
-    return firebaseRole || "employee";
-  }, [user, firebaseRole]);
+    const claimed = user?.role;
+    if (claimed === "owner") return "admin"; // owner outranks every app role
+    return KNOWN.includes(claimed as Role) ? (claimed as Role) : "employee";
+  }, [user?.role]);
 
-  return useMemo(() => ({
-    role,
-    roleLoading,
-    can: (permission: Permission) => hasPermission(role, permission),
-    canAny: (permissions: Permission[]) => hasAnyPermission(role, permissions),
-    canAccessModule: (moduleId: string) => canAccessModule(role, moduleId),
-    isAdmin: role === "admin",
-    isHR: role === "hr",
-    isManager: role === "manager",
-    isEmployee: role === "employee",
-  }), [role, roleLoading]);
+  return useMemo(
+    () => ({
+      role,
+      roleLoading: loading,
+      can: (permission: Permission) => hasPermission(role, permission),
+      canAny: (permissions: Permission[]) => hasAnyPermission(role, permissions),
+      canAccessModule: (moduleId: string) => canAccessModule(role, moduleId),
+      isAdmin: role === "admin",
+      isHR: role === "hr",
+      isManager: role === "manager",
+      isEmployee: role === "employee",
+    }),
+    [role, loading]
+  );
 }

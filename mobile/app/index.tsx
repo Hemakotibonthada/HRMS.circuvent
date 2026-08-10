@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Linking, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { Button } from "@/components/Button";
 import { ApiError, OfflineError, evaluateClockIn, type Geofence } from "@/lib/contracts";
 import { readPosition } from "@/lib/location";
@@ -49,6 +50,7 @@ export default function TodayScreen() {
   const theme = useTheme();
   const { api, user, signOut } = useSession();
   const { submit, pending } = useSync();
+  const router = useRouter();
 
   const [today, setToday] = useState<TodayResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -310,6 +312,14 @@ export default function TodayScreen() {
             ) : null}
           </View>
         ) : null}
+
+        <Button
+          label="Leave"
+          variant="secondary"
+          onPress={() => router.push("/leave")}
+          accessibilityHint="Shows your leave balance and requests"
+          style={{ marginTop: theme.spacing.lg }}
+        />
 
         <Button
           label="Sign out"
