@@ -59,9 +59,16 @@ describe("calculateSalaryStructure", () => {
 });
 
 describe("calculateProfessionalTax", () => {
-  it("exempts Karnataka salaries at or below ₹15,000/month", () => {
-    expect(calculateProfessionalTax(15_000)).toBe(0);
-    expect(calculateProfessionalTax(15_001)).toBe(200);
+  it("exempts Karnataka salaries below ₹25,000/month", () => {
+    // The threshold has been ₹25,000 since 1 April 2023. This test previously
+    // asserted ₹15,000, the pre-2023 figure, so it was pinning a bug that
+    // deducted ₹200 a month from everyone in between who did not owe it.
+    //
+    // Karnataka's notification reads "not less than ₹25,000", so ₹25,000
+    // exactly is taxable — unlike Maharashtra, which exempts up to ₹7,500.
+    expect(calculateProfessionalTax(24_999)).toBe(0);
+    expect(calculateProfessionalTax(25_000)).toBe(200);
+    expect(calculateProfessionalTax(20_000)).toBe(0);
   });
 
   it("caps Karnataka professional tax at ₹200/month", () => {
@@ -71,7 +78,14 @@ describe("calculateProfessionalTax", () => {
   it("uses the Maharashtra slabs when that state is given", () => {
     expect(calculateProfessionalTax(7_500, "maharashtra")).toBe(0);
     expect(calculateProfessionalTax(9_000, "maharashtra")).toBe(175);
-    expect(calculateProfessionalTax(50_000, "maharashtra")).toBe(200);
+    expect(calculateProfessionalTax(50_000, "maharashtra", 3)).toBe(200);
+  });
+
+  it("charges Maharashtra's higher February rate", () => {
+    // ₹300 in February brings the annual total to the ₹2,500 statutory
+    // maximum. This was previously commented as "simplified" and skipped,
+    // under-deducting ₹100 a year for every employee in the state.
+    expect(calculateProfessionalTax(50_000, "maharashtra", 2)).toBe(300);
   });
 });
 
@@ -83,7 +97,12 @@ describe("calculateNewRegimeIncomeTax", () => {
   });
 
   it("charges tax once income passes the rebate ceiling", () => {
-    expect(calculateNewRegimeIncomeTax(900_000)).toBeGreaterThan(0);
+    // The section 87A rebate covers taxable income up to ₹12,00,000 under the
+    // Finance Act 2025. This previously asserted tax at ₹9,00,000 gross, which
+    // pinned the FY 2023-24 threshold of ₹7,00,000 — so everyone between the
+    // two was taxed on income carrying no liability at all.
+    expect(calculateNewRegimeIncomeTax(900_000)).toBe(0);
+    expect(calculateNewRegimeIncomeTax(1_400_000)).toBeGreaterThan(0);
   });
 
   it("is monotonically non-decreasing across the slab boundaries", () => {
@@ -103,12 +122,20 @@ describe("calculateNewRegimeIncomeTax", () => {
   });
 
   it("includes the 4% health and education cess", () => {
-    const income = 1_000_000;
-    const taxable = income - 75_000; // 925,000
-    // Slabs: 0 on first 400k, 5% on next 400k = 20,000, 10% on 125,000 = 12,500.
-    const beforeCess = 20_000 + 12_500;
+    // ₹20,00,000 gross leaves ₹19,25,000 taxable, above the rebate ceiling.
+    // Slabs: nil on 4L, 5% on 4L = 20,000, 10% on 4L = 40,000,
+    // 15% on 4L = 60,000, 20% on 3,25,000 = 65,000. Total 1,85,000.
+    const income = 2_000_000;
+    const beforeCess = 20_000 + 40_000 + 60_000 + 65_000;
+
     expect(calculateNewRegimeIncomeTax(income)).toBe(Math.round(beforeCess * 1.04));
-    expect(taxable).toBe(925_000);
+  });
+
+  it("applies the rebate up to ₹12,00,000 taxable", () => {
+    // ₹12,75,000 gross less the ₹75,000 standard deduction is exactly at the
+    // ceiling, so nothing is due; a rupee more and the whole slab tax bites.
+    expect(calculateNewRegimeIncomeTax(1_275_000)).toBe(0);
+    expect(calculateNewRegimeIncomeTax(1_300_000)).toBeGreaterThan(0);
   });
 });
 

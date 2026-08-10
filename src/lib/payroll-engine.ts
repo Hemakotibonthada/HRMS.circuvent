@@ -1,3 +1,9 @@
+import {
+  calculateEsi,
+  calculatePf,
+  calculateIncomeTax as calculateStatutoryTax,
+  calculateProfessionalTax as calculateStatutoryPt,
+} from "@/lib/statutory-india";
 // ═══════════════════════════════════════════════════════════════
 // INDIAN PAYROLL COMPUTATION ENGINE
 // Complete salary structure, statutory deductions, tax computation,
@@ -189,6 +195,23 @@ export function generatePayslip(params: {
   loanRecovery?: number;
   otherDeductions?: number;
   annualTaxableIncome?: number;
+  /** State code for professional tax, e.g. "KA". Defaults to Karnataka. */
+  stateCode?: string;
+  /**
+   * Calendar month, 1-indexed.
+   *
+   * Needed because Maharashtra charges a higher professional tax in February.
+   * Without it that month is under-deducted.
+   */
+  monthNumber?: number;
+  /**
+   * Whether the employee was contributing to ESI at the start of the current
+   * contribution period.
+   *
+   * Someone who crosses the wage ceiling mid-period keeps contributing until
+   * the period ends, so cover is not lost partway through a claim.
+   */
+  wasContributingToEsiAtPeriodStart?: boolean;
 }): MonthlyPayslip {
   const { structure, workingDays, presentDays } = params;
   const lopDays = Math.max(0, workingDays - presentDays);
@@ -218,15 +241,35 @@ export function generatePayslip(params: {
   const totalEarnings = basic + hra + specialAllowance + conveyanceAllowance
     + medicalAllowance + lta + otherAllowances + overtime + bonus + arrears;
 
-  // Deductions
-  const pfEmployee = Math.min(Math.round(basic * 0.12), 1800);
-  const pfEmployer = Math.min(Math.round(basic * 0.12), 1800);
-  
+  // ── Statutory deductions ──
+  //
+  // Delegated to src/lib/statutory-india.ts, which is tested against the
+  // actual rules. The inline arithmetic this replaces had two defects:
+  //
+  //   - The employer's 12% was written as a single figure. It must split:
+  //     8.33% of the capped wage to the Pension Scheme and the remainder to
+  //     PF, and the split is what the ECR file reports. It also omitted
+  //     administrative charges and EDLI, understating employer cost.
+  //   - ESI stopped the moment gross crossed ₹21,000. Someone who crosses
+  //     mid-period must keep contributing to the end of the contribution
+  //     period, or cover is lost partway through a claim.
+  const pf = calculatePf(BigInt(Math.round(basic * 100)));
+  const pfEmployee = Number(pf.employeeContributionMinor) / 100;
+  const pfEmployer = Number(pf.employerPfMinor + pf.employerPensionMinor) / 100;
+
   const monthlyGross = basic + hra + specialAllowance + conveyanceAllowance + medicalAllowance + lta + otherAllowances;
-  const esiEmployee = monthlyGross <= 21000 ? Math.round(monthlyGross * 0.0075) : 0;
-  const esiEmployer = monthlyGross <= 21000 ? Math.round(monthlyGross * 0.0325) : 0;
-  
-  const professionalTax = calculateProfessionalTax(monthlyGross);
+
+  const esi = calculateEsi(BigInt(Math.round(monthlyGross * 100)), undefined, {
+    wasContributingAtPeriodStart: params.wasContributingToEsiAtPeriodStart,
+  });
+  const esiEmployee = Number(esi.employeeContributionMinor) / 100;
+  const esiEmployer = Number(esi.employerContributionMinor) / 100;
+
+  const professionalTax = calculateProfessionalTax(
+    monthlyGross,
+    params.stateCode ?? "KA",
+    params.monthNumber
+  );
   
   // TDS (simplified - divide annual tax by 12)
   const annualTaxable = params.annualTaxableIncome || structure.grossSalary;
@@ -261,62 +304,75 @@ export function generatePayslip(params: {
   };
 }
 
-// ─── Professional Tax Calculator (Karnataka) ─────────────────
+// ─── Professional Tax ────────────────────────────────────────
 
-export function calculateProfessionalTax(monthlySalary: number, state: string = "karnataka"): number {
-  // Karnataka slabs (most common for Bangalore-based companies)
-  if (state === "karnataka") {
-    if (monthlySalary <= 15000) return 0;
-    if (monthlySalary <= 25000) return 200;
-    return 200; // Max ₹2,400 per year (₹200/month)
-  }
-  
-  // Maharashtra
-  if (state === "maharashtra") {
-    if (monthlySalary <= 7500) return 0;
-    if (monthlySalary <= 10000) return 175;
-    return 200; // Simplified (actual: ₹300 for Feb, ₹200 for others)
-  }
+/**
+ * Professional tax for a month.
+ *
+ * Delegates to src/lib/statutory-india.ts, which holds the per-state slabs and
+ * is tested against them. This function previously carried its own inline
+ * table with two defects that cost real money:
+ *
+ *   - Karnataka's exemption threshold was ₹15,000. It has been ₹25,000 since
+ *     1 April 2023, so ₹200 a month was being deducted from everyone earning
+ *     between ₹15,001 and ₹25,000 who did not owe it.
+ *   - Maharashtra's February rate of ₹300 was noted as "simplified" and not
+ *     applied, under-deducting ₹100 a year for every employee in the state and
+ *     leaving the employer short against the ₹2,500 statutory maximum.
+ *
+ * `month` is optional only for backwards compatibility with existing callers.
+ * Pass it: without it, February in Maharashtra is charged at the wrong rate.
+ */
+export function calculateProfessionalTax(
+  monthlySalary: number,
+  state: string = "KA",
+  month?: number
+): number {
+  const stateCode = STATE_CODES[state.trim().toLowerCase()] ?? state;
+  const result = calculateStatutoryPt(
+    BigInt(Math.round(monthlySalary * 100)),
+    stateCode,
+    month
+  );
 
-  // Default
-  return monthlySalary > 15000 ? 200 : 0;
+  return Number(result.amountMinor) / 100;
 }
+
+/** Long-form state names accepted by the previous signature. */
+const STATE_CODES: Record<string, string> = {
+  karnataka: "KA",
+  maharashtra: "MH",
+  "tamil nadu": "TN",
+  tamilnadu: "TN",
+  "west bengal": "WB",
+  westbengal: "WB",
+  telangana: "TS",
+  gujarat: "GJ",
+  delhi: "DL",
+  haryana: "HR",
+  "uttar pradesh": "UP",
+};
 
 // ─── Income Tax Calculator (New Regime FY 2025-26) ───────────
 
+/**
+ * Income tax under the new regime.
+ *
+ * Delegates to src/lib/statutory-india.ts. The inline version this replaces
+ * applied the section 87A rebate below ₹7,00,000, which was the FY 2023-24
+ * threshold. Under the Finance Act 2025 it is ₹12,00,000 — so everyone with a
+ * taxable income between those figures was being taxed on income that carries
+ * no liability at all. At ₹11,00,000 that was roughly ₹40,000 of tax deducted
+ * from someone who owed nothing.
+ */
 export function calculateNewRegimeIncomeTax(annualIncome: number): number {
   const standardDeduction = 75000;
   const taxableIncome = Math.max(0, annualIncome - standardDeduction);
-  
-  // Section 87A rebate
-  if (taxableIncome <= 700000) return 0;
 
-  const slabs = [
-    { upto: 400000, rate: 0 },
-    { upto: 800000, rate: 5 },
-    { upto: 1200000, rate: 10 },
-    { upto: 1600000, rate: 15 },
-    { upto: 2000000, rate: 20 },
-    { upto: 2400000, rate: 25 },
-    { upto: Infinity, rate: 30 },
-  ];
-
-  let tax = 0;
-  let remaining = taxableIncome;
-  let prevLimit = 0;
-
-  for (const slab of slabs) {
-    const taxable = Math.min(remaining, slab.upto - prevLimit);
-    if (taxable <= 0) break;
-    tax += taxable * slab.rate / 100;
-    remaining -= taxable;
-    prevLimit = slab.upto;
-  }
-
-  // 4% Health & Education Cess
-  tax = Math.round(tax * 1.04);
-  return tax;
+  const result = calculateStatutoryTax(BigInt(Math.round(taxableIncome * 100)));
+  return Math.round(Number(result.totalTaxMinor) / 100);
 }
+
 
 // ─── Income Tax Calculator (Old Regime) ──────────────────────
 

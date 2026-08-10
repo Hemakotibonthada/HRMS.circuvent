@@ -87,6 +87,7 @@ const eslintConfig = [
       "src/lib/sla.ts",
       "src/app/api/helpdesk/**/*.ts",
       "src/lib/assets.ts",
+      "src/lib/statutory-india.ts",
       "src/app/api/assets/**/*.ts",
       "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],
