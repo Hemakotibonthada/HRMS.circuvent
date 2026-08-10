@@ -4,7 +4,7 @@ import {
   payrollService, recruitmentService, helpdeskService, announcementService,
   genericService, COLLECTIONS,
 } from "@/lib/firestore-service";
-import { dataBackend, employeeRepository } from "@/db/repositories";
+import { employeeRepository } from "@/db/repositories";
 import type { EmployeeRecord } from "@/db/repositories/types";
 
 // ═══════════════════════════════════════════════════════════════
@@ -307,17 +307,17 @@ const unsubscribers = new Map<string, () => void>();
 /**
  * Starts a live subscription for a collection.
  *
- * Employees route through the repository layer, so DATA_BACKEND decides
- * whether the data comes from Firestore or Neon without this call site
- * changing (src/db/repositories/index.ts). Other collections still go straight
- * to Firestore until their repositories land.
+ * Employees route through the repository layer; everything else goes through
+ * the collection service. Both now read Postgres over this app's API — the
+ * DATA_BACKEND branch that used to choose between stores is gone with the
+ * Firestore cutover.
  */
 export function startSync<T extends BaseRecord>(collectionName: string, store: DataStore<T>) {
   if (unsubscribers.has(collectionName)) return; // Already syncing
   store.setLoading(true);
   store.setError(null);
 
-  if (collectionName === COLLECTIONS.employees && dataBackend() !== "firestore") {
+  if (collectionName === COLLECTIONS.employees) {
     const unsub = employeeRepository().subscribe((records) => {
       store.setItems(records.map(toEmployeeDoc) as unknown as T[]);
     });

@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { auth, sendPasswordResetEmail } from "@/lib/firebase";
 import { toast } from "sonner";
 
 export default function ForgotPasswordPage() {
@@ -20,11 +19,25 @@ export default function ForgotPasswordPage() {
     if (!email) { toast.error("Please enter your email"); return; }
     setLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+
+      if (!res.ok) {
+        toast.error(body.error || "Could not send a reset link. Please try again.");
+        return;
+      }
+
+      // The server answers the same way whether or not the account exists, and
+      // so does this screen: showing "no such account" here would give away who
+      // is registered.
       setSent(true);
-      toast.success("Reset email sent!");
+      toast.success(body.message || "If that address has an account, a reset link is on its way.");
     } catch {
-      toast.error("Failed to send reset email. Check the address.");
+      toast.error("Could not reach the service. Check your connection.");
     } finally {
       setLoading(false);
     }

@@ -114,18 +114,9 @@ export default function EmployeesPage() {
         }, form.password);
 
         if (syncResult.success) {
-          toast.success(`${form.firstName} ${form.lastName} created across all apps (HRMS, CV-365, Mail)!`);
+          toast.success(`${form.firstName} ${form.lastName} added.`);
         } else {
-          // Partial success
-          const created = [
-            syncResult.hrmsUserCreated && "HRMS",
-            syncResult.cv365UserCreated && "CV-365",
-            syncResult.mailUserCreated && "Mail",
-          ].filter(Boolean).join(", ");
-          toast.success(`Employee added to: ${created}`);
-          if (syncResult.errors.length > 0) {
-            toast.error(`Sync issues: ${syncResult.errors[0]}`);
-          }
+          toast.error(syncResult.errors[0] ?? "Could not add this employee.");
         }
       } else {
         // Just create in HRMS only
