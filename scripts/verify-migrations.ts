@@ -919,6 +919,131 @@ async function main() {
         : `still present: ${oldSso.rows.map((r) => r.column_name).join(", ")}`,
   });
 
+  // 32-36. Helpdesk. An HR desk carries grievances about managers alongside
+  //        laptop requests, so the invariants that keep the SLA clock honest
+  //        and the confidential tickets out of the wrong hands are enforced
+  //        by the database, not only by the repository.
+  const slaPolicyId = "eeeeeeee-0000-4000-8000-000000000001";
+  await db.exec(`
+    INSERT INTO hrms.sla_policies (id, org_id, name, business_hours, is_default)
+    VALUES ('${slaPolicyId}', '${orgA}', 'Standard',
+            '{"timezone":"Asia/Kolkata","days":{},"holidays":[]}'::jsonb, true);
+  `);
+
+  // Two defaults would make ticket creation pick arbitrarily between them, and
+  // two identical tickets would get different targets.
+  let oneDefaultOnly = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.sla_policies (org_id, name, business_hours, is_default)
+      VALUES ('${orgA}', 'Rival', '{"timezone":"UTC","days":{},"holidays":[]}'::jsonb, true)
+    `);
+  } catch {
+    oneDefaultOnly = true;
+  }
+  checks.push({
+    name: "only one SLA policy can be the default",
+    pass: oneDefaultOnly,
+    detail: oneDefaultOnly ? "rejected" : "a second default was allowed",
+  });
+
+  const ticketId = "eeeeeeee-0000-4000-8000-000000000002";
+  await db.exec(`
+    INSERT INTO hrms.tickets
+      (id, org_id, reference, subject, body, requester_id, sla_policy_id)
+    VALUES ('${ticketId}', '${orgA}', 'HD-ABC234', 'Laptop', 'It is broken',
+            '${referrer}', '${slaPolicyId}');
+  `);
+
+  // A confidential ticket routed back to the person who raised it defeats the
+  // point of it being confidential.
+  let selfAssignBlocked = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.tickets
+        (org_id, reference, subject, body, requester_id, assignee_id, is_confidential)
+      VALUES ('${orgA}', 'HD-XYZ789', 'Grievance', 'Details', '${referrer}', '${referrer}', true)
+    `);
+  } catch {
+    selfAssignBlocked = true;
+  }
+  checks.push({
+    name: "a confidential ticket cannot be assigned to its own requester",
+    pass: selfAssignBlocked,
+    detail: selfAssignBlocked ? "rejected" : "self-assignment of a grievance was allowed",
+  });
+
+  // Two open pauses would double-count stopped time and make the SLA clock
+  // run backwards relative to the calendar.
+  await db.exec(`
+    INSERT INTO hrms.ticket_pauses (org_id, ticket_id, paused_at)
+    VALUES ('${orgA}', '${ticketId}', now());
+  `);
+
+  let onePauseOnly = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.ticket_pauses (org_id, ticket_id, paused_at)
+      VALUES ('${orgA}', '${ticketId}', now())
+    `);
+  } catch {
+    onePauseOnly = true;
+  }
+  checks.push({
+    name: "a ticket cannot have two open SLA pauses",
+    pass: onePauseOnly,
+    detail: onePauseOnly ? "rejected" : "stopped time would be double-counted",
+  });
+
+  // A grievance investigation reads the event log to establish who knew what
+  // and when. An editable history is not evidence.
+  await db.exec(`
+    INSERT INTO hrms.ticket_events (org_id, ticket_id, event_type)
+    VALUES ('${orgA}', '${ticketId}', 'created');
+  `);
+
+  let ticketEventsImmutable = false;
+  try {
+    await db.exec(`UPDATE hrms.ticket_events SET event_type = 'tampered'`);
+  } catch {
+    ticketEventsImmutable = true;
+  }
+  checks.push({
+    name: "the ticket event log rejects UPDATE",
+    pass: ticketEventsImmutable,
+    detail: ticketEventsImmutable ? "rejected" : "the investigation trail is editable",
+  });
+
+  // A rating outside the scale would break every average silently.
+  let ratingRangeChecked = false;
+  try {
+    await db.exec(
+      `UPDATE hrms.tickets SET satisfaction_rating = 7 WHERE id = '${ticketId}'`
+    );
+  } catch {
+    ratingRangeChecked = true;
+  }
+  checks.push({
+    name: "a satisfaction rating must be within the five-point scale",
+    pass: ratingRangeChecked,
+    detail: ratingRangeChecked ? "rejected" : "an out-of-range rating was allowed",
+  });
+
+  // The placeholder tickets table must be gone, not left beside the real one.
+  const oldTickets = await db.query<{ column_name: string }>(`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_schema = 'hrms' AND table_name = 'tickets'
+      AND column_name IN ('ticket_number', 'assigned_to_id', 'sla_due_at')
+  `);
+  checks.push({
+    name: "the placeholder tickets table is replaced, not duplicated",
+    pass: oldTickets.rows.length === 0,
+    detail:
+      oldTickets.rows.length === 0
+        ? "replaced"
+        : `still present: ${oldTickets.rows.map((r) => r.column_name).join(", ")}`,
+  });
+
   console.log("");
   for (const c of checks) {
     console.log(`  ${c.pass ? "ok   " : "FAIL "} ${c.name}${c.pass ? "" : ` — ${c.detail}`}`);

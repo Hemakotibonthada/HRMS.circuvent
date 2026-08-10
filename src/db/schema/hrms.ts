@@ -964,41 +964,13 @@ export const announcements = hrms.table(
   (t) => [index("announcements_org_published_idx").on(t.orgId, t.publishedAt)]
 );
 
-export const tickets = hrms.table(
-  "tickets",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    orgId: uuid("org_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-    ticketNumber: text("ticket_number").notNull(),
-    raisedById: uuid("raised_by_id")
-      .notNull()
-      .references(() => employees.id, { onDelete: "cascade" }),
-    assignedToId: uuid("assigned_to_id").references(() => employees.id, {
-      onDelete: "set null",
-    }),
-    category: text("category").notNull(),
-    subject: text("subject").notNull(),
-    description: text("description"),
-    priority: priorityEnum("priority").notNull().default("medium"),
-    status: text("status").notNull().default("open"),
-    /** SLA breach is computed against this deadline. */
-    slaDueAt: timestamp("sla_due_at", { withTimezone: true }),
-    firstRespondedAt: timestamp("first_responded_at", { withTimezone: true }),
-    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
-    closedAt: timestamp("closed_at", { withTimezone: true }),
-    satisfactionRating: integer("satisfaction_rating"),
-    attachments: jsonb("attachments").notNull().default(sql`'[]'::jsonb`),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    uniqueIndex("tickets_org_number_key").on(t.orgId, t.ticketNumber),
-    index("tickets_org_status_idx").on(t.orgId, t.status),
-    index("tickets_assigned_to_idx").on(t.assignedToId),
-  ]
-);
+// The helpdesk tables — tickets, categories, SLA policies, pauses, comments,
+// events and the knowledge base — live in ./helpdesk.ts.
+//
+// A placeholder `tickets` table was sketched here and never read. It is gone
+// rather than left alongside the real one, for the same reason the
+// custom_fields jsonb columns and the placeholder SSO tables went: a second
+// home for one concept is how a row is written to one and read from the other.
 
 export const notifications = hrms.table(
   "notifications",
@@ -1099,5 +1071,4 @@ export type PerformanceGoal = typeof performanceGoals.$inferSelect;
 export type PerformanceReview = typeof performanceReviews.$inferSelect;
 export type ExpenseClaim = typeof expenseClaims.$inferSelect;
 export type Asset = typeof assets.$inferSelect;
-export type Ticket = typeof tickets.$inferSelect;
 export type WorkflowInstance = typeof workflowInstances.$inferSelect;
