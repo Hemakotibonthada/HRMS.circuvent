@@ -1044,6 +1044,91 @@ async function main() {
         : `still present: ${oldTickets.rows.map((r) => r.column_name).join(", ")}`,
   });
 
+  // 37-40. Assets. The register is only worth having if it is true, so the
+  //        invariants that keep it matching the cupboard are enforced by the
+  //        database rather than only by the repository.
+  const assetId = "ffffffff-0000-4000-8000-000000000001";
+  await db.exec(`
+    INSERT INTO hrms.assets
+      (id, org_id, asset_tag, name, category, purchase_date, purchase_cost_minor,
+       useful_life_months, salvage_value_minor)
+    VALUES ('${assetId}', '${orgA}', 'LAP-001', 'MacBook', 'Laptops',
+            '2026-01-01', 12000000, 36, 1200000);
+  `);
+
+  // The invariant the whole register rests on: assigned means there is a
+  // holder, any other state means there is not.
+  let assignmentInvariant = false;
+  try {
+    await db.exec(
+      `UPDATE hrms.assets SET state = 'assigned' WHERE id = '${assetId}'`
+    );
+  } catch {
+    assignmentInvariant = true;
+  }
+  checks.push({
+    name: "an asset cannot be assigned to nobody",
+    pass: assignmentInvariant,
+    detail: assignmentInvariant
+      ? "rejected"
+      : "an assigned asset with no holder was allowed",
+  });
+
+  // Salvage above cost produces a negative depreciable amount and an asset
+  // that appreciates on the balance sheet.
+  let salvageChecked = false;
+  try {
+    await db.exec(
+      `UPDATE hrms.assets SET salvage_value_minor = 99999999 WHERE id = '${assetId}'`
+    );
+  } catch {
+    salvageChecked = true;
+  }
+  checks.push({
+    name: "salvage value cannot exceed purchase cost",
+    pass: salvageChecked,
+    detail: salvageChecked ? "rejected" : "an appreciating asset was allowed",
+  });
+
+  // One asset cannot be in two people's hands.
+  await db.exec(`
+    INSERT INTO hrms.asset_assignments (org_id, asset_id, employee_id)
+    VALUES ('${orgA}', '${assetId}', '${referrer}');
+  `);
+
+  let oneHolderOnly = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.asset_assignments (org_id, asset_id, employee_id)
+      VALUES ('${orgA}', '${assetId}', '${referrer}')
+    `);
+  } catch {
+    oneHolderOnly = true;
+  }
+  checks.push({
+    name: "an asset cannot be issued to two people at once",
+    pass: oneHolderOnly,
+    detail: oneHolderOnly ? "rejected" : "two open custody records were allowed",
+  });
+
+  // The history of who moved what is the only defence against a dispute.
+  await db.exec(`
+    INSERT INTO hrms.asset_events (org_id, asset_id, action)
+    VALUES ('${orgA}', '${assetId}', 'issue');
+  `);
+
+  let assetEventsImmutable = false;
+  try {
+    await db.exec(`UPDATE hrms.asset_events SET action = 'tampered'`);
+  } catch {
+    assetEventsImmutable = true;
+  }
+  checks.push({
+    name: "the asset event log rejects UPDATE",
+    pass: assetEventsImmutable,
+    detail: assetEventsImmutable ? "rejected" : "the custody chain is editable",
+  });
+
   console.log("");
   for (const c of checks) {
     console.log(`  ${c.pass ? "ok   " : "FAIL "} ${c.name}${c.pass ? "" : ` — ${c.detail}`}`);

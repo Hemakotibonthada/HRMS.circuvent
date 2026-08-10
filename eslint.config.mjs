@@ -86,6 +86,8 @@ const eslintConfig = [
       "src/app/api/compensation/**/*.ts",
       "src/lib/sla.ts",
       "src/app/api/helpdesk/**/*.ts",
+      "src/lib/assets.ts",
+      "src/app/api/assets/**/*.ts",
       "src/app/api/auth/{login,refresh,logout,me}/**/*.ts",
     ],
     rules: {

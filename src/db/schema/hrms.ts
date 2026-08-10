@@ -905,38 +905,10 @@ export const expenseClaims = hrms.table(
 
 // ─── Assets ──────────────────────────────────────────────────
 
-export const assets = hrms.table(
-  "assets",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    orgId: uuid("org_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
-    assetTag: text("asset_tag").notNull(),
-    name: text("name").notNull(),
-    category: text("category").notNull(),
-    serialNumber: text("serial_number"),
-    manufacturer: text("manufacturer"),
-    model: text("model"),
-    purchaseDate: date("purchase_date"),
-    purchaseCostMinor: bigint("purchase_cost_minor", { mode: "bigint" }),
-    warrantyExpiresOn: date("warranty_expires_on"),
-    condition: text("condition").notNull().default("good"),
-    status: text("status").notNull().default("available"),
-    assignedToId: uuid("assigned_to_id").references(() => employees.id, {
-      onDelete: "set null",
-    }),
-    assignedAt: timestamp("assigned_at", { withTimezone: true }),
-    locationId: uuid("location_id").references(() => locations.id, { onDelete: "set null" }),
-    notes: text("notes"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    uniqueIndex("assets_org_tag_key").on(t.orgId, t.assetTag),
-    index("assets_org_status_idx").on(t.orgId, t.status),
-    index("assets_assigned_to_idx").on(t.assignedToId),
-  ]
-);
+// The asset register — assets, categories, assignment history and maintenance
+// — lives in ./assets.ts. The table itself was defined here originally and is
+// extended rather than replaced: its columns were sound, so migration 0016
+// ALTERs it in place. Only the definition moved, so there is still exactly one.
 
 // ─── Announcements, helpdesk, notifications ──────────────────
 
@@ -1070,5 +1042,4 @@ export type Interview = typeof interviews.$inferSelect;
 export type PerformanceGoal = typeof performanceGoals.$inferSelect;
 export type PerformanceReview = typeof performanceReviews.$inferSelect;
 export type ExpenseClaim = typeof expenseClaims.$inferSelect;
-export type Asset = typeof assets.$inferSelect;
 export type WorkflowInstance = typeof workflowInstances.$inferSelect;
