@@ -4,9 +4,12 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1.0000 0 0);
+  /* Not pure white. A white page cannot show a white card, and `--card` sat
+     at 1.06:1 against it — a surface that is technically there and visually
+     is not. The page steps down so cards can be white and read as raised. */
+  --background: oklch(0.9600 0.0020 280);
   --foreground: oklch(0.1800 0.0200 280);
-  --card: oklch(0.9800 0.0015 280);
+  --card: oklch(1.0000 0 0);
   --card-foreground: oklch(0.1800 0.0200 280);
   --popover: oklch(1.0000 0 0);
   --popover-foreground: oklch(0.1800 0.0200 280);
@@ -16,15 +19,23 @@
   --secondary-foreground: oklch(1.0000 0 0);
   --muted: oklch(0.9400 0.0020 280);
   --muted-foreground: oklch(0.4500 0.0200 280);
-  --accent: oklch(0.9300 0.0300 290);
+  --accent: oklch(0.9450 0.0250 290);
   --accent-foreground: oklch(0.5500 0.2500 290);
-  --destructive: oklch(0.6200 0.2400 26);
+  /* Darkened from 0.62. White on the old red measured 4.10:1 — every
+     destructive button label was below AA, which is the button you least
+     want someone to misread. */
+  --destructive: oklch(0.5900 0.2400 26);
   --destructive-foreground: oklch(1.0000 0 0);
-  --success: oklch(0.6500 0.1700 145);
+  /* Darkened from 0.65. White on the old green was 3.03:1, two thirds of
+     what it needed. */
+  --success: oklch(0.5400 0.1700 145);
   --success-foreground: oklch(1.0000 0 0);
   --warning: oklch(0.7500 0.1600 75);
   --warning-foreground: oklch(0.2000 0.0200 75);
-  --border: oklch(0.9200 0.0100 280);
+  /* Darkened from 0.92, which was 1.27:1 against the page — an input outline
+     nobody could see. Heavier than the fashion, and deliberately so: this is
+     the only thing telling someone where a field begins. */
+  --border: oklch(0.6350 0.0100 280);
   --input: oklch(0.9700 0.0050 280);
   --ring: oklch(0.5800 0.2200 290);
   --chart-1: oklch(0.5500 0.2500 290);
@@ -129,27 +140,36 @@
 }
 
 .dark {
-  --background: oklch(0.0800 0.0050 280);
+  /* Lifted from 0.08. That converted to #020202 — effectively pure black,
+     leaving no room to raise a surface above it, which is why `--card` sat
+     at 1.04:1 and dark mode had no visible cards at all. */
+  --background: oklch(0.1300 0.0050 280);
   --foreground: oklch(0.9300 0.0050 280);
-  --card: oklch(0.1400 0.0100 280);
+  --card: oklch(0.2000 0.0100 280);
   --card-foreground: oklch(0.9000 0 0);
-  --popover: oklch(0.1000 0.0080 280);
+  --popover: oklch(0.1800 0.0080 280);
   --popover-foreground: oklch(0.9300 0.0050 280);
   --primary: oklch(0.6500 0.2200 290);
-  --primary-foreground: oklch(1.0000 0 0);
+  /* Dark, not white. White on this violet is 3.60:1 — every primary button
+     label in dark mode failed AA. A light accent on a dark surface takes a
+     dark label; that is the whole point of the accent being light. */
+  --primary-foreground: oklch(0.1500 0.0200 290);
   --secondary: oklch(0.9500 0.0050 280);
   --secondary-foreground: oklch(0.1800 0.0200 280);
-  --muted: oklch(0.2000 0.0050 280);
-  --muted-foreground: oklch(0.5500 0.0100 280);
-  --accent: oklch(0.2000 0.0400 290);
-  --accent-foreground: oklch(0.6500 0.2200 290);
-  --destructive: oklch(0.6200 0.2400 26);
+  --muted: oklch(0.2600 0.0050 280);
+  /* Lifted from 0.55, which was 3.73:1 on a muted surface. This is every
+     date, caption and helper line in the app. */
+  --muted-foreground: oklch(0.7000 0.0100 280);
+  --accent: oklch(0.2600 0.0400 290);
+  --accent-foreground: oklch(0.7800 0.1600 290);
+  --destructive: oklch(0.5900 0.2400 26);
   --destructive-foreground: oklch(1.0000 0 0);
-  --success: oklch(0.6500 0.1700 145);
+  --success: oklch(0.5400 0.1700 145);
   --success-foreground: oklch(1.0000 0 0);
   --warning: oklch(0.7500 0.1600 75);
   --warning-foreground: oklch(0.2000 0.0200 75);
-  --border: oklch(0.2500 0.0100 280);
+  /* Lifted from 0.25, which was 1.24:1 against a card. */
+  --border: oklch(0.5200 0.0100 280);
   --input: oklch(0.2200 0.0200 280);
   --ring: oklch(0.6000 0.2000 290);
   --chart-1: oklch(0.6500 0.2200 290);

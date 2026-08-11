@@ -34,6 +34,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // The Expo app imports the platform-neutral core through this alias.
+      // Declared here as well so mobile/ tests resolve it the same way metro
+      // and the mobile tsconfig do — three places, and they have to agree.
+      "@shared": fileURLToPath(new URL("./src/lib", import.meta.url)),
     },
   },
 });

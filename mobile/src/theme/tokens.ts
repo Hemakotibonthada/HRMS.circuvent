@@ -26,7 +26,7 @@
 // — they are not fixed here because changing the web theme is a separate change
 // with its own visual review.
 
-import { contrastRatio, WCAG } from "./contrast";
+import { contrastRatio, WCAG } from "@shared/color/contrast";
 
 export interface ColorScheme {
   /** App background, behind everything. */

@@ -23,7 +23,12 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
-    "../src/lib/mobile/**/*.ts"
+    "../src/lib/mobile/**/*.ts",
+    "../src/lib/color/**/*.ts"
   ],
-  "exclude": ["node_modules", "../src/lib/mobile/**/*.test.ts"]
+  "exclude": [
+    "node_modules",
+    "../src/lib/mobile/**/*.test.ts",
+    "../src/lib/color/**/*.test.ts"
+  ]
 }

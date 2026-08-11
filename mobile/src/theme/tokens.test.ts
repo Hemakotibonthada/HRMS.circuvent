@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contrastRatio, meetsContrast, parseHex, relativeLuminance, WCAG } from "./contrast";
+import { contrastRatio, meetsContrast, parseHex, relativeLuminance, WCAG } from "@shared/color/contrast";
 import {
   auditScheme,
   buildTheme,
