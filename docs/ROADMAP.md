@@ -269,18 +269,32 @@ Each of these was live code, not a hypothetical.
 
 ### Accessibility defects in the shared palette
 
-Measured while converting the web tokens (`src/app/globals.css`, oklch) to sRGB for React
-Native. All four are in the **web** palette and are **not yet fixed there** — changing the web
-theme is a separate change needing its own visual review. The mobile palette
-(`mobile/src/theme/tokens.ts`) corrects them and `tokens.test.ts` asserts every ratio, so it
-cannot regress.
+Found while converting the web tokens (`src/app/globals.css`, oklch) to sRGB for React Native,
+then measured properly with `src/lib/color/contrast.ts`. **All fixed.**
+
+The first pass found four. Checking every pair the app actually renders found **fifteen** — which
+is the argument against writing this kind of thing down instead of fixing it.
 
 | Pair | Measured | Required | Consequence |
 |---|---|---|---|
-| Dark `--card` on dark `--background` | **1.04:1** | — | The card is not visibly there. Every grouped surface in dark mode is invisible. |
-| Dark `--muted-foreground` on `--card` | **4.09:1** | 4.5:1 | Dates, captions and helper text below AA. |
-| Light `--destructive` on white | **4.11:1** | 4.5:1 | Error messages below AA — the text that matters most when something has gone wrong. |
-| Light `--success` on white | **3.02:1** | 4.5:1 | Barely half the required ratio, on approval and paid states. |
+| Dark `--card` on `--background` | **1.04:1** | — | The card is not visibly there. Every grouped surface in dark mode was invisible. |
+| Light `--border` on the page | **1.27:1** | 3:1 | An input outline nobody can see — the only thing marking where a field begins. |
+| Dark `--border` on `--card` | **1.24:1** | 3:1 | As above, in dark mode. |
+| White on `--success` | **3.03:1** | 4.5:1 | Two thirds of what it needs, on every approved and paid state. |
+| White on dark `--primary` | **3.60:1** | 4.5:1 | Every primary button label in dark mode. |
+| Dark `--muted-foreground` on `--muted` | **3.73:1** | 4.5:1 | Every date, caption and helper line. |
+| White on `--destructive` | **4.10:1** | 4.5:1 | The delete button — the one you least want misread. |
+| Light `--accent-foreground` on `--accent` | **4.43:1** | 4.5:1 | Selected and emphasised regions. |
+
+Three of the fixes are judgement rather than arithmetic, and are commented in `globals.css`: the
+light page is no longer pure white (a white page cannot show a white card); dark primary buttons
+take a dark label rather than white (a light accent on a dark surface is the case for dark text);
+and borders are heavier than the current fashion, deliberately.
+
+`src/lib/color/web-palette.test.ts` parses the real stylesheet and asserts every pair, so this
+cannot regress. `mobile/src/theme/tokens.test.ts` does the same for the app palette. Both import
+one contrast implementation from `src/lib/color/contrast.ts` — a second copy would let the two
+products disagree about whether a colour is readable.
 
 
 
