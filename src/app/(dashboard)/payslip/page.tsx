@@ -25,6 +25,7 @@ import {
 import { usePayrollStore, startSync, type PayrollDoc } from "@/stores/unified-store";
 import { COLLECTIONS } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { clickable } from "@/lib/a11y/clickable";
 
 // ═══════════════════════════════════════════════════════════════
 // PAYSLIP — Employee payslip viewer with tax computation
@@ -274,7 +275,7 @@ export default function PayslipPage() {
               <div className="space-y-3">
                 <h4 className="font-semibold text-sm">Monthly Breakdown</h4>
                 {items.map(p => (
-                  <div key={p.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 cursor-pointer hover:bg-muted/50" onClick={() => setDetailItem(p)}>
+                  <div key={p.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 cursor-pointer hover:bg-muted/50" {...clickable(() => setDetailItem(p))}>
                     <div>
                       <p className="font-medium text-sm">{p.month} {p.year}</p>
                       <p className="text-xs text-muted-foreground">{p.employeeName}</p>

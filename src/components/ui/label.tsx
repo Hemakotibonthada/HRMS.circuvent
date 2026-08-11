@@ -6,6 +6,11 @@ import { cn } from "@/lib/utils"
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {
   return (
+    // The rule cannot see the association because this is a generic wrapper:
+    // the caller supplies htmlFor, or nests the control, through the spread.
+    // Asserting it here would require every Label to know about a control it
+    // has no way of knowing about.
+    // eslint-disable-next-line jsx-a11y/label-has-associated-control
     <label
       data-slot="label"
       className={cn(

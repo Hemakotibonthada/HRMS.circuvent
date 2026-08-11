@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { genericService } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { clickable } from "@/lib/a11y/clickable";
 
 // ═══════════════════════════════════════════════════════════════
 // PARKING — Parking spot management with floor grid
@@ -234,12 +235,15 @@ export default function ParkingPage() {
                             "p-3 rounded-lg border-2 text-center cursor-pointer transition-all hover:scale-105",
                             STATUS_COLORS[spot.status] || STATUS_COLORS.available
                           )}
-                          onClick={() => {
-                            if (spot.status === "available") {
-                              setForm(f => ({ ...f, floor: selectedFloor, zone: ZONES[zi], spot: spot.spot }));
-                              setBookOpen(true);
-                            }
-                          }}>
+                          {...clickable(
+                            () => {
+                              if (spot.status === "available") {
+                                setForm(f => ({ ...f, floor: selectedFloor, zone: ZONES[zi], spot: spot.spot }));
+                                setBookOpen(true);
+                              }
+                            },
+                            { disabled: spot.status !== "available" }
+                          )}>
                           <Car className={cn("h-5 w-5 mx-auto mb-1",
                             spot.status === "available" ? "text-emerald-500" :
                             spot.status === "booked" ? "text-violet-500" : "text-amber-500")} />

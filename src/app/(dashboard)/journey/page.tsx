@@ -29,6 +29,7 @@ import {
 import { COLLECTIONS } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { useNowMs } from "@/hooks/use-now";
+import { clickable } from "@/lib/a11y/clickable";
 
 // ═══════════════════════════════════════════════════════════════
 // JOURNEY — Employee lifecycle journey map with 7 stages
@@ -204,7 +205,7 @@ export default function JourneyPage() {
                   const isSelected = selectedStage === stage.name;
                   return (
                     <div key={stage.name} className="flex items-center flex-1">
-                      <div className="flex flex-col items-center cursor-pointer" onClick={() => setSelectedStage(isSelected ? null : stage.name)}>
+                      <div className="flex flex-col items-center cursor-pointer" {...clickable(() => setSelectedStage(isSelected ? null : stage.name))}>
                         <div className={cn(
                           "h-14 w-14 rounded-full flex items-center justify-center transition-all",
                           isSelected ? "ring-4 ring-violet-200 dark:ring-violet-800 scale-110" : "",

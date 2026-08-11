@@ -49,6 +49,11 @@ function InputGroupAddon({
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
   return (
+    // Clicking the addon focuses the field, mirroring what a <label> does
+    // natively. Not focusable on purpose: it would put a spurious tab stop in
+    // front of every input in the app, and it offers a keyboard user nothing
+    // they cannot already do by tabbing to the field itself.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events
     <div
       role="group"
       data-slot="input-group-addon"

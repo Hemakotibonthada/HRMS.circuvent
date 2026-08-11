@@ -4,6 +4,7 @@
 // eslint-plugin-react-hooks 7. Importing the flat configs directly avoids the
 // legacy path entirely.
 
+import jsxA11y from "eslint-plugin-jsx-a11y";
 import coreWebVitals from "eslint-config-next/core-web-vitals";
 import typescript from "eslint-config-next/typescript";
 
@@ -115,6 +116,20 @@ const eslintConfig = [
     // the intended interface.
     files: ["scripts/**/*.ts", "**/*.test.{ts,tsx}", "vitest.setup.ts"],
     rules: { "no-console": "off" },
+  },
+  {
+    // eslint-config-next enables a handful of jsx-a11y rules; this turns on
+    // the rest of the recommended set across the whole app.
+    //
+    // The audit that added it found 37 real defects in 15 files, nearly all
+    // of the same kind: a <div onClick> that a mouse can use and a keyboard
+    // cannot reach at all. They are fixed, so this is at zero — enforced
+    // rather than aspirational, because the next one is otherwise only found
+    // by the person it excludes.
+    files: ["src/**/*.tsx"],
+    rules: {
+      ...jsxA11y.flatConfigs.recommended.rules,
+    },
   },
 ];
 

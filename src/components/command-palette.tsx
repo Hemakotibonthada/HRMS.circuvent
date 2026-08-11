@@ -45,6 +45,11 @@ export function CommandPalette() {
 
   return (
     <div className="fixed inset-0 z-[100]">
+      {/* Mouse convenience only, and deliberately not focusable: a
+          full-viewport tab stop announced as a button would be worse than
+          useless. Escape closes the palette (see the keydown listener above),
+          which is the keyboard route. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setOpen(false)} />
       <div className="fixed top-[20%] left-1/2 -translate-x-1/2 w-full max-w-lg animate-scale-in">
         <div className="rounded-2xl border bg-background/95 backdrop-blur-xl shadow-2xl overflow-hidden">

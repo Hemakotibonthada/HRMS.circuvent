@@ -25,6 +25,7 @@ import {
 import { useEmployeeStore, useJobStore, useTeamStore, startSync } from "@/stores/unified-store";
 import { COLLECTIONS } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { clickable } from "@/lib/a11y/clickable";
 
 // ═══════════════════════════════════════════════════════════════
 // RESOURCE PLANNER — Resource allocation & capacity planning
@@ -224,7 +225,7 @@ export default function ResourcePlannerPage() {
             <CardHeader><CardTitle className="text-base">Resource List</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               {filtered.slice(0, 10).map(emp => (
-                <div key={emp.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 cursor-pointer hover:bg-muted/50" onClick={() => setDetailEmp(emp)}>
+                <div key={emp.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 cursor-pointer hover:bg-muted/50" {...clickable(() => setDetailEmp(emp))}>
                   <div className="flex items-center gap-3">
                     <Avatar className="h-9 w-9">
                       <AvatarFallback className="bg-gradient-to-br from-violet-500 to-purple-600 text-white text-xs">

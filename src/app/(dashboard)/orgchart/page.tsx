@@ -26,6 +26,7 @@ import {
 } from "@/stores/unified-store";
 import { COLLECTIONS } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { clickable } from "@/lib/a11y/clickable";
 
 // ═══════════════════════════════════════════════════════════════
 // ORG CHART — Interactive organizational hierarchy with dept
@@ -55,6 +56,22 @@ export default function OrgchartPage() {
   const [tab, setTab] = useState("departments");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedEmp, setSelectedEmp] = useState<EmployeeDoc | null>(null);
+
+  // Escape closes the employee dialog. It had no keyboard dismissal at all —
+  // the backdrop is mouse-only and deliberately not focusable, so without this
+  // the only way out was to tab through the whole card to the Close button.
+  // Escape is what every dialog is expected to do, and its absence is the kind
+  // of thing only noticed by someone who cannot use a mouse.
+  useEffect(() => {
+    if (!selectedEmp) return;
+
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedEmp(null);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedEmp]);
 
   useEffect(() => { if (!empStore.initialized) startSync(COLLECTIONS.employees, empStore); }, [empStore.initialized, empStore]);
   useEffect(() => { if (!deptStore.initialized) startSync(COLLECTIONS.departments, deptStore); }, [deptStore.initialized, deptStore]);
@@ -189,7 +206,7 @@ export default function OrgchartPage() {
                     {/* Department Header */}
                     <div
                       className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/30 transition-colors rounded-t-xl"
-                      onClick={() => toggleExpand(dept.name)}
+                      {...clickable(() => toggleExpand(dept.name))}
                     >
                       <div className="flex items-center gap-3">
                         <div className={cn("h-12 w-12 rounded-xl bg-gradient-to-br flex items-center justify-center", gradient)}>
@@ -225,7 +242,7 @@ export default function OrgchartPage() {
                                   "p-3 rounded-lg border hover:shadow-sm transition-all cursor-pointer",
                                   isHead ? "border-amber-300 bg-amber-50/50 dark:bg-amber-900/10" : "border-transparent bg-muted/30"
                                 )}
-                                onClick={() => setSelectedEmp(emp)}
+                                {...clickable(() => setSelectedEmp(emp))}
                               >
                                 <div className="flex items-center gap-3">
                                   <Avatar className="h-10 w-10">
@@ -291,7 +308,7 @@ export default function OrgchartPage() {
                   <Separator className="my-2" />
                   <div className="space-y-1 max-h-32 overflow-y-auto">
                     {dept.members.slice(0, 6).map((emp) => (
-                      <div key={emp.id} className="flex items-center gap-2 p-1 rounded hover:bg-muted/30 cursor-pointer text-xs" onClick={() => setSelectedEmp(emp)}>
+                      <div key={emp.id} className="flex items-center gap-2 p-1 rounded hover:bg-muted/30 cursor-pointer text-xs" {...clickable(() => setSelectedEmp(emp))}>
                         <Avatar className="h-5 w-5">
                           <AvatarFallback className="text-[8px] bg-gradient-to-br from-violet-500 to-purple-600 text-white">
                             {emp.firstName?.[0]}{emp.lastName?.[0]}
@@ -331,8 +348,20 @@ export default function OrgchartPage() {
 
       {/* Employee Detail Dialog - reusing native Dialog */}
       {selectedEmp && (
+        // The backdrop closes on click as a mouse convenience. It is
+        // deliberately not focusable: a full-viewport tab stop announced as a
+        // button is worse than useless. Keyboard users close with Escape (see
+        // the effect above) or the Close button, which are the two things a
+        // dialog is actually required to offer.
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setSelectedEmp(null)}>
-          <Card className="w-full max-w-sm mx-4 border-0 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <Card
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${selectedEmp.firstName} ${selectedEmp.lastName}`}
+            className="w-full max-w-sm mx-4 border-0 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <CardContent className="p-6">
               <div className="text-center mb-4">
                 <Avatar className="h-16 w-16 mx-auto mb-3">

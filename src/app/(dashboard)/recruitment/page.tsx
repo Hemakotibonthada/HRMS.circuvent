@@ -30,6 +30,7 @@ import {
 import { useJobStore, startSync, type JobDoc } from "@/stores/unified-store";
 import { genericService, COLLECTIONS } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { clickable } from "@/lib/a11y/clickable";
 
 // ═══════════════════════════════════════════════════════════════
 // RECRUITMENT — Full ATS with Kanban pipeline, job postings,
@@ -258,7 +259,7 @@ export default function RecruitmentPage() {
                         <div
                           key={`${stage}-${job.id}`}
                           className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
-                          onClick={() => setSelectedJob(job)}
+                          {...clickable(() => setSelectedJob(job))}
                         >
                           <p className="text-xs font-medium truncate">{job.title}</p>
                           <p className="text-[10px] text-muted-foreground">{job.department}</p>

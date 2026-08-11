@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useHolidayStore, useLeaveStore, startSync, type HolidayDoc } from "@/stores/unified-store";
 import { genericService, COLLECTIONS } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { clickable } from "@/lib/a11y/clickable";
 
 // ═══════════════════════════════════════════════════════════════
 // HR CALENDAR — Holidays, leave overlay, monthly grid navigation
@@ -197,7 +198,7 @@ export default function HRCalendarPage() {
                     isSunday && "bg-red-50/50 dark:bg-red-900/10",
                     holidays.length > 0 && "bg-amber-50/50 dark:bg-amber-900/10",
                   )}
-                  onClick={() => setSelectedDay(day)}
+                  {...clickable(() => setSelectedDay(day))}
                 >
                   <span className={cn("text-xs font-medium", isToday && "bg-violet-500 text-white rounded-full px-1.5 py-0.5")}>{day}</span>
                   <div className="mt-1 space-y-0.5">

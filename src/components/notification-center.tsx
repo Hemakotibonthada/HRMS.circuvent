@@ -12,6 +12,7 @@ import {
   Clock, AlertCircle, Award, X, Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { clickable } from "@/lib/a11y/clickable";
 
 interface Notification {
   id: string;
@@ -114,7 +115,12 @@ function NotificationList({ items, onRead, onRemove }: { items: Notification[]; 
           return (
             <div
               key={n.id}
-              onClick={() => !n.read && onRead(n.id)}
+              {...clickable(() => !n.read && onRead(n.id), {
+                // Unread items act; read ones have nothing left to do, and a
+                // focus stop that does nothing is noise in the tab order.
+                disabled: n.read,
+                label: n.read ? undefined : `Mark "${n.title}" as read`,
+              })}
               className={cn(
                 "group relative flex gap-3 rounded-xl p-3 cursor-pointer transition-colors",
                 n.read ? "hover:bg-muted/50" : "bg-primary/5 hover:bg-primary/10"

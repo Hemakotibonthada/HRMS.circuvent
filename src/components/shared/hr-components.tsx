@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
+import { clickable } from "@/lib/a11y/clickable";
 
 // ═══════════════════════════════════════════════════════════════
 // SHARED UI COMPONENT LIBRARY — Comprehensive reusable
@@ -340,7 +341,10 @@ interface EmployeeChipProps {
 
 export function EmployeeChip({ name, role, department, email, size = "md", showDetails = true, onClick }: EmployeeChipProps) {
   return (
-    <div className={cn("flex items-center gap-2", onClick && "cursor-pointer hover:bg-muted/50 rounded-lg p-1 transition-colors")} onClick={onClick}>
+    <div
+      className={cn("flex items-center gap-2", onClick && "cursor-pointer hover:bg-muted/50 rounded-lg p-1 transition-colors")}
+      {...(onClick ? clickable(onClick) : {})}
+    >
       <EmployeeAvatar name={name} size={size === "sm" ? "sm" : "md"} />
       <div className="min-w-0">
         <p className={cn("font-medium truncate", size === "sm" ? "text-[11px]" : "text-xs")}>{name}</p>

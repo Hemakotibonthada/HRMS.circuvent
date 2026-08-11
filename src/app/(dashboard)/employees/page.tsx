@@ -27,6 +27,7 @@ import { genericService, COLLECTIONS } from "@/lib/firestore-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { useRBAC } from "@/hooks/use-rbac";
 import { createEmployeeAcrossApps, syncEmployeeToOtherApps } from "@/lib/cross-app-sync";
+import { clickable } from "@/lib/a11y/clickable";
 
 // ═══════════════════════════════════════════════════════════════
 // EMPLOYEE MANAGEMENT — Full CRUD with 360° profiles, grid/list
@@ -322,7 +323,7 @@ export default function EmployeesPage() {
           <CardContent>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {deptSummary.map(([dept, count], i) => (
-                <div key={dept} className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-all cursor-pointer" onClick={() => setDeptFilter(dept)}>
+                <div key={dept} className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-all cursor-pointer" {...clickable(() => setDeptFilter(dept))}>
                   <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]} text-white shadow-sm`}>
                     <Building2 className="h-4 w-4" />
                   </div>

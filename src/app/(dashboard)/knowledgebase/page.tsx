@@ -28,6 +28,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip as RTooltip, PieChart, Pie, Cell, Legend,
 } from "recharts";
+import { clickable } from "@/lib/a11y/clickable";
 
 // ═══════════════════════════════════════════════════════════════
 // KNOWLEDGE BASE — Article management, search, categories,
@@ -295,7 +296,7 @@ export default function KnowledgeBasePage() {
                 {popularArticles.length === 0 ? <p className="text-sm text-muted-foreground text-center py-8">No articles</p> : (
                   <div className="space-y-2">
                     {popularArticles.map((article, i) => (
-                      <div key={article.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer" onClick={() => handleView(article)}>
+                      <div key={article.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer" {...clickable(() => handleView(article))}>
                         <span className="text-sm font-bold text-muted-foreground w-6 text-center">{i + 1}</span>
                         <div className="flex-1">
                           <p className="text-sm font-medium line-clamp-1">{article.title}</p>
@@ -314,7 +315,7 @@ export default function KnowledgeBasePage() {
                 {trendingArticles.length === 0 ? <p className="text-sm text-muted-foreground text-center py-8">No articles</p> : (
                   <div className="space-y-2">
                     {trendingArticles.map((article, i) => (
-                      <div key={article.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer" onClick={() => handleView(article)}>
+                      <div key={article.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer" {...clickable(() => handleView(article))}>
                         <span className="text-sm font-bold text-muted-foreground w-6 text-center">{i + 1}</span>
                         <div className="flex-1">
                           <p className="text-sm font-medium line-clamp-1">{article.title}</p>

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SUBSCRIPTION_PLANS } from "@/lib/constants";
+import { clickable } from "@/lib/a11y/clickable";
 
 const INVOICES = [
   { id: "INV-2026-003", date: "Mar 1, 2026", amount: "$1,200", status: "paid" as const, plan: "Professional" },
@@ -151,7 +152,7 @@ export default function BillingPage() {
               return (
                 <div
                   key={plan.id}
-                  onClick={() => !isCurrent && setSelectedPlan(plan.id)}
+                  {...clickable(() => setSelectedPlan(plan.id), { disabled: isCurrent })}
                   className={cn(
                     "relative rounded-xl border-2 p-5 cursor-pointer transition-all",
                     isCurrent && "border-primary bg-primary/5 cursor-default",
