@@ -67,6 +67,7 @@ function AuthGate() {
       <Stack.Screen name="leave/apply" options={{ title: "Apply for leave" }} />
       <Stack.Screen name="leave/[id]" options={{ title: "Leave request" }} />
       <Stack.Screen name="settings" options={{ title: "Settings" }} />
+      <Stack.Screen name="approvals" options={{ title: "Approvals" }} />
     </Stack>
   );
 }

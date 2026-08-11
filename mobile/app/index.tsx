@@ -393,6 +393,18 @@ export default function TodayScreen() {
           style={{ marginTop: theme.spacing.lg }}
         />
 
+        {/* Only for roles the server will actually let approve. A button that
+            always returns 403 reads as a broken app rather than a boundary. */}
+        {user && ["owner", "admin", "hr", "manager"].includes(user.role) ? (
+          <Button
+            label="Approvals"
+            variant="secondary"
+            onPress={() => router.push("/approvals")}
+            accessibilityHint="Leave requests waiting for your decision"
+            style={{ marginTop: theme.spacing.sm }}
+          />
+        ) : null}
+
         <Button
           label="Settings"
           variant="ghost"

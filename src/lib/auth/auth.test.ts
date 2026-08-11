@@ -36,16 +36,24 @@ import {
 } from "@/lib/auth/mfa";
 
 describe("password hashing", () => {
+  // Argon2id is deliberately expensive — that is the entire point of it, and
+  // the cost parameters are tuned for a login, not for a test suite. Four
+  // hashes plus four verifies in one test comfortably exceeds Vitest's 5s
+  // default on a loaded machine, and a test that fails when the CI box is
+  // busy teaches people to re-run rather than to look. The timeout is stated
+  // here so the expense is visible rather than surprising.
+  const ARGON2_TIMEOUT_MS = 30_000;
+
   it("verifies a correct password", async () => {
     const hash = await hashPassword("correct horse battery staple");
     await expect(verifyPassword("correct horse battery staple", hash)).resolves.toBe(true);
-  });
+  }, ARGON2_TIMEOUT_MS);
 
   it("rejects an incorrect password", async () => {
     const hash = await hashPassword("correct horse battery staple");
     await expect(verifyPassword("Correct horse battery staple", hash)).resolves.toBe(false);
     await expect(verifyPassword("", hash)).resolves.toBe(false);
-  });
+  }, ARGON2_TIMEOUT_MS);
 
   it("produces a different hash each time for the same password", async () => {
     // Equal hashes would mean the salt is not random, which makes the whole
@@ -55,12 +63,12 @@ describe("password hashing", () => {
     expect(a).not.toBe(b);
     await expect(verifyPassword("same-password", a)).resolves.toBe(true);
     await expect(verifyPassword("same-password", b)).resolves.toBe(true);
-  });
+  }, ARGON2_TIMEOUT_MS);
 
   it("emits PHC format carrying its own cost parameters", async () => {
     const hash = await hashPassword("pw");
     expect(hash).toMatch(/^\$argon2id\$v=19\$m=\d+,t=\d+,p=\d+\$[\w+/]+\$[\w+/]+$/);
-  });
+  }, ARGON2_TIMEOUT_MS);
 
   it("returns false rather than throwing on a malformed stored hash", async () => {
     // A corrupt row must not become a 500 that distinguishes itself from a
@@ -81,14 +89,14 @@ describe("password hashing", () => {
 
   it("does not flag a freshly created hash", async () => {
     expect(needsRehash(await hashPassword("pw"))).toBe(false);
-  });
+  }, ARGON2_TIMEOUT_MS);
 
   it("provides a dummy hash so unknown accounts cost the same to check", async () => {
     // Without this, an unknown email returns faster than a known one and the
     // login form enumerates accounts.
     await expect(verifyPassword("anything", DUMMY_HASH)).resolves.toBe(false);
     await expect(fakeVerify("anything")).resolves.toBeUndefined();
-  });
+  }, ARGON2_TIMEOUT_MS);
 
   it("generates distinct high-entropy tokens", () => {
     const tokens = new Set(Array.from({ length: 100 }, () => generateToken()));
