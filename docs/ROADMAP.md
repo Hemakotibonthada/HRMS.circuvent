@@ -263,6 +263,9 @@ Each of these was live code, not a hypothetical.
 | **Two haversine implementations with different Earth radii** — `attendance.neon.ts` used 6,371,000, `mobile/geofence.ts` uses 6,371,008.8 | The phone and the server disagreed by ~1 m per km, enough to put someone on opposite sides of a 50 m office fence depending on which was asked. Consolidated onto the tested module. |
 | **The mobile API client could never have signed in** | It read `body.accessToken`; `/api/auth/login` returns `body.tokens.accessToken`, and only when the caller declares itself native — which the client never did. Its own tests encoded the wrong shape, so they passed. Fixed and pinned. |
 | **`attendance_review_has_reason_check` passed the row it existed to reject** | `geofence_confidence IN (…)` is `NULL` when the column is `NULL`, and a `CHECK` evaluating to `NULL` passes. Caught by the verifier check written alongside it. |
+| **`submit()` reported a *refused* action as a successful one** | It asked "is this still in `pending()`?", and `pending()` deliberately excludes quarantined work. The clock-in screen said "Clocked in" to someone whose punch the server had permanently rejected — they stop thinking about it and find out at payday. Replaced with `outcomeOf()`, which answers in three states. |
+| **`0012_doc_store.sql`: number already taken by `0012_compensation`, absent from the journal** | `drizzle-kit migrate` reads the journal, so it would never have run, while the directory listing made it look applied. It also hand-rolled its own tenant policy under a non-standard name — identical behaviour, invisible to the isolation check, two places to remember. |
+| **The mobile app had never been compiled** | Adding it to `verify` found real unsafety in shared code that the root config does not check for (`noUncheckedIndexedAccess`): `locateWithin` indexed a sorted array without proving it non-empty. |
 
 ### Accessibility defects in the shared palette
 
@@ -316,7 +319,9 @@ One Expo/Turborepo monorepo, six apps, one shared design system — templated fr
 | 3.1.11 | Session and sync providers, auth gate, sign-in | ✅ |
 | 3.1.12 | Clock in/out with device-side geofence pre-check and offline queueing | ✅ |
 | 3.1.13 | Leave list, balances, apply form, request detail | ✅ |
-| 3.1.4b | Biometric unlock (`expo-local-authentication`) | ⏳ |
+| 3.1.4b | Biometric unlock (`expo-local-authentication`) | ✅ |
+| 3.1.14 | Refused-work visibility with explicit retry and discard | ✅ |
+| 3.1.15 | Settings screen | ✅ |
 | 3.1.6 | `packages/push` — Expo Notifications registration and handling | ⏳ |
 | 3.1.7 | EAS Build + Submit pipelines; OTA updates via EAS Update | ⏳ |
 | 3.1.1 | Turborepo workspace, once a second mobile app exists | ⏳ |
@@ -339,9 +344,15 @@ a palette tweak that drops below WCAG AA fails `npm run verify` and names the pa
 Background location is blocked outright in `app.json`. An HR app that can follow staff home is a
 surveillance tool, and the only credible promise that it does not is one the OS enforces.
 
-**Not done:** biometric unlock, push notifications, payslips, shifts, an approvals inbox, and EAS
-build configuration. No app has been run on a device — the app typechecks and its pure logic is
-tested, but nothing here has been exercised against a real Neon database or a real phone.
+**Not done:** push notifications, payslips, shifts, an approvals inbox, and EAS build
+configuration. No app has been run on a device — the app typechecks and its pure logic is tested,
+but nothing here has been exercised against a real Neon database or a real phone.
+
+Biometric unlock gates an *existing* session and is not a sign-in method. A local biometric proves
+the holder is the enrolled person and proves nothing to the server, which has never seen the face;
+the credential that authenticates is still the refresh token in the keystore. Treating a local
+biometric as authentication makes the phone the authority, and bypassing the prompt on a rooted
+device is a solved problem.
 
 
 ### 3.2 App rollout order
