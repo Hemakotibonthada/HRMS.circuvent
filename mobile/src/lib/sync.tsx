@@ -49,16 +49,22 @@ const ROUTES: Record<OperationKind, { path: string; method: "POST" | "PATCH" }> 
   "profile.update": { path: "/api/employees/me", method: "PATCH" },
 };
 
+export type SubmitOutcome = "sent" | "queued" | "quarantined";
+
 interface SyncValue {
   /** Queues work and tries to send it immediately. */
   submit(
     kind: OperationKind,
     payload: Record<string, unknown>,
     options: { id: string; streamKey?: string }
-  ): Promise<{ sent: boolean }>;
+  ): Promise<SubmitOutcome>;
   pending: QueuedOperation[];
   quarantined: QueuedOperation[];
   flush(): Promise<void>;
+  /** Puts a refused operation back in the queue after the user asks. */
+  retry(id: string): Promise<void>;
+  /** Throws a refused operation away. Only ever an explicit user action. */
+  discard(id: string): Promise<void>;
   syncing: boolean;
 }
 
@@ -134,7 +140,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       kind: OperationKind,
       payload: Record<string, unknown>,
       options: { id: string; streamKey?: string }
-    ) => {
+    ): Promise<SubmitOutcome> => {
       // Written down first, always. Attempting the network first and only
       // queueing on failure loses the action if the app is killed mid-request
       // — which is exactly what happens when someone locks their phone and
@@ -143,10 +149,12 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       await refreshCounts();
 
       await flush();
-
-      const stillPending = await queue.pending();
       await refreshCounts();
-      return { sent: !stillPending.some((o) => o.id === options.id) };
+
+      // Asked of the queue rather than inferred from `pending`, which
+      // excludes quarantined work and would report a permanently rejected
+      // punch as a successful one.
+      return queue.outcomeOf(options.id);
     },
     [queue, refreshCounts, flush]
   );
@@ -167,9 +175,27 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     };
   }, [status, flush]);
 
+  const retry = useCallback(
+    async (id: string) => {
+      await queue.retryQuarantined(id);
+      await refreshCounts();
+      await flush();
+      await refreshCounts();
+    },
+    [queue, refreshCounts, flush]
+  );
+
+  const discard = useCallback(
+    async (id: string) => {
+      await queue.discard(id);
+      await refreshCounts();
+    },
+    [queue, refreshCounts]
+  );
+
   const value = useMemo(
-    () => ({ submit, pending, quarantined, flush, syncing }),
-    [submit, pending, quarantined, flush, syncing]
+    () => ({ submit, pending, quarantined, flush, retry, discard, syncing }),
+    [submit, pending, quarantined, flush, retry, discard, syncing]
   );
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;

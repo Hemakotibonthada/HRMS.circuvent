@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { SessionProvider, useSession } from "@/lib/session";
 import { SyncProvider } from "@/lib/sync";
+import { BiometricGate } from "@/components/BiometricGate";
 import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
 
 /**
@@ -65,6 +66,7 @@ function AuthGate() {
       <Stack.Screen name="leave/index" options={{ title: "Leave" }} />
       <Stack.Screen name="leave/apply" options={{ title: "Apply for leave" }} />
       <Stack.Screen name="leave/[id]" options={{ title: "Leave request" }} />
+      <Stack.Screen name="settings" options={{ title: "Settings" }} />
     </Stack>
   );
 }
@@ -78,7 +80,9 @@ export default function RootLayout() {
         <StatusBar style="auto" />
         <SessionProvider>
           <SyncProvider>
-            <AuthGate />
+            <BiometricGate>
+              <AuthGate />
+            </BiometricGate>
           </SyncProvider>
         </SessionProvider>
       </ThemeProvider>

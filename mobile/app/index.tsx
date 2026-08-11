@@ -48,8 +48,8 @@ function formatDuration(minutes?: number): string {
  */
 export default function TodayScreen() {
   const theme = useTheme();
-  const { api, user, signOut } = useSession();
-  const { submit, pending } = useSync();
+  const { api, user } = useSession();
+  const { submit, pending, quarantined, retry, discard } = useSync();
   const router = useRouter();
 
   const [today, setToday] = useState<TodayResponse | null>(null);
@@ -91,11 +91,11 @@ export default function TodayScreen() {
       setBusy(true);
 
       try {
-        const outcome = await readPosition();
+        const located = await readPosition();
 
-        if (!outcome.ok) {
-          setMessage({ tone: "error", text: outcome.message });
-          setSettingsPrompt(outcome.reason === "denied_forever" || outcome.reason === "disabled");
+        if (!located.ok) {
+          setMessage({ tone: "error", text: located.message });
+          setSettingsPrompt(located.reason === "denied_forever" || located.reason === "disabled");
           return;
         }
 
@@ -104,7 +104,7 @@ export default function TodayScreen() {
         // 403 after a round-trip.
         const fences = today?.fence ? [today.fence] : [];
         if (fences.length > 0) {
-          const verdict = evaluateClockIn(outcome.position, fences);
+          const verdict = evaluateClockIn(located.position, fences);
           if (!verdict.allowed) {
             setMessage({ tone: "error", text: verdict.message });
             return;
@@ -115,16 +115,16 @@ export default function TodayScreen() {
         // failure: the app can be killed between the tap and the response —
         // locking the phone and pocketing it does exactly that — and the
         // punch has to survive it.
-        const { sent } = await submit(
+        const outcome = await submit(
           direction === "in" ? "attendance.clock_in" : "attendance.clock_out",
           {
             action: direction,
             method: "mobile",
-            latitude: outcome.position.latitude,
-            longitude: outcome.position.longitude,
-            accuracyMetres: outcome.position.accuracyMetres,
-            capturedAt: outcome.position.capturedAt,
-            isMocked: outcome.position.isMocked,
+            latitude: located.position.latitude,
+            longitude: located.position.longitude,
+            accuracyMetres: located.position.accuracyMetres,
+            capturedAt: located.position.capturedAt,
+            isMocked: located.position.isMocked,
           },
           {
             // Idempotency key: a retry or a double-tap must not produce two
@@ -136,16 +136,26 @@ export default function TodayScreen() {
           }
         );
 
-        setMessage(
-          sent
-            ? { tone: "success", text: direction === "in" ? "Clocked in" : "Clocked out" }
-            : {
-                tone: "info",
-                text: "Saved on this device. It will be sent when you have a connection.",
-              }
-        );
-
-        if (sent) await load();
+        if (outcome === "sent") {
+          setMessage({
+            tone: "success",
+            text: direction === "in" ? "Clocked in" : "Clocked out",
+          });
+          await load();
+        } else if (outcome === "queued") {
+          setMessage({
+            tone: "info",
+            text: "Saved on this device. It will be sent when you have a connection.",
+          });
+        } else {
+          // Quarantined: the server refused it outright and retrying will not
+          // help. Saying "clocked in" here would be the worst outcome of all,
+          // because the person stops thinking about it.
+          setMessage({
+            tone: "error",
+            text: "This could not be recorded. Please speak to your manager or HR.",
+          });
+        }
       } catch (error) {
         if (error instanceof ApiError) {
           setMessage({ tone: "error", text: error.message });
@@ -313,6 +323,68 @@ export default function TodayScreen() {
           </View>
         ) : null}
 
+        {quarantined.length > 0 ? (
+          // Refused work has to be visible and actionable. The alternative is
+          // that it sits in a database on the phone for ever while the person
+          // believes they clocked in — the failure mode this whole queue
+          // exists to avoid.
+          <View
+            accessibilityRole="alert"
+            style={{
+              backgroundColor: theme.colors.dangerSubtle,
+              borderRadius: theme.radius.md,
+              padding: theme.spacing.md,
+              marginTop: theme.spacing.lg,
+            }}
+          >
+            <Text
+              style={{
+                color: theme.colors.danger,
+                fontSize: theme.fontSize.footnote,
+                lineHeight: theme.lineHeight.footnote,
+                fontWeight: theme.fontWeight.semibold,
+              }}
+            >
+              {quarantined.length === 1
+                ? "1 action was refused and will not be retried"
+                : `${quarantined.length} actions were refused and will not be retried`}
+            </Text>
+
+            {quarantined.map((operation) => (
+              <View key={operation.id} style={{ marginTop: theme.spacing.sm }}>
+                <Text
+                  style={{
+                    color: theme.colors.danger,
+                    fontSize: theme.fontSize.caption,
+                    lineHeight: theme.lineHeight.caption,
+                  }}
+                >
+                  {operation.kind.replace(/[._]/g, " ")} —{" "}
+                  {operation.lastError ?? "no reason given"}
+                </Text>
+                <View style={styles.actions}>
+                  <Button
+                    label="Try again"
+                    variant="ghost"
+                    fullWidth={false}
+                    onPress={() => void retry(operation.id)}
+                    accessibilityLabel={`Try ${operation.kind.replace(/[._]/g, " ")} again`}
+                  />
+                  <Button
+                    label="Discard"
+                    variant="ghost"
+                    fullWidth={false}
+                    onPress={() => void discard(operation.id)}
+                    accessibilityLabel={`Discard ${operation.kind.replace(/[._]/g, " ")}`}
+                    accessibilityHint="Removes this action permanently"
+                    style={{ marginLeft: theme.spacing.md }}
+                  />
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         <Button
           label="Leave"
           variant="secondary"
@@ -322,10 +394,11 @@ export default function TodayScreen() {
         />
 
         <Button
-          label="Sign out"
+          label="Settings"
           variant="ghost"
-          onPress={() => void signOut()}
-          style={{ marginTop: theme.spacing.xxl }}
+          onPress={() => router.push("/settings")}
+          accessibilityHint="Account settings and biometric unlock"
+          style={{ marginTop: theme.spacing.xl }}
         />
       </ScrollView>
     </SafeAreaView>
@@ -365,5 +438,6 @@ function Field({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   row: { flexDirection: "row", justifyContent: "space-between" },
+  actions: { flexDirection: "row", alignItems: "center" },
   field: { flex: 1 },
 });

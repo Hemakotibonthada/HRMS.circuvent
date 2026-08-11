@@ -225,6 +225,25 @@ export class OfflineQueue {
     return { sent, failed, quarantined };
   }
 
+  /**
+   * What became of a submitted operation.
+   *
+   * Successful operations are deleted, so absence means sent. That is a
+   * conclusion worth stating in one place rather than re-deriving at each
+   * call site: the obvious version — "is it still in `pending()`?" — reports
+   * a *quarantined* operation as sent, because `pending()` deliberately
+   * excludes quarantined work. The caller then tells someone their clock-in
+   * was recorded when it was permanently rejected, which is the one thing an
+   * attendance app must never say.
+   */
+  async outcomeOf(id: string): Promise<"sent" | "queued" | "quarantined"> {
+    const operations = await this.storage.read();
+    const operation = operations.find((o) => o.id === id);
+
+    if (!operation) return "sent";
+    return operation.status === "quarantined" ? "quarantined" : "queued";
+  }
+
   /** Returns a quarantined operation to the queue after the user retries it. */
   async retryQuarantined(id: string): Promise<boolean> {
     const operations = await this.storage.read();

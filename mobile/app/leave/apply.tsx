@@ -72,7 +72,7 @@ export default function ApplyLeaveScreen() {
 
     setBusy(true);
     try {
-      const { sent } = await submit(
+      const outcome = await submit(
         "leave.apply",
         {
           leaveType,
@@ -89,10 +89,16 @@ export default function ApplyLeaveScreen() {
         }
       );
 
-      if (sent) {
+      if (outcome === "sent") {
         router.back();
-      } else {
+      } else if (outcome === "queued") {
         setBanner("Saved on this device. It will be submitted when you have a connection.");
+      } else {
+        // Permanently refused. Going back to the list would show no new
+        // request and no explanation for why.
+        setBanner(
+          "This request could not be submitted and will not be retried. Check the dates and your balance, or speak to HR."
+        );
       }
     } catch (error) {
       setBanner(

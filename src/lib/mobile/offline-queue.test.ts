@@ -317,6 +317,46 @@ describe("quarantine handling", () => {
   });
 });
 
+describe("outcomeOf", () => {
+  it("reports a sent operation as sent", async () => {
+    const { queue } = makeQueue(async () => ({ ok: true }));
+    await queue.enqueue("attendance.clock_in", { a: 1 }, { id: "op-1" });
+    await queue.flush();
+
+    // Successful operations are deleted, so absence is the signal.
+    expect(await queue.outcomeOf("op-1")).toBe("sent");
+  });
+
+  it("reports an operation still waiting as queued", async () => {
+    const { queue } = makeQueue(async () => ({ ok: false, error: "offline" }));
+    await queue.enqueue("attendance.clock_in", { a: 1 }, { id: "op-1" });
+    await queue.flush();
+
+    expect(await queue.outcomeOf("op-1")).toBe("queued");
+  });
+
+  it("does not report a quarantined operation as sent", async () => {
+    // The bug this exists to prevent. `pending()` excludes quarantined work,
+    // so a caller asking "is it still pending?" concludes it was sent — and
+    // tells someone their clock-in was recorded when the server refused it
+    // outright.
+    const { queue } = makeQueue(async () => ({ ok: false, permanent: true, error: "rejected" }));
+    await queue.enqueue("attendance.clock_in", { a: 1 }, { id: "op-1" });
+    await queue.flush();
+
+    expect(await queue.pending()).toHaveLength(0);
+    expect(await queue.outcomeOf("op-1")).toBe("quarantined");
+  });
+
+  it("reports an operation that was never enqueued as sent", async () => {
+    // Absence cannot distinguish "delivered" from "never existed", and the
+    // caller only ever asks about an id it just enqueued. Stated so the
+    // limitation is deliberate rather than discovered.
+    const { queue } = makeQueue(async () => ({ ok: true }));
+    expect(await queue.outcomeOf("never-existed")).toBe("sent");
+  });
+});
+
 describe("status", () => {
   it("counts each state for the sync indicator", async () => {
     const storage = new MemoryStorage([
