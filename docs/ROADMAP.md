@@ -266,6 +266,14 @@ Each of these was live code, not a hypothetical.
 | **`submit()` reported a *refused* action as a successful one** | It asked "is this still in `pending()`?", and `pending()` deliberately excludes quarantined work. The clock-in screen said "Clocked in" to someone whose punch the server had permanently rejected — they stop thinking about it and find out at payday. Replaced with `outcomeOf()`, which answers in three states. |
 | **`0012_doc_store.sql`: number already taken by `0012_compensation`, absent from the journal** | `drizzle-kit migrate` reads the journal, so it would never have run, while the directory listing made it look applied. It also hand-rolled its own tenant policy under a non-standard name — identical behaviour, invisible to the isolation check, two places to remember. |
 | **The mobile app had never been compiled** | Adding it to `verify` found real unsafety in shared code that the root config does not check for (`noUncheckedIndexedAccess`): `locateWithin` indexed a sorted array without proving it non-empty. |
+| **37 mouse-only controls across 15 pages** | A `<div onClick>` is not focusable and has no role, so keyboard and switch-control users could not reach department filters, calendar days, org chart cards, parking spaces, payslip rows or notifications *at all*. Fixed via one tested helper (`src/lib/a11y/clickable.ts`); the full jsx-a11y recommended set is now enforced in `verify` at zero. |
+| **The org chart dialog had no keyboard dismissal** | Its backdrop is mouse-only, so the only exit was to tab through the whole card to the Close button. Now closes on Escape and announces itself as a dialog. |
+
+### Known, not yet fixed
+
+| Issue | Where |
+|---|---|
+| 5 × `react-hooks/preserve-manual-memoization` — the React Compiler cannot preserve an existing `useMemo` | `celebrations`, `offboarding`, `onboarding`, `onboardinghub` pages. Excluded from `lint:a11y` so it enforces accessibility without inheriting unrelated failures. |
 
 ### Accessibility defects in the shared palette
 
@@ -303,7 +311,7 @@ products disagree about whether a colour is readable.
 | Task | Detail |
 |---|---|
 | **Design system pass** | Formal tokens (primitive → semantic → component), consistent density, dark-mode contrast audit. Runs through `ui-ux-pro-max` `--design-system`. |
-| **WCAG 2.2 AA** | Full audit + remediation; `eslint-plugin-jsx-a11y` enforced in CI. |
+| **WCAG 2.2 AA** | Colour: **done and enforced** (`src/lib/color/web-palette.test.ts` asserts every pair against the real stylesheet). Keyboard and roles: **done and enforced** (`npm run lint:a11y`, jsx-a11y recommended at zero). Remaining: focus-visible styling audit, heading order, live-region coverage, and a screen-reader pass on the 10 heaviest routes — none of which static analysis can confirm. |
 | **Performance** | Virtualised tables, server-side pagination, streaming SSR, route-level code splitting, bundle analyser gate. Target: LCP < 2.5 s, CLS < 0.1, INP < 200 ms. |
 | **Command palette everywhere** | `cmdk` already present — extend to global actions, not just navigation. |
 | **Empty / loading / error states** | Every one of the 92 modules gets all three, properly. |
