@@ -274,6 +274,7 @@ Each of these was live code, not a hypothetical.
 | Issue | Where |
 |---|---|
 | 5 × `react-hooks/preserve-manual-memoization` — the React Compiler cannot preserve an existing `useMemo` | `celebrations`, `offboarding`, `onboarding`, `onboardinghub` pages. Excluded from `lint:a11y` so it enforces accessibility without inheriting unrelated failures. |
+| **Money leaves the API as a float.** `toMajor` in `payroll.neon.ts` does `Number(minor) / 100`, against the codebase's own rule that payroll must never touch floating point. | Safe for *display* at realistic salaries, and every client is display-only today — `mobile/app/payslips/` deliberately performs no arithmetic. It stops being safe the moment anything sums or compares these. The fix is to carry minor units alongside (as strings, since JSON has no bigint) and let clients format from those. |
 
 ### Accessibility defects in the shared palette
 
@@ -345,6 +346,8 @@ One Expo/Turborepo monorepo, six apps, one shared design system — templated fr
 | 3.1.14 | Refused-work visibility with explicit retry and discard | ✅ |
 | 3.1.15 | Settings screen | ✅ |
 | 3.1.6 | `packages/push` — Expo Notifications registration and handling | ⏳ |
+| 3.1.16 | Payslip list and detail, with tested money and period formatting | ✅ |
+| 3.1.17 | Manager approvals inbox (online-only, by design) | ✅ |
 | 3.1.7 | EAS Build + Submit pipelines; OTA updates via EAS Update | ⏳ |
 | 3.1.1 | Turborepo workspace, once a second mobile app exists | ⏳ |
 
@@ -366,9 +369,10 @@ a palette tweak that drops below WCAG AA fails `npm run verify` and names the pa
 Background location is blocked outright in `app.json`. An HR app that can follow staff home is a
 surveillance tool, and the only credible promise that it does not is one the OS enforces.
 
-**Not done:** push notifications, payslips, shifts, an approvals inbox, and EAS build
-configuration. No app has been run on a device — the app typechecks and its pure logic is tested,
-but nothing here has been exercised against a real Neon database or a real phone.
+**Not done:** push notifications, "my shifts", and EAS build configuration. The web app builds
+cleanly (`npm run build`, 176 pages) and the Expo app typechecks, but **neither has been run
+against a real Neon database, and the mobile app has never been run on a device.** Compiling is
+not the same as working.
 
 Biometric unlock gates an *existing* session and is not a sign-in method. A local biometric proves
 the holder is the enrolled person and proves nothing to the server, which has never seen the face;
