@@ -479,7 +479,14 @@ export class NeonPayrollRepository implements PayrollRepository {
         )
         .orderBy(desc(payrollRuns.periodYear), desc(payrollRuns.periodMonth));
 
-      return rows.map((r) => toPayrollRecord(r.record));
+      return rows.map((r) => ({
+        ...toPayrollRecord(r.record),
+        // Carried from the run, which is already joined here to filter on its
+        // status. The record itself has no period, so a payslip list without
+        // this is a column of amounts with nothing to say which month is which.
+        periodMonth: r.run.periodMonth,
+        periodYear: r.run.periodYear,
+      }));
     });
   }
 }

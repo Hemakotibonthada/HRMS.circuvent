@@ -302,9 +302,26 @@ export interface PayrollRecordDto {
   runId: string;
   employeeId: string;
   employeeName?: string;
+  /**
+   * The period this payslip is for.
+   *
+   * Optional because a record read on its own does not carry it — the period
+   * lives on the run. Populated by `payslipsFor`, which already joins the run
+   * to filter on its status. Without it a payslip list is a column of amounts
+   * with no way to tell which month each belongs to.
+   */
+  periodMonth?: number;
+  periodYear?: number;
   workingDays: number;
   presentDays: number;
   lopDays: number;
+  /**
+   * Major units, as a float, for display only.
+   *
+   * Storage is bigint minor units precisely because floats lose money. These
+   * are the converted values and must never be summed or compared for
+   * equality on the client; ask the server for a total instead.
+   */
   gross: number;
   totalDeductions: number;
   netPay: number;

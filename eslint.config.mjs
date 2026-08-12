@@ -54,6 +54,8 @@ const eslintConfig = [
       "src/lib/mobile/**/*.ts",
       "mobile/src/theme/**/*.ts",
       "src/lib/color/**/*.ts",
+      "src/lib/money/**/*.ts",
+      "src/lib/a11y/**/*.ts",
       "mobile/src/lib/leave-rules.ts",
       "mobile/src/lib/leave-rules.test.ts",
       "src/lib/api-keys.ts",

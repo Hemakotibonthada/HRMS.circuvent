@@ -24,11 +24,13 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
     "../src/lib/mobile/**/*.ts",
-    "../src/lib/color/**/*.ts"
+    "../src/lib/color/**/*.ts",
+    "../src/lib/money/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "../src/lib/mobile/**/*.test.ts",
-    "../src/lib/color/**/*.test.ts"
+    "../src/lib/color/**/*.test.ts",
+    "../src/lib/money/**/*.test.ts"
   ]
 }
