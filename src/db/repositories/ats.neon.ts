@@ -188,6 +188,122 @@ export class NeonAtsRepository {
    * concurrent submission cannot let two people advance a candidate who only
    * qualified once.
    */
+  /**
+   * The application pipeline.
+   *
+   * There was no way to list applications at all: the repository could create
+   * one, advance it, reject it and report on it, but never enumerate them, so
+   * the route exposed POST and nothing else and the pipeline board had nothing
+   * to read. Reports existed over data no screen could show.
+   *
+   * The candidate and job are joined rather than denormalised onto the
+   * application, because a name copied at apply time goes stale the moment
+   * someone corrects a spelling.
+   */
+  async listApplications(query: {
+    page?: number;
+    pageSize?: number;
+    jobId?: string;
+    stage?: string;
+    status?: string;
+    search?: string;
+  } = {}): Promise<{
+    items: {
+      id: string;
+      jobId: string;
+      jobTitle: string;
+      candidateId: string;
+      candidateName: string;
+      candidateEmail: string;
+      stage: string;
+      status: string;
+      matchScore?: number;
+      rating?: number;
+      appliedAt: string;
+      updatedAt: string;
+    }[];
+    total: number;
+    page: number;
+    pageSize: number;
+    hasMore: boolean;
+  }> {
+    const page = Math.max(1, query.page ?? 1);
+    const pageSize = Math.min(200, Math.max(1, query.pageSize ?? 50));
+
+    return withTenant(this.ctx, async (tx) => {
+      const conditions = [];
+      if (query.jobId) conditions.push(eq(applications.jobId, query.jobId));
+      if (query.stage && query.stage !== "all") {
+        conditions.push(eq(applications.stage, query.stage));
+      }
+      if (query.status && query.status !== "all") {
+        conditions.push(eq(applications.status, query.status));
+      }
+      if (query.search?.trim()) {
+        // Parameterised through Drizzle's template, so a search string cannot
+        // become SQL. ILIKE over name and email is what a recruiter actually
+        // types into a pipeline search.
+        const term = `%${query.search.trim()}%`;
+        conditions.push(
+          sql`(${candidates.firstName} || ' ' || ${candidates.lastName} ILIKE ${term} OR ${candidates.email} ILIKE ${term})`
+        );
+      }
+
+      const where = conditions.length ? and(...conditions) : undefined;
+
+      const rows = await tx
+        .select({
+          id: applications.id,
+          jobId: applications.jobId,
+          jobTitle: jobPostings.title,
+          candidateId: applications.candidateId,
+          candidateFirstName: candidates.firstName,
+          candidateLastName: candidates.lastName,
+          candidateEmail: candidates.email,
+          stage: applications.stage,
+          status: applications.status,
+          matchScore: applications.matchScore,
+          rating: applications.rating,
+          appliedAt: applications.appliedAt,
+          updatedAt: applications.updatedAt,
+        })
+        .from(applications)
+        .innerJoin(candidates, eq(candidates.id, applications.candidateId))
+        .innerJoin(jobPostings, eq(jobPostings.id, applications.jobId))
+        .where(where)
+        .orderBy(desc(applications.appliedAt))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize);
+
+      const [{ value: total }] = await tx
+        .select({ value: count() })
+        .from(applications)
+        .innerJoin(candidates, eq(candidates.id, applications.candidateId))
+        .where(where);
+
+      return {
+        items: rows.map((r) => ({
+          id: r.id,
+          jobId: r.jobId,
+          jobTitle: r.jobTitle,
+          candidateId: r.candidateId,
+          candidateName: `${r.candidateFirstName} ${r.candidateLastName}`.trim(),
+          candidateEmail: r.candidateEmail,
+          stage: r.stage,
+          status: r.status,
+          matchScore: r.matchScore ?? undefined,
+          rating: r.rating ?? undefined,
+          appliedAt: r.appliedAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+        })),
+        total,
+        page,
+        pageSize,
+        hasMore: (page - 1) * pageSize + rows.length < total,
+      };
+    });
+  }
+
   async advance(
     applicationId: string,
     actorId: string,

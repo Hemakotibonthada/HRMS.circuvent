@@ -67,3 +67,54 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/ats/applications — the pipeline.
+//
+// This did not exist. The route exposed POST alone, so an application could
+// be created, advanced, rejected and reported on, but never listed — the
+// pipeline board had nothing to read, and the funnel reports described data
+// no screen could show.
+
+const listSchema = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(200).optional(),
+  jobId: z.string().uuid().optional(),
+  stage: z.string().trim().max(40).optional(),
+  status: z.string().trim().max(40).optional(),
+  search: z.string().trim().max(120).optional(),
+});
+
+export async function GET(request: NextRequest) {
+  let ctx;
+  try {
+    // Applications carry a candidate's contact details and a rejection
+    // reason. A reporting line is not a reason to read either, so this is
+    // restricted to the people running hiring.
+    ctx = await requireApiContext(request, ["owner", "admin", "hr"]);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
+
+  const parsed = listSchema.safeParse(
+    Object.fromEntries(new URL(request.url).searchParams)
+  );
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid query" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const page = await new NeonAtsRepository(ctx).listApplications(parsed.data);
+    return NextResponse.json(page);
+  } catch (error) {
+    if (error instanceof RepositoryError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Application list failed:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
