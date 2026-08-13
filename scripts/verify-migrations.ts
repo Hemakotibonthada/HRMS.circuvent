@@ -1483,6 +1483,149 @@ async function main() {
     detail: docObjectShape ? "rejected" : "data->>'field' would silently return null",
   });
 
+  // ── Referral invites ───────────────────────────────────────
+  // The only unauthenticated write path into a tenant's data, so its
+  // constraints carry more weight than most.
+  await db.exec(`
+    INSERT INTO hrms.referrals
+      (id, org_id, referrer_id, candidate_name, candidate_email, position_title)
+    VALUES ('55555555-5555-5555-5555-555555555555', '${orgA}', '${referrer}',
+            'Priya Nair', 'priya@example.com', 'Engineer')
+    ON CONFLICT DO NOTHING;
+  `);
+
+  let tokenMustBeHashed = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.referral_invites
+        (org_id, referral_id, token_hash, sent_to_email, expires_at)
+      VALUES ('${orgA}', '55555555-5555-5555-5555-555555555555',
+              'not-a-sha256-digest', 'priya@example.com', now() + interval '14 days')
+    `);
+  } catch {
+    tokenMustBeHashed = true;
+  }
+  checks.push({
+    name: "a referral invite token must be stored hashed",
+    pass: tokenMustBeHashed,
+    detail: tokenMustBeHashed ? "rejected" : "a live link could be stored in plaintext",
+  });
+
+  let expiryBounded = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.referral_invites
+        (org_id, referral_id, token_hash, sent_to_email, expires_at)
+      VALUES ('${orgA}', '55555555-5555-5555-5555-555555555555',
+              '${"a".repeat(64)}', 'priya@example.com', now() + interval '5 years')
+    `);
+  } catch {
+    expiryBounded = true;
+  }
+  checks.push({
+    name: "a referral invite cannot outlive its bound",
+    pass: expiryBounded,
+    detail: expiryBounded ? "rejected" : "a permanent unauthenticated endpoint was allowed",
+  });
+
+  let submissionNeedsConsent = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.referral_invites
+        (org_id, referral_id, token_hash, sent_to_email, expires_at, submitted_at, submission)
+      VALUES ('${orgA}', '55555555-5555-5555-5555-555555555555',
+              '${"b".repeat(64)}', 'priya@example.com', now() + interval '14 days',
+              now(), '{"fullName":"Priya"}'::jsonb)
+    `);
+  } catch {
+    submissionNeedsConsent = true;
+  }
+  checks.push({
+    name: "an outsider's details cannot be stored without their consent",
+    pass: submissionNeedsConsent,
+    detail: submissionNeedsConsent ? "rejected" : "unlawful processing was allowed",
+  });
+
+  await db.exec(`
+    INSERT INTO hrms.referral_invites
+      (org_id, referral_id, token_hash, sent_to_email, expires_at)
+    VALUES ('${orgA}', '55555555-5555-5555-5555-555555555555',
+            '${"c".repeat(64)}', 'priya@example.com', now() + interval '14 days');
+  `);
+
+  let oneLiveInvite = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.referral_invites
+        (org_id, referral_id, token_hash, sent_to_email, expires_at)
+      VALUES ('${orgA}', '55555555-5555-5555-5555-555555555555',
+              '${"d".repeat(64)}', 'priya@example.com', now() + interval '14 days')
+    `);
+  } catch {
+    oneLiveInvite = true;
+  }
+  checks.push({
+    name: "a referral cannot have two live invites",
+    pass: oneLiveInvite,
+    detail: oneLiveInvite ? "rejected" : "a second link could overwrite the first submission",
+  });
+
+  await db.exec(`
+    UPDATE hrms.referral_invites
+       SET submitted_at = now(), consent_given_at = now(),
+           submission = '{"fullName":"Priya Nair"}'::jsonb
+     WHERE token_hash = '${"c".repeat(64)}';
+  `);
+
+  let submissionIsFinal = false;
+  try {
+    await db.exec(`
+      UPDATE hrms.referral_invites
+         SET submission = '{"fullName":"Someone Else"}'::jsonb
+       WHERE token_hash = '${"c".repeat(64)}'
+    `);
+  } catch {
+    submissionIsFinal = true;
+  }
+  checks.push({
+    name: "a submitted referral invite cannot be rewritten",
+    pass: submissionIsFinal,
+    detail: submissionIsFinal ? "rejected" : "what the candidate asserted could be edited",
+  });
+
+  let tokenIsImmutable = false;
+  try {
+    await db.exec(`
+      UPDATE hrms.referral_invites
+         SET token_hash = '${"e".repeat(64)}'
+       WHERE token_hash = '${"c".repeat(64)}'
+    `);
+  } catch {
+    tokenIsImmutable = true;
+  }
+  checks.push({
+    name: "a referral invite token cannot be moved to another row",
+    pass: tokenIsImmutable,
+    detail: tokenIsImmutable ? "rejected" : "a live link could be repointed",
+  });
+
+  let revocationNeedsReason = false;
+  try {
+    await db.exec(`
+      INSERT INTO hrms.referral_invites
+        (org_id, referral_id, token_hash, sent_to_email, expires_at, revoked_at)
+      VALUES ('${orgA}', '55555555-5555-5555-5555-555555555555',
+              '${"f".repeat(64)}', 'priya@example.com', now() + interval '14 days', now())
+    `);
+  } catch {
+    revocationNeedsReason = true;
+  }
+  checks.push({
+    name: "revoking a referral invite must record why",
+    pass: revocationNeedsReason,
+    detail: revocationNeedsReason ? "rejected" : "the candidate could not be told what happened",
+  });
+
   console.log("");
   for (const c of checks) {
     console.log(`  ${c.pass ? "ok   " : "FAIL "} ${c.name}${c.pass ? "" : ` — ${c.detail}`}`);

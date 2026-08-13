@@ -708,3 +708,75 @@ export type Certification = typeof certifications.$inferSelect;
 export type DocumentTemplate = typeof documentTemplates.$inferSelect;
 export type GeneratedDocument = typeof generatedDocuments.$inferSelect;
 export type DocumentSignature = typeof documentSignatures.$inferSelect;
+
+// ─── Referral invites ────────────────────────────────────────
+
+/**
+ * The link a referred candidate receives by email.
+ *
+ * This is the only table in the schema that grants an *unauthenticated* write
+ * into a tenant's data, so it is deliberately narrow: the token is the whole
+ * authority, and everything about the row exists to bound what that authority
+ * can do.
+ *
+ * The token itself is never here. Only its SHA-256, exactly like a refresh
+ * token — whoever reads this table, or a backup of it, gets nothing they can
+ * use, and a leaked dump is not a set of live links.
+ */
+export const referralInvites = hrms.table(
+  "referral_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    referralId: uuid("referral_id")
+      .notNull()
+      .references(() => referrals.id, { onDelete: "cascade" }),
+
+    /** SHA-256 hex of the emailed token. Never the token. */
+    tokenHash: text("token_hash").notNull(),
+
+    /** Where it was sent, recorded so a mistyped address is traceable. */
+    sentToEmail: text("sent_to_email").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    /** Delivery failures are kept: a bounce explains a referral that stalled. */
+    deliveryError: text("delivery_error"),
+
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** Set on the one successful submission. Afterwards the link is spent. */
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    /** Withdrawn by the company. Beats every other state. */
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedReason: text("revoked_reason"),
+
+    /**
+     * What the candidate typed, as sent.
+     *
+     * Kept verbatim alongside the fields copied onto the referral and the ATS
+     * candidate, because this is the only record of what the person themselves
+     * asserted — everything downstream can be edited by a recruiter.
+     */
+    submission: jsonb("submission"),
+    /**
+     * Their explicit agreement to us holding their details.
+     *
+     * Not a boolean on the submission blob: this is the lawful basis for
+     * processing an outsider's personal data, so it is a first-class column
+     * that can be queried, exported and pointed at.
+     */
+    consentGivenAt: timestamp("consent_given_at", { withTimezone: true }),
+    /** For a subject access or erasure request, and for proving provenance. */
+    submittedFromIp: text("submitted_from_ip"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // The lookup path for every public request. Unique because a hash
+    // collision would mean two candidates sharing one link.
+    uniqueIndex("referral_invites_token_key").on(t.tokenHash),
+    // Finding the live invite for a referral, to resend or revoke it.
+    index("referral_invites_referral_idx").on(t.referralId),
+    index("referral_invites_org_expiry_idx").on(t.orgId, t.expiresAt),
+  ]
+);

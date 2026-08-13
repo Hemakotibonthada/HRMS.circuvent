@@ -27,6 +27,12 @@ const PUBLIC_PREFIXES = [
   "/careers",
   "/privacy",
   "/terms",
+  // A referred candidate is, by definition, not an employee and has no
+  // account. The link they were emailed carries a 256-bit token that the
+  // handler resolves against a stored hash before anything else happens; the
+  // session gate here would reject them before they could present it.
+  "/refer",
+  "/api/public/referral",
   "/api/auth/login",
   "/api/auth/register",
   "/api/auth/forgot-password",

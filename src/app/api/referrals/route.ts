@@ -8,6 +8,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { NeonReferralRepository } from "@/db/repositories/referral.neon";
+import { NeonReferralInviteRepository } from "@/db/repositories/referral-invite.neon";
+import { sendInviteEmail } from "@/lib/referral-invite-email";
+import { inviteUrl } from "@/lib/referral-invite";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
@@ -150,8 +153,73 @@ export async function POST(request: NextRequest) {
       ...parsed.data,
       referrerId: ctx.userId,
     });
-    return NextResponse.json(created, { status: 201 });
+
+    // The invitation is sent after the referral exists, and its failure is
+    // recorded rather than raised. A referral that is saved but whose email
+    // bounced is a problem a recruiter can see and resend; a referral lost
+    // because a mail provider timed out is work the employee has to redo.
+    const invite = await issueAndSendInvite(ctx, created, request);
+
+    return NextResponse.json({ ...created, invite }, { status: 201 });
   } catch (error) {
     return fail(error);
+  }
+}
+
+/** Mints the candidate's link, emails it, and records how that went. */
+async function issueAndSendInvite(
+  ctx: Awaited<ReturnType<typeof requireApiContext>>,
+  referral: { id: string; candidateEmail: string; candidateName: string; positionTitle: string },
+  request: NextRequest
+): Promise<{ sent: boolean; error?: string; inviteUrlForLocalTesting?: string }> {
+  try {
+    const repo = new NeonReferralInviteRepository(ctx);
+    const { inviteId, token, expiresAt } = await repo.create(
+      referral.id,
+      referral.candidateEmail
+    );
+
+    // The deployed origin, falling back to the requesting one. A hardcoded
+    // localhost here would email an unreachable link from production; a
+    // hardcoded production URL would do the reverse in development.
+    const baseUrl = process.env.NEXT_PUBLIC_HRMS_URL?.trim() || new URL(request.url).origin;
+
+    const context = await repo.prefill(inviteId).catch(() => null);
+
+    const { error } = await sendInviteEmail({
+      to: referral.candidateEmail,
+      candidateName: referral.candidateName,
+      referrerName: context?.referrerFirstName,
+      organizationName: context?.organizationName ?? "our team",
+      positionTitle: referral.positionTitle,
+      url: inviteUrl(baseUrl, token),
+      expiresAt,
+    });
+
+    // Recorded either way, so a stalled referral has a visible cause rather
+    // than looking like the candidate ignored it.
+    await repo.recordDelivery(inviteId, error);
+
+    const url = inviteUrl(baseUrl, token);
+
+    // Outside production, and only when no mail provider is configured, the
+    // link is surfaced so the flow can actually be exercised locally. Both
+    // conditions are required: in production this must never appear, because
+    // the referrer could then open the candidate's link and fill the form in
+    // on their behalf — which is precisely the thing the token prevents.
+    const devOnly =
+      process.env.NODE_ENV !== "production" && !process.env.RESEND_API_KEY
+        ? { inviteUrlForLocalTesting: url }
+        : {};
+
+    if (devOnly.inviteUrlForLocalTesting) {
+      console.warn(`[referral] no mail provider configured; invite link: ${url}`);
+    }
+
+    return { sent: !error, error, ...devOnly };
+  } catch (error) {
+    // Never fatal to the referral itself.
+    console.error("Referral invite could not be issued:", error);
+    return { sent: false, error: "The invitation could not be sent" };
   }
 }
