@@ -64,3 +64,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// GET — rosters overlapping a period. Only a single roster could be fetched
+// by id; nothing could list them, so there was no way to find the id.
+export async function GET(request: NextRequest) {
+  let ctx;
+  try {
+    ctx = await requireApiContext(request);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
+
+  try {
+    const params = new URL(request.url).searchParams;
+    const rosters = await new NeonRosteringRepository(ctx).listRosters({
+      from: params.get("from") ?? undefined,
+      to: params.get("to") ?? undefined,
+      status: params.get("status") ?? undefined,
+    });
+    return NextResponse.json({ rosters });
+  } catch (error) {
+    if (error instanceof RepositoryError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Roster list failed:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

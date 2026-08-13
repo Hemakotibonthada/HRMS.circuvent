@@ -845,4 +845,36 @@ export class NeonCompensationRepository {
       overrideReason: row.overrideReason ?? undefined,
     };
   }
+  /**
+   * Compensation cycles, newest first.
+   *
+   * A cycle could be created, budgeted, recommended into and approved, but
+   * never listed — so there was no way to find last year's cycle, or to see
+   * which one is currently open.
+   */
+  async listCycles(query: { status?: string } = {}) {
+    return withTenant(this.ctx, async (tx) => {
+      const where =
+        query.status && query.status !== "all"
+          ? eq(compensationCycles.status, query.status as never)
+          : undefined;
+
+      const rows = await tx
+        .select()
+        .from(compensationCycles)
+        .where(where)
+        .orderBy(desc(compensationCycles.effectiveOn));
+
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        periodStart: r.periodStart,
+        periodEnd: r.periodEnd,
+        effectiveOn: r.effectiveOn,
+        status: r.status,
+        minimumTenureMonths: r.minimumTenureMonths,
+        prorateNewJoiners: r.prorateNewJoiners,
+      }));
+    });
+  }
 }

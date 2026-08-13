@@ -78,3 +78,41 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/ats/offers — outstanding and historical offers.
+//
+// This did not exist. An offer could be drafted, approved, sent and responded
+// to, but never listed — so nobody could answer "what have we got out at the
+// moment?", which is the question a hiring manager asks daily.
+
+export async function GET(request: NextRequest) {
+  let ctx;
+  try {
+    // An offer is a salary. Managers are excluded for the same reason they
+    // are excluded from payslips: a reporting line is not authority to see
+    // what someone is being paid.
+    ctx = await requireApiContext(request, ["owner", "admin", "hr"]);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
+
+  const params = new URL(request.url).searchParams;
+
+  try {
+    const page = await new NeonAtsRepository(ctx).listOffers({
+      status: params.get("status") ?? undefined,
+      jobId: params.get("jobId") ?? undefined,
+      page: Number(params.get("page")) || undefined,
+      pageSize: Number(params.get("pageSize")) || undefined,
+    });
+    return NextResponse.json(page);
+  } catch (error) {
+    if (error instanceof RepositoryError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Offer list failed:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

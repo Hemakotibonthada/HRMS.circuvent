@@ -63,3 +63,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// GET — swap requests. An approver had no queue to work from, and the person
+// who asked could not see whether anyone had picked it up.
+export async function GET(request: NextRequest) {
+  let ctx;
+  try {
+    ctx = await requireApiContext(request);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
+
+  const params = new URL(request.url).searchParams;
+  const requested = params.get("employeeId") ?? undefined;
+
+  // An ordinary employee sees only swaps they are part of, whatever they ask
+  // for. Who is short-staffed, and who is trying to get out of a shift, is
+  // not everybody's business.
+  const privileged = ["owner", "admin", "hr", "manager"].includes(ctx.role);
+  const employeeId = privileged ? requested : ctx.userId;
+
+  try {
+    const swaps = await new NeonRosteringRepository(ctx).listSwaps({
+      status: params.get("status") ?? undefined,
+      employeeId,
+    });
+    return NextResponse.json({ swaps });
+  } catch (error) {
+    if (error instanceof RepositoryError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Swap list failed:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

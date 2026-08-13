@@ -918,4 +918,81 @@ export class NeonAtsRepository {
       }));
     });
   }
+  /**
+   * Offers made, most recent first.
+   *
+   * There was no way to list them: an offer could be drafted, approved, sent
+   * and responded to, but never enumerated — so nobody could see what the
+   * company currently had outstanding, which is the one question a hiring
+   * manager asks daily.
+   */
+  async listOffers(query: { status?: string; jobId?: string; page?: number; pageSize?: number } = {}) {
+    const page = Math.max(1, query.page ?? 1);
+    const pageSize = Math.min(200, Math.max(1, query.pageSize ?? 50));
+
+    return withTenant(this.ctx, async (tx) => {
+      const conditions = [];
+      if (query.status && query.status !== "all") {
+        conditions.push(eq(offers.status, query.status as never));
+      }
+      if (query.jobId) conditions.push(eq(applications.jobId, query.jobId));
+      const where = conditions.length ? and(...conditions) : undefined;
+
+      const rows = await tx
+        .select({
+          id: offers.id,
+          applicationId: offers.applicationId,
+          candidateId: offers.candidateId,
+          candidateFirstName: candidates.firstName,
+          candidateLastName: candidates.lastName,
+          jobTitle: jobPostings.title,
+          designation: offers.designation,
+          annualCtcMinor: offers.annualCtcMinor,
+          currency: offers.currency,
+          status: offers.status,
+          version: offers.version,
+          proposedStartDate: offers.proposedStartDate,
+          sentAt: offers.sentAt,
+          createdAt: offers.createdAt,
+        })
+        .from(offers)
+        .innerJoin(candidates, eq(candidates.id, offers.candidateId))
+        .innerJoin(applications, eq(applications.id, offers.applicationId))
+        .innerJoin(jobPostings, eq(jobPostings.id, applications.jobId))
+        .where(where)
+        .orderBy(desc(offers.createdAt))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize);
+
+      const [{ value: total }] = await tx
+        .select({ value: count() })
+        .from(offers)
+        .innerJoin(applications, eq(applications.id, offers.applicationId))
+        .where(where);
+
+      return {
+        items: rows.map((r) => ({
+          id: r.id,
+          applicationId: r.applicationId,
+          candidateId: r.candidateId,
+          candidateName: `${r.candidateFirstName} ${r.candidateLastName}`.trim(),
+          jobTitle: r.jobTitle,
+          designation: r.designation,
+          // A string, not a number. These are bigint minor units and JSON has
+          // no bigint; sending them as a float would round somebody's salary.
+          annualCtcMinor: r.annualCtcMinor.toString(),
+          currency: r.currency,
+          status: r.status,
+          version: r.version,
+          proposedStartDate: r.proposedStartDate ?? undefined,
+          sentAt: r.sentAt?.toISOString(),
+          createdAt: r.createdAt.toISOString(),
+        })),
+        total,
+        page,
+        pageSize,
+        hasMore: (page - 1) * pageSize + rows.length < total,
+      };
+    });
+  }
 }

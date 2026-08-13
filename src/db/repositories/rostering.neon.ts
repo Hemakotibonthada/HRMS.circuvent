@@ -1028,6 +1028,83 @@ export class NeonRosteringRepository {
       })),
     };
   }
+
+  /**
+   * Rosters for a period.
+   *
+   * Only a single roster could be fetched, by id. Nothing could list them, so
+   * there was no way to find the id of the roster you wanted.
+   */
+  async listRosters(query: { from?: string; to?: string; status?: string } = {}) {
+    return withTenant(this.ctx, async (tx) => {
+      const conditions = [];
+      // Overlap, not containment: a roster that starts before the window and
+      // ends inside it is still one you are asking about.
+      if (query.from) conditions.push(gte(rosters.periodEnd, query.from));
+      if (query.to) conditions.push(lte(rosters.periodStart, query.to));
+      if (query.status && query.status !== "all") {
+        conditions.push(eq(rosters.status, query.status as never));
+      }
+
+      const rows = await tx
+        .select()
+        .from(rosters)
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(asc(rosters.periodStart));
+
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        departmentId: r.departmentId ?? undefined,
+        locationId: r.locationId ?? undefined,
+        periodStart: r.periodStart,
+        periodEnd: r.periodEnd,
+        status: r.status,
+      }));
+    });
+  }
+
+  /**
+   * Swap requests.
+   *
+   * A swap could be requested, accepted and approved, but never listed — so
+   * an approver had no queue to work from, and the person who asked could not
+   * see whether anybody had picked it up.
+   */
+  async listSwaps(query: { status?: string; employeeId?: string } = {}) {
+    return withTenant(this.ctx, async (tx) => {
+      const conditions = [];
+      if (query.status && query.status !== "all") {
+        conditions.push(eq(shiftSwapRequests.status, query.status as never));
+      }
+      if (query.employeeId) {
+        // Either side of the swap: the person who asked, and the person asked.
+        conditions.push(
+          or(
+            eq(shiftSwapRequests.requestedById, query.employeeId),
+            eq(shiftSwapRequests.targetEmployeeId, query.employeeId)
+          )
+        );
+      }
+
+      const rows = await tx
+        .select()
+        .from(shiftSwapRequests)
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(asc(shiftSwapRequests.status));
+
+      return rows.map((r) => ({
+        id: r.id,
+        assignmentId: r.assignmentId,
+        requestedById: r.requestedById,
+        targetEmployeeId: r.targetEmployeeId ?? undefined,
+        acceptedById: r.acceptedById ?? undefined,
+        status: r.status,
+        reason: r.reason ?? undefined,
+        rejectionReason: r.rejectionReason ?? undefined,
+      }));
+    });
+  }
 }
 
 function toEngineAssignment(a: AssignmentRecord): RosterAssignment {

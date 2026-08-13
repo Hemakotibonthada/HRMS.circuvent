@@ -75,3 +75,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// GET — compensation cycles, newest first. A cycle could be created,
+// budgeted, recommended into and approved, but never listed, so there was no
+// way to find last year's or see which one is open.
+export async function GET(request: NextRequest) {
+  let ctx;
+  try {
+    ctx = await requireApiContext(request, ["owner", "admin", "hr"]);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
+
+  try {
+    const status = new URL(request.url).searchParams.get("status") ?? undefined;
+    const cycles = await new NeonCompensationRepository(ctx).listCycles({ status });
+    return NextResponse.json({ cycles });
+  } catch (error) {
+    if (error instanceof RepositoryError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Compensation cycle list failed:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

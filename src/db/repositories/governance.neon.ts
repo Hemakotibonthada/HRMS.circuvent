@@ -580,6 +580,39 @@ export class NeonGovernanceRepository {
       };
     });
   }
+
+  /**
+   * Legal holds.
+   *
+   * A hold could be placed and released but never listed, which defeats the
+   * point of having one: a hold exists so that somebody checks, before an
+   * erasure or a retention sweep, whether this record is subject to it.
+   * Nobody could check, because nothing could enumerate them.
+   */
+  async listHolds(query: { active?: boolean } = {}) {
+    return withTenant(this.ctx, async (tx) => {
+      const where = query.active === true ? isNull(legalHolds.releasedAt) : undefined;
+
+      const rows = await tx
+        .select()
+        .from(legalHolds)
+        .where(where)
+        .orderBy(desc(legalHolds.placedAt));
+
+      return rows.map((r) => ({
+        id: r.id,
+        reference: r.reference,
+        reason: r.reason,
+        entityType: r.entityType,
+        entityId: r.entityId ?? undefined,
+        placedAt: r.placedAt.toISOString(),
+        reviewOn: r.reviewOn ?? undefined,
+        releasedAt: r.releasedAt?.toISOString(),
+        releaseReason: r.releaseReason ?? undefined,
+        active: r.releasedAt === null,
+      }));
+    });
+  }
 }
 
 /**

@@ -119,3 +119,30 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// GET — legal holds. A hold exists so somebody checks, before an erasure or a
+// retention sweep, whether a record is subject to one. Nothing could list
+// them, so nobody could check.
+export async function GET(request: NextRequest) {
+  let ctx;
+  try {
+    ctx = await requireApiContext(request, ["owner", "admin", "hr"]);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
+
+  try {
+    const active = new URL(request.url).searchParams.get("active");
+    const holds = await new NeonGovernanceRepository(ctx).listHolds({
+      active: active === null ? undefined : active !== "false",
+    });
+    return NextResponse.json({ holds });
+  } catch (error) {
+    if (error instanceof RepositoryError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Legal hold list failed:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
