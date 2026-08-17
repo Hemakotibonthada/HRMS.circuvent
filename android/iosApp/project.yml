@@ -1,0 +1,77 @@
+# XcodeGen definition for the iOS app.
+#
+# The project file itself is not committed. An .xcodeproj is a directory of
+# generated XML that conflicts on almost every merge, and the usual result is
+# somebody resolving a conflict wrongly and losing a build setting nobody
+# notices for a week. This file is the source of truth; `xcodegen` produces the
+# project from it.
+#
+#   brew install xcodegen
+#   cd android/iosApp && xcodegen generate && open HRMS.xcodeproj
+#
+# The shared Kotlin framework is built by Gradle before Swift compiles — see
+# the build phase at the bottom. That ordering matters: without it the first
+# build of a clean checkout fails on `import Shared`, which reads as a broken
+# project rather than a missing step.
+
+name: HRMS
+options:
+  bundleIdPrefix: com.circuvent
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    # The framework Gradle writes, and where Swift looks for it.
+    FRAMEWORK_SEARCH_PATHS:
+      - "$(inherited)"
+      - "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+
+targets:
+  HRMS:
+    type: application
+    platform: iOS
+    sources:
+      - path: HRMS
+    info:
+      path: HRMS/Info.plist
+      properties:
+        CFBundleDisplayName: Circuvent HRMS
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        # Stated in the words an employee reads in the permission dialogue.
+        # "This app needs location" is what gets a permission refused.
+        NSLocationWhenInUseUsageDescription:
+          Your location is used only when you punch in or out, to confirm you
+          are at a registered work location.
+        NSFaceIDUsageDescription:
+          Face ID unlocks the app without re-entering your password.
+        # Points at the deployment. Overridden per configuration below so a
+        # debug build can talk to a local server and a release build cannot.
+        HRMS_BASE_URL: "$(HRMS_BASE_URL)"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.circuvent.hrms
+        TARGETED_DEVICE_FAMILY: "1,2"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-framework"
+          - "Shared"
+      configs:
+        debug:
+          HRMS_BASE_URL: http://localhost:3000
+        release:
+          HRMS_BASE_URL: https://hrms.circuvent.com
+    preBuildScripts:
+      - name: Build shared Kotlin framework
+        # `embedAndSignAppleFrameworkForXcode` is the task that also copies the
+        # framework into the app bundle. Calling `assemble` instead produces a
+        # framework Swift can compile against and the device cannot load.
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :shared:embedAndSignAppleFrameworkForXcode
+        basedOnDependencyAnalysis: false

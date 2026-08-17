@@ -89,6 +89,9 @@ android {
 }
 
 dependencies {
+    // The shared module: one implementation of the product, compiled here
+    // for Android and, on a Mac, into the framework the iOS app links.
+    implementation(project(":shared"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
