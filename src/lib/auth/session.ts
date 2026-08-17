@@ -150,7 +150,9 @@ const DEFAULT_ORG_SLUG = "circuvent";
  * exists" is not a rule that survives contact with this deployment, which has
  * four.
  */
-export function directoryOrgSlug(env: NodeJS.ProcessEnv = process.env): string {
+export function directoryOrgSlug(
+  env: Record<string, string | undefined> = process.env
+): string {
   const configured = (env.HRMS_ORG_SLUG ?? "").trim().toLowerCase();
   return configured || DEFAULT_ORG_SLUG;
 }

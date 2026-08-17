@@ -14,22 +14,22 @@ import { directoryOrgSlug } from "./session";
 
 describe("the organisation a directory sign-in resolves to", () => {
   it("is Circuvent by default", () => {
-    expect(directoryOrgSlug({} as NodeJS.ProcessEnv)).toBe("circuvent");
+    expect(directoryOrgSlug({})).toBe("circuvent");
   });
 
   it("can be pointed at another tenant for a deployment that is not ours", () => {
-    expect(directoryOrgSlug({ HRMS_ORG_SLUG: "acme" } as NodeJS.ProcessEnv)).toBe("acme");
+    expect(directoryOrgSlug({ HRMS_ORG_SLUG: "acme" })).toBe("acme");
   });
 
   it("ignores an empty or blank setting rather than resolving to nothing", () => {
     // An empty string would match no organisation, and every sign-in would be
     // refused with nothing in the logs to say why.
-    expect(directoryOrgSlug({ HRMS_ORG_SLUG: "" } as NodeJS.ProcessEnv)).toBe("circuvent");
-    expect(directoryOrgSlug({ HRMS_ORG_SLUG: "   " } as NodeJS.ProcessEnv)).toBe("circuvent");
+    expect(directoryOrgSlug({ HRMS_ORG_SLUG: "" })).toBe("circuvent");
+    expect(directoryOrgSlug({ HRMS_ORG_SLUG: "   " })).toBe("circuvent");
   });
 
   it("is case-insensitive and trimmed, because a slug is neither", () => {
-    expect(directoryOrgSlug({ HRMS_ORG_SLUG: "  ACME  " } as NodeJS.ProcessEnv)).toBe("acme");
+    expect(directoryOrgSlug({ HRMS_ORG_SLUG: "  ACME  " })).toBe("acme");
   });
 
   /*
@@ -38,6 +38,6 @@ describe("the organisation a directory sign-in resolves to", () => {
    * to it instead of `circuvent` is a silent, plausible-looking mistake.
    */
   it("does not resolve to the other Circuvent organisation by accident", () => {
-    expect(directoryOrgSlug({} as NodeJS.ProcessEnv)).not.toBe("circuvent-technologies");
+    expect(directoryOrgSlug({})).not.toBe("circuvent-technologies");
   });
 });
