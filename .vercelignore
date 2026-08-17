@@ -1,0 +1,33 @@
+# Uploads to Vercel.
+#
+# This file *replaces* .gitignore for uploads — Vercel does not consult both —
+# so the `.env*` rules in .gitignore do not apply here. Without these lines
+# `vercel deploy` uploads real environment files into the deployment source.
+#
+# Two separate problems, and the second is easy to miss: the credentials end up
+# in the deployment, *and* Next loads an uploaded .env during the build, so
+# local values silently win over the ones configured on the project — which is
+# how a production build ends up pointing at a dev database.
+#
+# This deployment had no .vercelignore at all, and the working tree carries
+# .env.local plus two credential backups (.env.local.bak-preSSO,
+# .env.local.pre-rolefix). Every one of them was being uploaded.
+.env
+.env.*
+!.env.example
+
+# Build output and dependencies.
+node_modules
+.next
+.turbo
+dist
+
+# The Expo app at the repository root. It has its own build and none of it is
+# imported by the web application, so uploading it only makes the deployment
+# larger.
+#
+# Anchored with a leading slash, and that matters: `mobile/` on its own matches
+# a directory of that name at *any* depth, which silently took `src/lib/mobile`
+# with it — the geofence module `attendance.neon.ts` imports — and the build
+# failed with module-not-found for a file that was sitting right there.
+/mobile/

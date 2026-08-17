@@ -119,6 +119,128 @@ async function findLoginRow(email: string): Promise<LoginRow | null> {
   });
 }
 
+/**
+ * Creates the local cache row for somebody the directory has vouched for.
+ *
+ * The organisation is **resolved, never created**. An HR application that spun
+ * up a new tenant because an unrecognised address signed in would be a way to
+ * manufacture an empty company.
+ *
+ * Resolution is by slug rather than "whichever one exists", because more than
+ * one always will: this deployment carries two test tenants alongside the real
+ * company, and — until somebody merges them — two organisations both named
+ * Circuvent Technologies, `circuvent` and `circuvent-technologies`, with one
+ * person in each. Picking by count would have refused every sign-in; picking
+ * the first would have put half the company in the wrong tenant.
+ *
+ * `HRMS_ORG_SLUG` overrides the default for a deployment that is not ours.
+ *
+ * Nothing here decides whether the person may use HRMS. The identity service
+ * settled that before it issued the code — it checks `user_app_roles` before
+ * issuing an authorization code at all — so this only records who they are,
+ * giving the rest of the application a local id to hang sessions and rows off.
+ */
+const DEFAULT_ORG_SLUG = "circuvent";
+
+/**
+ * Which tenant a directory sign-in belongs to.
+ *
+ * Exported so the rule can be tested without a database: getting this wrong
+ * puts somebody in another company's HR records, and "whichever organisation
+ * exists" is not a rule that survives contact with this deployment, which has
+ * four.
+ */
+export function directoryOrgSlug(env: NodeJS.ProcessEnv = process.env): string {
+  const configured = (env.HRMS_ORG_SLUG ?? "").trim().toLowerCase();
+  return configured || DEFAULT_ORG_SLUG;
+}
+
+async function provisionFromDirectory(input: {
+  email: string;
+  displayName: string | null;
+  subject: string | null;
+}): Promise<LoginRow | null> {
+  const email = input.email.trim().toLowerCase();
+  const slug = directoryOrgSlug();
+
+  const orgId = await withTenant({ orgId: "", superuser: true }, async (tx) => {
+    /*
+     * Prefer the organisation that already knows this address as an employee.
+     * An employee record created by HR before the person's first sign-in is
+     * the normal order, and it names their tenant unambiguously — which also
+     * keeps somebody already filed under the other Circuvent organisation
+     * where their records are, rather than moving them.
+     */
+    const byEmployee = await tx.execute(
+      sql`SELECT org_id FROM hrms.employees
+           WHERE lower(work_email) = ${email} AND deleted_at IS NULL
+           LIMIT 1`
+    );
+    const fromEmployee = (byEmployee.rows[0] as { org_id?: string } | undefined)?.org_id;
+    if (fromEmployee) return fromEmployee;
+
+    const named = await tx.execute(
+      sql`SELECT id FROM identity.organizations
+           WHERE slug = ${slug} AND deleted_at IS NULL
+           LIMIT 1`
+    );
+    return (named.rows[0] as { id?: string } | undefined)?.id ?? null;
+  });
+
+  if (!orgId) return null;
+
+  return withTenant({ orgId, superuser: true }, async (tx) => {
+    await tx.execute(
+      sql`INSERT INTO identity.users (org_id, email, display_name, external_id, status, email_verified_at)
+           VALUES (${orgId}, ${email}, ${input.displayName || email}, ${input.subject}, 'active', now())
+           ON CONFLICT DO NOTHING`
+    );
+
+    /*
+     * Read back rather than trusting the insert. A second tab signing in at
+     * the same moment may have won the race, which is ordinary rather than an
+     * error, and the row it created is just as good.
+     */
+    const result = await tx.execute(
+      sql`SELECT id, org_id, email, password_hash, status, mfa_secret, mfa_enabled_at,
+                 failed_login_attempts, locked_until, must_reset_password, display_name
+            FROM identity.login_lookup
+           WHERE lower(email) = ${email}
+           LIMIT 1`
+    );
+    const created = (result.rows[0] as unknown as LoginRow | undefined) ?? null;
+
+    // Tie an employee record that was waiting for them to the new account, so
+    // their first visit already shows their own leave and documents.
+    if (created) {
+      await tx.execute(
+        sql`UPDATE hrms.employees SET user_id = ${created.id}
+             WHERE org_id = ${orgId} AND lower(work_email) = ${email} AND user_id IS NULL`
+      );
+    }
+    return created;
+  });
+}
+
+/**
+ * Keeps the cached copy in step with the directory.
+ *
+ * A display name is the directory's fact, so a stale local copy is a bug the
+ * moment somebody is married, promoted or corrects a typo. Refreshed only when
+ * it has actually changed, so an ordinary sign-in stays a read.
+ */
+async function refreshDirectoryFacts(row: LoginRow, displayName: string | null): Promise<void> {
+  const wanted = (displayName ?? "").trim();
+  if (!wanted || wanted === row.display_name) return;
+  await withTenant({ orgId: row.org_id, superuser: true }, async (tx) => {
+    await tx.execute(
+      sql`UPDATE identity.users SET display_name = ${wanted}, updated_at = now()
+           WHERE id = ${row.id}`
+    );
+  });
+  row.display_name = wanted;
+}
+
 async function recordFailure(userId: string, orgId: string, attempts: number): Promise<void> {
   const next = attempts + 1;
   // Lock only on reaching the threshold, so the lock window does not extend on
@@ -254,12 +376,26 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
 /**
  * Signs in an identity that auth.circuvent.com has already authenticated.
  *
- * Two policies are deliberate here.
+ * **The directory is the system of record for who works here, not HRMS.**
+ * `auth.circuvent.com`'s `users` table is the one employee record the whole
+ * suite shares, and the identity service checks `user_app_roles` before it will
+ * issue an authorization code at all — so an application the provider refuses
+ * never receives a token to reject.
  *
- * It does not provision. HRMS is the system of record for who works here, so
- * an address the directory has never seen is refused rather than quietly given
- * an employee record -- joining is an HR action, not a side effect of clicking
- * a sign-in button.
+ * That makes the local `identity.users` row a **cache of a decision made
+ * elsewhere**, not an independent gate, and it is provisioned on first arrival
+ * rather than required in advance. This used to refuse anybody without a local
+ * row, on the reasoning that joining is an HR action rather than a side effect
+ * of clicking a button. The reasoning was sound and the consequence was not:
+ * the local table was never populated, so all thirty-six people in the
+ * directory were refused with `no_hrms_account` — and because ATS delegates its
+ * whole handshake here, they were refused by ATS too.
+ *
+ * The cached directory facts are refreshed from the verified claims on every
+ * sign-in, so a name or avatar changed in the directory cannot go stale here.
+ * What is *not* delegated is whether somebody may work here **today**: a
+ * locally suspended account is refused even with a perfectly valid token,
+ * because that is HRMS's decision to make.
  *
  * It refuses accounts that have enabled multi-factor authentication. The
  * identity provider does not yet assert a second factor, so accepting the
@@ -273,6 +409,10 @@ export async function signInWithSso(request: {
   ipAddress?: string;
   userAgent?: string;
   deviceName?: string;
+  /** The directory's display name, used to seed and refresh the local cache. */
+  displayName?: string | null;
+  /** The provider's subject claim, kept so the two records can be tied back. */
+  subject?: string | null;
   /**
    * The role the identity service asserts for this application.
    *
@@ -284,9 +424,20 @@ export async function signInWithSso(request: {
   ssoRole?: string | null;
 }): Promise<SignInResult> {
   const app: AppId = request.app ?? "hrms";
-  const row = await findLoginRow(request.email);
+  let row = await findLoginRow(request.email);
 
-  if (!row) return { ok: false, reason: "invalid_credentials" };
+  if (!row) {
+    const provisioned = await provisionFromDirectory({
+      email: request.email,
+      displayName: request.displayName ?? null,
+      subject: request.subject ?? null,
+    });
+    if (!provisioned) return { ok: false, reason: "invalid_credentials" };
+    row = provisioned;
+  } else {
+    await refreshDirectoryFacts(row, request.displayName ?? null);
+  }
+
   if (row.status !== "active") return { ok: false, reason: "account_inactive" };
   if (row.must_reset_password) return { ok: false, reason: "password_reset_required" };
   // A pending enrolment is not an enabled second factor, so it must not block

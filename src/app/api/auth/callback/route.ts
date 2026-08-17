@@ -89,6 +89,12 @@ export async function GET(req: NextRequest) {
     const result = await signInWithSso({
       email: claims.email,
       app,
+      // The directory's own facts, used to seed the local cache row on a first
+      // sign-in and to keep it in step afterwards. The person's name belongs to
+      // auth.circuvent.com, not here.
+      displayName:
+        typeof claims.name === "string" && claims.name.trim() ? claims.name : null,
+      subject: typeof claims.sub === "string" ? claims.sub : null,
       // From the verified id_token, so a group's grant in the identity service
       // reaches this app — and ATS, which signs in through here.
       ssoRole: typeof claims.role === "string" ? claims.role : null,
