@@ -15,6 +15,11 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { organizations, userRoles, users } from "@/db/schema/identity";
+import { leavePolicies } from "@/db/schema/hrms";
+import { documentTemplates } from "@/db/schema/talent";
+import { DEFAULT_LEAVE_POLICIES } from "@/lib/leave-provisioning";
+import { TEMPLATE_CATALOG } from "@/lib/document-templates/catalog";
+import { extractTokens } from "@/lib/document-rules";
 import { hashPassword } from "@/lib/auth/password";
 import { signIn } from "@/lib/auth/session";
 import {
@@ -130,6 +135,42 @@ export async function POST(request: NextRequest) {
           role: "owner",
         });
       }
+
+      // Everything a tenant needs before its first working day.
+      //
+      // A newly registered organisation used to get nothing but a row in
+      // `organizations`. It had no leave policies, so the first employee it
+      // hired could not apply for leave; and no document templates, so the
+      // letters screen had nothing to offer and its "New offer" button stayed
+      // disabled. Both read as broken features rather than as an unrun setup
+      // step, and the setup step existed only as a script somebody had to know
+      // to run — `db:seed:templates` — which itself could not run, because it
+      // never loaded the environment file.
+      //
+      // Seeding here, in the same transaction as the organisation, means a
+      // tenant that exists is a tenant that works.
+      await tx.insert(leavePolicies).values(
+        DEFAULT_LEAVE_POLICIES.map((policy) => ({
+          orgId: org.id,
+          leaveType: policy.leaveType as never,
+          label: policy.label,
+          annualQuotaDays: String(policy.annualQuotaDays),
+          carryForwardLimitDays: String(policy.carryForwardLimitDays ?? 0),
+          isProRata: policy.isProRata,
+        }))
+      );
+
+      await tx.insert(documentTemplates).values(
+        TEMPLATE_CATALOG.map((template) => ({
+          orgId: org.id,
+          name: template.name,
+          category: template.category,
+          body: template.body,
+          requiredTokens: extractTokens(template.body),
+          requiresSignature: template.requiresSignature,
+          signatoryRoles: template.signatoryRoles,
+        }))
+      );
     });
   } catch (error) {
     console.error("Registration failed:", error);

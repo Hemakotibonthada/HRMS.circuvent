@@ -89,6 +89,59 @@ export interface TenantContext {
 }
 
 /**
+ * Refuses to run tenant-scoped queries on a connection that ignores RLS.
+ *
+ * Every policy in this database is written as
+ * `app_is_superuser() OR org_id = app_current_org()`, and there are ninety-one
+ * of them. None of that has any effect if the connected role has
+ * `rolbypassrls`, which Postgres grants to a database owner: the policies are
+ * still there, `\d` still lists them, the migrations still apply, and every
+ * query silently returns every tenant's rows.
+ *
+ * That was the state of this deployment. `hrms_app` existed with
+ * `rolbypassrls = false`, exactly as designed, but had never been granted
+ * LOGIN — so the only role that could actually connect was `neondb_owner`, and
+ * `DATABASE_URL` pointed at it. Two organisations shared the database and
+ * either could read the other's payroll. Nothing in the test suite could have
+ * caught it: the isolation tests run against PGlite as a role that does not
+ * bypass RLS, so they proved the policies correct while production ran without
+ * them.
+ *
+ * The check is one query, taken once per pool and memoised, and it fails
+ * closed. An HR product holding salaries and Aadhaar numbers should stop
+ * rather than serve one tenant another's records.
+ *
+ * `ALLOW_RLS_BYPASS=true` is the escape hatch for a genuinely single-tenant
+ * deployment or for running migrations. It has to be set deliberately, which
+ * is the point — the previous behaviour was the same risk taken by accident.
+ */
+let isolationCheck: Promise<void> | undefined;
+
+async function assertConnectionIsolatesTenants(): Promise<void> {
+  if (process.env.ALLOW_RLS_BYPASS === "true") return;
+
+  const result = await pool().query<{ rolname: string; bypasses: boolean }>(
+    `select rolname, rolbypassrls as bypasses
+       from pg_roles
+      where rolname = current_user`
+  );
+
+  const role = result.rows[0];
+  if (!role || !role.bypasses) return;
+
+  throw new Error(
+    `Refusing to serve tenant data: the database role "${role.rolname}" has ` +
+      `BYPASSRLS, so all ${"91"} row-level security policies are inert and every ` +
+      `query returns every tenant's rows.\n\n` +
+      `Connect as a role that does not bypass RLS. This database already has ` +
+      `"hrms_app" for that purpose; it needs LOGIN and a password:\n` +
+      `  ALTER ROLE hrms_app WITH LOGIN PASSWORD '<secret>';\n` +
+      `then point DATABASE_URL at it. See drizzle/0028_app_role_login.sql.\n\n` +
+      `If this really is a single-tenant deployment, set ALLOW_RLS_BYPASS=true.`
+  );
+}
+
+/**
  * Runs `fn` inside a transaction whose tenant GUC is set, so every RLS policy
  * evaluates against this organization.
  *
@@ -103,6 +156,27 @@ export async function withTenant<T>(
 ): Promise<T> {
   if (!ctx.orgId && !ctx.superuser) {
     throw new Error("withTenant requires an orgId; refusing to query across tenants");
+  }
+
+  // Memoised, so this costs one query per process rather than one per request.
+  // A rejected promise is cleared so a transient failure does not permanently
+  // poison the pool.
+  //
+  // Skipped for a superuser context, which is the explicit administrative path
+  // — migrations, seeding, cross-tenant maintenance — and already bypasses the
+  // policies by design through `app_is_superuser()`. Applying the check here
+  // too made `apply-migration.ts` fail on every statement: DDL has to run as
+  // the owner, and the owner is precisely the role the guard exists to reject
+  // for tenant traffic. The guard protects tenant-scoped queries, which is
+  // what it claims to do and all it should do.
+  if (!ctx.superuser) {
+    if (!isolationCheck) {
+      isolationCheck = assertConnectionIsolatesTenants().catch((error) => {
+        isolationCheck = undefined;
+        throw error;
+      });
+    }
+    await isolationCheck;
   }
 
   return db().transaction(async (tx) => {

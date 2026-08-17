@@ -25,6 +25,7 @@
 //   2. npm run db:encrypt-fields
 //   3. Once it reports nothing left to do, drop ENCRYPTION_KEY_PREVIOUS.
 
+import "./load-env";
 import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import {

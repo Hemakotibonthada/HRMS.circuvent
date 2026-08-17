@@ -12,7 +12,12 @@
 
 import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
-import { departments, employees } from "@/db/schema/hrms";
+import { departments, employees, leaveBalances, leavePolicies } from "@/db/schema/hrms";
+import {
+  DEFAULT_LEAVE_POLICIES,
+  provisionFor,
+  type LeavePolicy,
+} from "@/lib/leave-provisioning";
 import {
   NotFoundError,
   RepositoryError,
@@ -198,8 +203,90 @@ export class NeonEmployeeRepository implements EmployeeRepository {
         })
         .returning();
 
+      // Leave balances, in the same transaction as the hire.
+      //
+      // Nothing in this product ever wrote a balance row: the table existed,
+      // `/api/leave/balances` had a GET and no POST, and no repository
+      // inserted one. Every leave application from every employee was refused
+      // with "No <type> balance exists for <year>", so the leave module — apply
+      // form, approvals queue, balances page and all — could not process a
+      // single request.
+      //
+      // Provisioned here rather than in a nightly job because the failure it
+      // fixes is immediate: somebody hired this morning applies for leave this
+      // afternoon. Inside the transaction because an employee who exists
+      // without balances is exactly the broken state being repaired.
+      await this.provisionLeave(tx, row.id, data.joinDate);
+
       return toRecord(row);
     });
+  }
+
+  /**
+   * Materialises this year's leave balances for a new employee.
+   *
+   * Uses the organisation's own policies where it has set any, and the default
+   * set otherwise — a tenant that has just registered has no policies, and
+   * provisioning nothing would leave the same hole this closes.
+   *
+   * Deliberately tolerant: a hire must not fail because leave provisioning did.
+   * A missing balance is recoverable by re-provisioning; a failed hire in the
+   * middle of an onboarding flow is not.
+   */
+  private async provisionLeave(
+    tx: Parameters<Parameters<typeof withTenant>[1]>[0],
+    employeeId: string,
+    joinDate: string
+  ): Promise<void> {
+    try {
+      const configured = await tx
+        .select({
+          leaveType: leavePolicies.leaveType,
+          label: leavePolicies.label,
+          annualQuotaDays: leavePolicies.annualQuotaDays,
+          isProRata: leavePolicies.isProRata,
+          carryForwardLimitDays: leavePolicies.carryForwardLimitDays,
+          isActive: leavePolicies.isActive,
+        })
+        .from(leavePolicies)
+        .where(eq(leavePolicies.isActive, true));
+
+      const policies: LeavePolicy[] =
+        configured.length > 0
+          ? configured.map((p) => ({
+              leaveType: p.leaveType as LeavePolicy["leaveType"],
+              label: p.label,
+              annualQuotaDays: Number(p.annualQuotaDays),
+              isProRata: p.isProRata,
+              carryForwardLimitDays: Number(p.carryForwardLimitDays ?? 0),
+            }))
+          : [...DEFAULT_LEAVE_POLICIES];
+
+      // The year the person joins, not the calendar year here: a December hire
+      // recorded against next year gets a balance they cannot use yet.
+      const year = Number(joinDate.slice(0, 4)) || new Date().getFullYear();
+
+      const balances = provisionFor({ policies, joinDate, year });
+      if (balances.length === 0) return;
+
+      await tx
+        .insert(leaveBalances)
+        .values(
+          balances.map((b) => ({
+            orgId: this.ctx.orgId,
+            employeeId,
+            year: b.year,
+            leaveType: b.leaveType as never,
+            openingDays: String(b.openingDays),
+            accruedDays: String(b.accruedDays),
+            carryForwardDays: String(b.carryForwardDays),
+          }))
+        )
+        // Re-hiring somebody, or a retry, must not collide.
+        .onConflictDoNothing();
+    } catch (error) {
+      console.error(`[employees] Could not provision leave for ${employeeId}:`, error);
+    }
   }
 
   async update(id: string, data: EmployeeUpdate): Promise<EmployeeRecord> {

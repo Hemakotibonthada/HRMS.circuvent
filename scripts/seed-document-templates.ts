@@ -24,6 +24,7 @@
 //   npm run db:seed:templates -- --dry-run # report only, write nothing
 //   npm run db:seed:templates -- --org <uuid>
 
+import "./load-env";
 import { and, eq, sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import { organizations } from "../src/db/schema/identity";

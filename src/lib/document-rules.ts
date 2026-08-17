@@ -96,10 +96,14 @@ export type ValidationResult =
  */
 export function validateTemplate(
   template: TemplateDefinition,
-  values: TokenValues
+  values: TokenValues,
+  options: { optional?: readonly string[] } = {}
 ): ValidationResult {
+  const optional = new Set(options.optional ?? []);
   const used = extractTokens(template.body);
+
   const missing = used.filter((token) => {
+    if (optional.has(token)) return false;
     const value = values[token];
     return value === undefined || value === null || value === "";
   });

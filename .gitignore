@@ -69,3 +69,6 @@ android/local.properties
 android/.kotlin/
 android/*.jks
 android/*.keystore
+
+# Local dev server output, captured when exercising routes by hand.
+dev-server.log

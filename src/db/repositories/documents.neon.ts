@@ -297,7 +297,19 @@ export class NeonDocumentsRepository {
         values = { ...(await this.employeeTokens(tx, request.employeeId)), ...values };
       }
 
-      const validation = validateTemplate(template, values);
+      const validation = validateTemplate(template, values, {
+        // A company registration number is required on a contract issued by a
+        // company that has one, and does not exist for a partnership, a sole
+        // proprietorship or a foreign entity. Requiring it unconditionally
+        // blocked every letter a newly registered tenant tried to issue, with
+        // a 422 naming a token; fabricating one would put a false statutory
+        // identifier on a signed contract, which is the specific harm the
+        // template catalog was written to avoid.
+        //
+        // So it renders as blank when the organisation has not set one. The
+        // letterhead loses a line; nothing untrue is printed.
+        optional: ["company_registration"],
+      });
       if (!validation.valid) {
         throw new RepositoryError(
           `${validation.reason}: ${validation.missing.join(", ")}`,

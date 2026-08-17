@@ -22,7 +22,7 @@
 
 import { eq } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
-import { organizations } from "@/db/schema/identity";
+import { organizations, users } from "@/db/schema/identity";
 
 export interface OrgIdentity {
   name: string;
@@ -57,9 +57,23 @@ export async function loadOrgIdentity(ctx: TenantContext): Promise<OrgIdentity |
     // HTML anyway, so building the separator in is the only way it survives.
     const address = [row.address, row.city, row.country].filter(Boolean).join(", ");
 
-    const contact = [settings.supportEmail, settings.phone, row.website]
+    // Falls back to the owner's address, which is real information rather than
+    // a placeholder. Without it a newly registered organisation resolves no
+    // `company_contact` at all, and since `validateTemplate` treats an empty
+    // value as missing, every offer letter it tried to issue failed with a 422
+    // naming a token its HR team has never heard of.
+    let contact = [settings.supportEmail, settings.phone, row.website]
       .filter(Boolean)
       .join(" · ");
+
+    if (!contact && row.ownerId) {
+      const [owner] = await tx
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, row.ownerId))
+        .limit(1);
+      if (owner?.email) contact = owner.email;
+    }
 
     return {
       name: row.name,
