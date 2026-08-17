@@ -72,3 +72,7 @@ android/*.keystore
 
 # Local dev server output, captured when exercising routes by hand.
 dev-server.log
+
+# Emulator screenshots captured while testing by hand.
+android/shots/
+mobile-backend.log

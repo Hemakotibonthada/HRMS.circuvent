@@ -1,14 +1,25 @@
 package com.circuvent.hrms.feature
 
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,8 +59,10 @@ fun SignInScreen(viewModel: AppViewModel) {
     var needsCode by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<Pair<String, String?>?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
     fun submit() {
         if (email.isBlank() || password.isEmpty()) {
@@ -77,6 +90,13 @@ fun SignInScreen(viewModel: AppViewModel) {
                     error = "That did not work" to e.message
                 }
             } catch (e: Exception) {
+                // Logged, not just shown. A generic catch that reports
+                // "Something went wrong" and records nothing makes the one
+                // failure nobody anticipated the one failure nobody can
+                // diagnose — which is exactly what happened here: sign-in
+                // returned 200 from the server and this branch swallowed the
+                // reason why the app disagreed.
+                Log.e("SignIn", "Sign-in failed after a successful request", e)
                 error = "Something went wrong" to "Please try again."
             } finally {
                 busy = false
@@ -88,6 +108,14 @@ fun SignInScreen(viewModel: AppViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            // Without this the keyboard covers the sign-in button, and because
+            // the column is centred the content does not move out from under
+            // it either. Tapping where the button appears to be dismisses the
+            // keyboard instead of signing in, and the second tap lands on a
+            // button that has just moved — so the screen reads as ignoring
+            // taps. Found on a 1080x2400 emulator, which is a large phone;
+            // on anything smaller the button is further under the keyboard.
+            .imePadding()
             .padding(screenPadding()),
         verticalArrangement = Arrangement.Center,
     ) {
@@ -123,6 +151,9 @@ fun SignInScreen(viewModel: AppViewModel) {
                 keyboardType = KeyboardType.Email,
                 imeAction = ImeAction.Next,
             ),
+            keyboardActions = KeyboardActions(
+                onNext = { focusManager.moveFocus(FocusDirection.Down) },
+            ),
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -132,10 +163,31 @@ fun SignInScreen(viewModel: AppViewModel) {
             label = { Text("Password") },
             singleLine = true,
             enabled = !busy,
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation =
+                if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                // A password field with no way to check what was typed is why
+                // people pick shorter passwords on phones. The toggle is
+                // labelled for screen readers, and states what it will do
+                // rather than what it currently shows.
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(
+                        imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription =
+                            if (passwordVisible) "Hide password" else "Show password",
+                    )
+                }
+            },
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Password,
                 imeAction = if (needsCode) ImeAction.Next else ImeAction.Go,
+            ),
+            // `imeAction` alone only relabels the key. Without this the "Go"
+            // key does nothing at all, which — with the button under the
+            // keyboard — left no way to sign in from this screen.
+            keyboardActions = KeyboardActions(
+                onGo = { submit() },
+                onNext = { focusManager.moveFocus(FocusDirection.Down) },
             ),
             modifier = Modifier
                 .fillMaxWidth()
@@ -154,6 +206,7 @@ fun SignInScreen(viewModel: AppViewModel) {
                     keyboardType = KeyboardType.NumberPassword,
                     imeAction = ImeAction.Go,
                 ),
+                keyboardActions = KeyboardActions(onGo = { submit() }),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = Theme.spacing.md),

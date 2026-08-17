@@ -15,7 +15,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { organizations, userRoles, users } from "@/db/schema/identity";
-import { leavePolicies } from "@/db/schema/hrms";
+import { employees, leavePolicies } from "@/db/schema/hrms";
 import { documentTemplates } from "@/db/schema/talent";
 import { DEFAULT_LEAVE_POLICIES } from "@/lib/leave-provisioning";
 import { TEMPLATE_CATALOG } from "@/lib/document-templates/catalog";
@@ -171,6 +171,34 @@ export async function POST(request: NextRequest) {
           signatoryRoles: template.signatoryRoles,
         }))
       );
+
+      // The founder is also an employee.
+      //
+      // Registration created a user and no employee row, and every
+      // employee-facing feature keys on one: clocking in, leave, payslips and
+      // attendance all resolve the caller to an employee. So the person who
+      // signed the company up could administer it and could not use it —
+      // "Clock in" answered 404, which the mobile app rendered as an ordinary
+      // "Not clocked in" card, and the web rendered as an empty state.
+      //
+      // `id` is set to the user's id as well as `userId`, because the routes
+      // pass `ctx.userId` straight through as an employee id. Fixing that
+      // properly means resolving user → employee at every call site; until
+      // then the two ids agreeing for this row is what makes those routes work
+      // rather than silently return nothing.
+      const [firstName, ...rest] = name.trim().split(/\s+/);
+      await tx.insert(employees).values({
+        id: user.id,
+        orgId: org.id,
+        userId: user.id,
+        employeeCode: "EMP-0001",
+        firstName: firstName || name.trim(),
+        lastName: rest.join(" ") || "-",
+        workEmail: email,
+        designation: "Owner",
+        joinDate: new Date().toISOString().slice(0, 10),
+        status: "active",
+      });
     });
   } catch (error) {
     console.error("Registration failed:", error);

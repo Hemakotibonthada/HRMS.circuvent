@@ -92,7 +92,12 @@ class ApiClient(
             // Declares this as a native client. The web session is a cookie;
             // this one is a bearer token, and the login route only returns
             // tokens in the body when the caller says it is native.
-            .header("X-Client", "android")
+            //
+            // The name and the value both matter and both were wrong: this
+            // sent `X-Client: android` while the server reads
+            // `x-circuvent-client` and compares it to "native", so the
+            // declaration was ignored on every request.
+            .header("X-Circuvent-Client", "native")
 
         tokens.accessToken?.let { builder.header("Authorization", "Bearer $it") }
         idempotencyKey?.let { builder.header("Idempotency-Key", it) }
@@ -107,26 +112,36 @@ class ApiClient(
 
         val response = execute(builder.build())
 
-        response.use {
-            val text = it.body?.string().orEmpty()
-
-            if (it.code == 401 && !isRetry) {
-                // One attempt, and only one. A retry loop on a 401 is an
-                // infinite loop against a server that has revoked the session.
-                return if (refreshOnce()) {
-                    request(method, path, body, idempotencyKey, isRetry = true)
-                } else {
-                    onSignedOut()
-                    throw SignedOutException()
-                }
-            }
-
-            if (!it.isSuccessful) {
-                throw ApiException(it.code, errorMessageFrom(text, it.code), text)
-            }
-
-            return text
+        // Read on the I/O dispatcher, not the caller's.
+        //
+        // `execute` dispatches the call correctly, but returning the `Response`
+        // hands back an unread stream — and `body.string()` is the part that
+        // actually touches the socket. Consuming it here meant the read
+        // happened on whatever dispatcher the caller used, which for a Compose
+        // screen is the main thread, and Android threw
+        // NetworkOnMainThreadException on every request. The exception was
+        // caught by a generic handler that reported "Something went wrong",
+        // so the app looked like it was rejecting valid credentials.
+        val (code, text) = withContext(Dispatchers.IO) {
+            response.use { it.code to it.body?.string().orEmpty() }
         }
+
+        if (code == 401 && !isRetry) {
+            // One attempt, and only one. A retry loop on a 401 is an
+            // infinite loop against a server that has revoked the session.
+            return if (refreshOnce()) {
+                request(method, path, body, idempotencyKey, isRetry = true)
+            } else {
+                onSignedOut()
+                throw SignedOutException()
+            }
+        }
+
+        if (code !in 200..299) {
+            throw ApiException(code, errorMessageFrom(text, code), text)
+        }
+
+        return text
     }
 
     /**

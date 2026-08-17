@@ -154,7 +154,14 @@ class AppRepository(private val api: ApiClient) {
             put("email", email)
             put("password", password)
             if (!totpCode.isNullOrBlank()) put("totpCode", totpCode)
-            put("native", true)
+            // The server tests `client === "native"`, a string under `client`.
+            // This sent `native: true` — the right intent under the wrong key,
+            // with the wrong type — so the condition never matched, the
+            // response carried no tokens, and sign-in failed with "The server
+            // did not return an access token" against an HTTP 200. The comment
+            // above described the contract correctly the whole time; only the
+            // field name was wrong, which is why reading it never showed it.
+            put("client", "native")
         }
 
         val response = json.parseToJsonElement(api.post("/api/auth/login", body.toString())) as JsonObject
