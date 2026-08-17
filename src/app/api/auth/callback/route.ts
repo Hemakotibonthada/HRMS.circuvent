@@ -89,6 +89,9 @@ export async function GET(req: NextRequest) {
     const result = await signInWithSso({
       email: claims.email,
       app,
+      // From the verified id_token, so a group's grant in the identity service
+      // reaches this app — and ATS, which signs in through here.
+      ssoRole: typeof claims.role === "string" ? claims.role : null,
       ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
       userAgent: req.headers.get("user-agent") ?? undefined,
     });

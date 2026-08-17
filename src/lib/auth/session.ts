@@ -35,6 +35,7 @@ import {
   signAccessToken,
   type AppId,
 } from "./tokens";
+import { strongestRole } from "./role-rank";
 
 /** Failed attempts before the account is temporarily locked. */
 const MAX_FAILED_ATTEMPTS = 5;
@@ -272,6 +273,15 @@ export async function signInWithSso(request: {
   ipAddress?: string;
   userAgent?: string;
   deviceName?: string;
+  /**
+   * The role the identity service asserts for this application.
+   *
+   * Groups in auth.circuvent.com grant roles across the suite, and this is how
+   * that reaches HRMS — and, because ATS delegates its whole handshake here,
+   * how it reaches ATS too. Only ever passed from a verified id_token; a role
+   * read from anywhere a caller controls would be a way to choose your own.
+   */
+  ssoRole?: string | null;
 }): Promise<SignInResult> {
   const app: AppId = request.app ?? "hrms";
   const row = await findLoginRow(request.email);
@@ -296,7 +306,15 @@ export async function signInWithSso(request: {
 
   await clearFailures(row.id, row.org_id);
 
-  const role = await roleFor(row.id, row.org_id, app);
+  /*
+   * The stronger of what HRMS grants and what the identity service asserts.
+   *
+   * Not simply the token's role: a local grant is a decision somebody made
+   * here, and letting a group silently demote an HRMS administrator would be a
+   * loss of access nobody asked for. Not simply the local role either, or
+   * group-based access would never reach this application at all.
+   */
+  const role = strongestRole(await roleFor(row.id, row.org_id, app), request.ssoRole);
   const { accessToken, refreshToken } = await issueSession({
     userId: row.id,
     orgId: row.org_id,
