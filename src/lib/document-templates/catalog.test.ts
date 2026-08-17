@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractTokens, render, validateTemplate } from "../document-rules";
 import { COMPANY_TOKENS, TEMPLATE_CATALOG, templateByType } from "./catalog";
+import { ENGAGEMENT_TYPES, compensationTokenFor, ruleFor } from "@/lib/offer-rules";
 
 /**
  * A payload that resolves every token in the catalog.
@@ -18,13 +19,17 @@ function payloadFor(body: string): Record<string, string> {
 }
 
 describe("the catalog", () => {
-  it("carries all eight templates from Office.Circuvent", () => {
-    expect(TEMPLATE_CATALOG).toHaveLength(8);
+  it("carries the eight templates from Office.Circuvent, plus the offer variants", () => {
+    expect(TEMPLATE_CATALOG).toHaveLength(12);
     expect(TEMPLATE_CATALOG.map((t) => t.templateType).sort()).toEqual([
       "call_letter",
       "experience_certificate",
       "offer_followup",
       "offer_letter",
+      "offer_letter_apprenticeship",
+      "offer_letter_contract",
+      "offer_letter_internship",
+      "offer_letter_part_time",
       "onboarding_welcome",
       "payslip_cover",
       "payslip_notification",
@@ -269,6 +274,129 @@ describe("the content survived the port", () => {
       extractTokens(t.body).includes("company_registration")
     ).map((t) => t.templateType);
 
-    expect(withRegistration.sort()).toEqual(["experience_certificate", "offer_letter"]);
+    expect(withRegistration.sort()).toEqual([
+      "experience_certificate",
+      "offer_letter",
+      "offer_letter_apprenticeship",
+      "offer_letter_contract",
+      "offer_letter_internship",
+      "offer_letter_part_time",
+    ]);
+  });
+});
+
+// ─── Offer templates must match the engagement they are for ──
+//
+// The catalog shipped one offer letter, written for full-time employment. Used
+// for an internship it promises provident fund, a probation period and an
+// annual CTC, none of which an intern has — and the document is signed, so it
+// is the company's own statement of an entitlement that does not exist.
+//
+// These tests read the token contract out of `offer-rules.ts` rather than
+// restating it, so the two cannot drift: adding a forbidden token to a rule
+// fails the template that uses it, and a template that starts mentioning
+// gratuity to an apprentice fails here.
+
+describe("offer letters match their engagement type", () => {
+  it("ships a template for every engagement type", () => {
+    for (const type of ENGAGEMENT_TYPES) {
+      const template = templateByType(ruleFor(type).templateType);
+      expect(template, `no template for ${type}`).toBeDefined();
+      expect(template!.category).toBe("letter");
+    }
+  });
+
+  it("uses the compensation token its engagement is paid in", () => {
+    for (const type of ENGAGEMENT_TYPES) {
+      const body = templateByType(ruleFor(type).templateType)!.body;
+      expect(extractTokens(body)).toContain(compensationTokenFor(type));
+    }
+  });
+
+  it("never carries a token the engagement forbids", () => {
+    for (const type of ENGAGEMENT_TYPES) {
+      const rule = ruleFor(type);
+      const tokens = extractTokens(templateByType(rule.templateType)!.body);
+
+      for (const forbidden of rule.forbiddenTokens) {
+        expect(tokens, `${rule.templateType} must not use ${forbidden}`).not.toContain(forbidden);
+      }
+    }
+  });
+
+  it("does not promise trainees benefits they have no right to", () => {
+    for (const type of ["internship", "apprenticeship", "contract"] as const) {
+      const body = templateByType(ruleFor(type).templateType)!.body.toLowerCase();
+
+      // Each of these may only appear where the letter is denying it, which is
+      // what the surrounding "do not apply" / "no ... arises" wording does.
+      for (const claim of ["gratuity", "provident fund"]) {
+        if (!body.includes(claim)) continue;
+        expect(
+          /do not apply|does not attract|no provident fund|no such deduction|nor gratuity|or gratuity (arises|do not)/.test(
+            body
+          ),
+          `${type} mentions ${claim} without denying it`
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("states the term on every fixed-term engagement", () => {
+    for (const type of ENGAGEMENT_TYPES) {
+      const rule = ruleFor(type);
+      if (!rule.requiresEndDate) continue;
+      expect(extractTokens(templateByType(rule.templateType)!.body)).toContain(
+        "engagement_end_date"
+      );
+    }
+  });
+
+  it("keeps an end date out of open-ended employment", () => {
+    for (const type of ENGAGEMENT_TYPES) {
+      const rule = ruleFor(type);
+      if (rule.requiresEndDate) continue;
+      expect(extractTokens(templateByType(rule.templateType)!.body)).not.toContain(
+        "engagement_end_date"
+      );
+    }
+  });
+
+  it("tells a contractor which section their tax is deducted under", () => {
+    const body = templateByType("offer_letter_contract")!.body;
+    expect(body).toContain("194J");
+    expect(body.toLowerCase()).toContain("not as an employee");
+  });
+
+  it("says an internship carries no promise of a job", () => {
+    const body = templateByType("offer_letter_internship")!.body.toLowerCase();
+    expect(body).toContain("does not create an employment relationship");
+  });
+
+  it("has every offer signed by the candidate before the company", () => {
+    for (const type of ENGAGEMENT_TYPES) {
+      const template = templateByType(ruleFor(type).templateType)!;
+      expect(template.requiresSignature).toBe(true);
+      expect(template.signatoryRoles[0]).toBe("employee");
+    }
+  });
+
+  it("resolves cleanly with every token supplied", () => {
+    for (const type of ENGAGEMENT_TYPES) {
+      const template = templateByType(ruleFor(type).templateType)!;
+      const { body, missing } = render(template.body, payloadFor(template.body));
+
+      expect(missing).toEqual([]);
+      expect(body).not.toContain("{{");
+    }
+  });
+
+  it("carries the tenant identity tokens, never a hardcoded company", () => {
+    for (const type of ENGAGEMENT_TYPES) {
+      const tokens = extractTokens(templateByType(ruleFor(type).templateType)!.body);
+      for (const company of COMPANY_TOKENS) {
+        expect(tokens).toContain(company);
+      }
+    }
   });
 });

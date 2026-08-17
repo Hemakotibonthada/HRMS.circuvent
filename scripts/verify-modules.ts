@@ -11,6 +11,14 @@ import { PGlite } from "@electric-sql/pglite";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { canTransition, formatClaimNumber, totalOfLineItems } from "../src/lib/expense-rules";
+import {
+  buildSlots,
+  createAccessToken,
+  hashContent,
+  hashToken,
+  render,
+} from "../src/lib/document-rules";
+import { ruleFor, validateOffer } from "../src/lib/offer-rules";
 
 const MIGRATIONS_DIR = join(process.cwd(), "drizzle");
 
@@ -428,6 +436,171 @@ async function main() {
     await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM hrms.lifecycle_tasks`)
   ).rows[0].n;
   check("nor any clearance tasks", tasksSeenByRival === "0", `saw ${tasksSeenByRival}`);
+
+  await db.exec(`RESET ROLE`);
+
+  // ── Offer documents: generation, dispatch and the token ────
+  //
+  // The offer pipeline is the one place in this product where an unauthenticated
+  // stranger is given a working credential by email. The checks that matter are
+  // that the document is really written, that the signing token is stored only
+  // as a hash, and that neither escapes the tenant.
+  console.log("\nOffer documents against a real Postgres\n");
+
+  const template = (
+    await db.query<{ id: string }>(
+      `INSERT INTO hrms.document_templates (org_id, name, category, body, required_tokens, requires_signature, signatory_roles)
+       VALUES ($1, 'Internship Offer Letter', 'letter', $2, $3, true, $4) RETURNING id`,
+      [
+        org,
+        "<p>Dear {{full_name}}, your stipend is {{stipend_amount}} until {{engagement_end_date}}.</p>",
+        JSON.stringify(["full_name", "stipend_amount", "engagement_end_date"]),
+        JSON.stringify(["employee", "hr"]),
+      ]
+    )
+  ).rows[0].id;
+
+  check("an offer template persists", template !== undefined);
+
+  const offerValues = {
+    full_name: "Asha Rao",
+    stipend_amount: "₹25,000",
+    engagement_end_date: "2026-09-30",
+  };
+  const rendered = render(
+    "<p>Dear {{full_name}}, your stipend is {{stipend_amount}} until {{engagement_end_date}}.</p>",
+    offerValues
+  );
+
+  check("every token in the letter resolves", rendered.missing.length === 0, rendered.missing.join(", "));
+  check("and nothing is left unrendered", !rendered.body.includes("{{"));
+
+  const contentHash = await hashContent(rendered.body);
+
+  const document = (
+    await db.query<{ id: string; status: string }>(
+      `INSERT INTO hrms.generated_documents (org_id, template_id, template_version, title, category, rendered_body, content_hash, status)
+       VALUES ($1, $2, 1, 'Internship Offer Letter', 'letter', $3, $4, 'draft') RETURNING id, status`,
+      [org, template, rendered.body, contentHash]
+    )
+  ).rows[0];
+
+  check("a generated offer persists", document.id !== undefined);
+  check("and starts as a draft", document.status === "draft");
+
+  const storedBody = (
+    await db.query<{ rendered_body: string; content_hash: string }>(
+      `SELECT rendered_body, content_hash FROM hrms.generated_documents WHERE id = $1`,
+      [document.id]
+    )
+  ).rows[0];
+
+  check("the letter is frozen at generation", storedBody.rendered_body === rendered.body);
+  check("under a hash that detects later tampering", storedBody.content_hash === contentHash);
+  check(
+    "and the hash changes if a single rupee does",
+    (await hashContent(rendered.body.replace("25,000", "25,001"))) !== contentHash
+  );
+
+  // Signature slots, candidate first.
+  const slots = buildSlots(["employee", "hr"], {
+    employee: { email: "asha@example.test", name: "Asha Rao" },
+    hr: { email: "people@acme.test", name: "People Ops" },
+  });
+  check("the candidate signs before the company", slots[0].signatoryRole === "employee");
+
+  for (const slot of slots) {
+    await db.query(
+      `INSERT INTO hrms.document_signatures (org_id, document_id, signatory_email, signatory_name, signatory_role, sequence)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [org, document.id, slot.signatoryEmail, slot.signatoryName, slot.signatoryRole, slot.sequence]
+    );
+  }
+
+  const slotCount = (
+    await db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM hrms.document_signatures WHERE document_id = $1`,
+      [document.id]
+    )
+  ).rows[0].n;
+  check("one signature slot per signatory", slotCount === "2", `got ${slotCount}`);
+
+  // Dispatch: the plaintext token exists for exactly one moment.
+  const { token, hash } = await createAccessToken();
+  await db.query(
+    `UPDATE hrms.document_signatures SET access_token_hash = $1 WHERE document_id = $2 AND signatory_role = 'employee'`,
+    [hash, document.id]
+  );
+  await db.query(
+    `UPDATE hrms.generated_documents SET status = 'sent', sent_at = now() WHERE id = $1`,
+    [document.id]
+  );
+
+  const afterSend = (
+    await db.query<{ status: string; sent_at: string | null }>(
+      `SELECT status, sent_at FROM hrms.generated_documents WHERE id = $1`,
+      [document.id]
+    )
+  ).rows[0];
+  check("sending moves the offer out of draft", afterSend.status === "sent");
+  check("and records when it went", afterSend.sent_at !== null);
+
+  const storedToken = (
+    await db.query<{ access_token_hash: string }>(
+      `SELECT access_token_hash FROM hrms.document_signatures WHERE document_id = $1 AND signatory_role = 'employee'`,
+      [document.id]
+    )
+  ).rows[0].access_token_hash;
+
+  // A leaked database must not hand over working signing links for every
+  // outstanding contract, so the plaintext must appear nowhere in the row.
+  check("the signing token is stored hashed", storedToken !== token);
+  check("the plaintext token is nowhere in the table", !storedToken.includes(token));
+  check("and the hash verifies the token it was made from", (await hashToken(token)) === storedToken);
+  check(
+    "while a different token does not verify",
+    (await hashToken(`${token}x`)) !== storedToken
+  );
+
+  // The rules that decide what an offer may say.
+  check(
+    "an internship offer stating a CTC is refused",
+    !validateOffer({
+      engagementType: "internship",
+      values: { ...offerValues, mentor_name: "Lead", annual_ctc: "600000" },
+    }).valid
+  );
+  check(
+    "while a well-formed internship offer is accepted",
+    validateOffer({
+      engagementType: "internship",
+      values: { ...offerValues, mentor_name: "Lead", start_date: "2026-04-01" },
+    }).valid
+  );
+  check("and an intern is never told they get provident fund", !ruleFor("internship").statutory.providentFund);
+
+  // ── Offer tenant isolation ─────────────────────────────────
+  await db.exec(`SET ROLE hrms_app`);
+  await db.exec(`SELECT set_config('app.org_id', '${other}', false)`);
+
+  const offersSeenByRival = (
+    await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM hrms.generated_documents`)
+  ).rows[0].n;
+  check("another org sees no offers", offersSeenByRival === "0", `saw ${offersSeenByRival}`);
+
+  const signaturesSeenByRival = (
+    await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM hrms.document_signatures`)
+  ).rows[0].n;
+  check(
+    "nor any signing tokens",
+    signaturesSeenByRival === "0",
+    `saw ${signaturesSeenByRival}`
+  );
+
+  const templatesSeenByRival = (
+    await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM hrms.document_templates`)
+  ).rows[0].n;
+  check("nor the templates they were written from", templatesSeenByRival === "0");
 
   await db.exec(`RESET ROLE`);
 

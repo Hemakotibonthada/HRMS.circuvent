@@ -1267,3 +1267,89 @@ be able to clear one.
 Finance Act and the display copy is the one nobody remembers, so the portal would explain a
 deduction it had not made. Both now derive from the tables and render byte-identically; a test pins
 the exact strings, and changing a rate in the table fails it.
+
+---
+
+## Offer letters, and mail that actually leaves the building
+
+The letters screen had a "Generate Letter" button that generated no letter. It listed twelve
+template names typed into the component, none of which matched a template that existed, and
+generating wrote a row into the generic document store recording that a letter had been produced —
+a template name, a recipient, a timestamp — while rendering nothing. Because nothing was produced,
+nothing could be sent, and the history lived in a client store that emptied on reload. Every part
+of it looked like it worked.
+
+Underneath, the real pipeline was already there and nearly complete: `/api/documents/generate`
+renders and hashes a document, `/api/documents/[id]/send` issues one single-use signing link per
+signatory and stores the tokens hashed. The one thing missing was the send. The route returned the
+plaintext links to the caller with a comment saying they were "for the caller to put in the
+emails", and no caller ever did. `sendMail` had exactly one caller in the product: password reset.
+
+### An internship is not a job with a smaller number in it
+
+The catalog shipped one offer letter, written for full-time employment. Issued to an intern it
+promises provident fund, a probation period and an annual CTC. That is not a formatting problem —
+the document is signed, and it is the company's own statement of an entitlement that does not
+exist. PF is administered against a UAN the intern cannot hold, so the company either cannot
+deliver what it signed or enrols someone who should not be enrolled.
+
+`src/lib/offer-rules.ts` now describes what each engagement may and may not say:
+
+| Engagement | Paid in | PF / ESI / gratuity | TDS | Fixed term |
+|---|---|---|---|---|
+| Full-time | Annual CTC | Yes | 192 | No |
+| Part-time | Monthly salary | Yes, subject to ceilings | 192 | No |
+| Internship | Monthly stipend | No | — | Yes |
+| Apprenticeship | Monthly stipend | No, s.18 Apprentices Act | — | Yes |
+| Contract | Professional fees | No | 194J | Yes |
+
+The forbidden-token half matters more than the required half. A missing field produces an obviously
+incomplete letter; a field that should not be there produces a complete, plausible letter promising
+something the engagement cannot deliver, and nobody notices until the person asks for it. So each
+rule forbids every compensation basis except its own, and `catalog.test.ts` checks the template
+bodies against those rules rather than against a list repeated in the test — planting `annual_ctc`
+in the internship letter fails the build with "offer_letter_internship must not use annual_ctc".
+
+A tenant may still extend PF to interns voluntarily; what it cannot do is claim it silently. An
+override has to be passed explicitly and is reflected in the stated basis, which is what an auditor
+reads.
+
+### Where the bugs actually were
+
+- **`tokensFor` let stale fields through.** Filling in a full-time offer and switching the
+  engagement to internship carried the typed `basic_salary` into a letter that must not contain
+  one, because `extra` was merged last. The forbidden list is now applied after the merge, so no
+  route through that function can emit a token the engagement forbids.
+- **The company identity came from the caller.** Every template carries `company_name` and
+  `company_address` as tokens, and nothing filled them in — they had to be passed by whoever called
+  the API. A caller that omits them gets a 422, which is annoying; a caller that passes the wrong
+  ones gets a valid signed contract with another company's name and registration number on it, and
+  nothing objects. Identity is now read from the tenant, with `extraValues` still winning where a
+  company issues from more than one registered entity.
+- **There was no way to list generated documents.** `listFor(employeeId)` cannot see offers at all,
+  because a candidate has no employee record yet. Added `list()` and `GET /api/documents`, which
+  omits rendered bodies — fifty offers with their HTML is megabytes, and every one contains a
+  salary.
+
+### Sending
+
+Mail is dispatched after the transaction commits, never inside it: SMTP is a third-party network
+call that can hang, and holding the document row lock for that long blocks every other operation on
+the envelope. A failed send does not fail the request either — the document is already sent and the
+tokens are already hashed, so rolling back would leave an envelope whose links nobody can recover.
+Each recipient's outcome is reported individually and the links are returned regardless, so an
+operator with misconfigured SMTP can still deliver the offer by hand. `describeDelivery` refuses to
+call that "sent", because the user would otherwise discover it when the candidate says nothing
+arrived.
+
+Every message escapes what it interpolates. A candidate controls their own name and that name is
+rendered into HTML an internal recruiter reads. The internal "signed" notice carries no signing
+link at all: those get forwarded around a company as a matter of routine, and the link is a working
+credential for somebody else's contract.
+
+### Gated
+
+22 new PGlite checks in `verify-modules.ts` (58 total): that the letter is frozen at generation
+under a hash that changes if a single rupee does, that the signing token is stored only as a hash
+and the plaintext appears nowhere in the row, and that another tenant sees no offers, no tokens and
+no templates.

@@ -12,6 +12,7 @@
 import { asc, desc, eq } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
 import { departments, employees } from "@/db/schema/hrms";
+import { identityTokens, loadOrgIdentity } from "./org-identity";
 import {
   documentSignatures,
   documentTemplates,
@@ -265,7 +266,16 @@ export class NeonDocumentsRepository {
 
       const template = toDefinition(templateRow);
 
-      let values: TokenValues = { ...request.extraValues };
+      // Tenant identity first, so `extraValues` can still override it for a
+      // company that issues from more than one registered entity — but a
+      // caller that says nothing gets its own name rather than a 422 or, worse,
+      // whatever name the caller happened to send.
+      const identity = await loadOrgIdentity(this.ctx);
+
+      let values: TokenValues = {
+        ...(identity ? identityTokens(identity) : {}),
+        ...request.extraValues,
+      };
       if (request.employeeId) {
         values = { ...(await this.employeeTokens(tx, request.employeeId)), ...values };
       }
@@ -601,6 +611,44 @@ export class NeonDocumentsRepository {
         .where(eq(documentSignatures.documentId, documentId));
 
       return (await this.getIn(tx, documentId))!;
+    });
+  }
+
+  /**
+   * Every document the tenant has generated, newest first.
+   *
+   * `listFor` answers "what does this employee have", which is the wrong shape
+   * for the letters screen: most documents are offers to candidates who have no
+   * employee record yet, so a per-employee query cannot see them at all. That
+   * is why the screen previously showed a client-side list that vanished on
+   * reload — there was no query that would have returned the right rows.
+   *
+   * Bounded, because a tenant that has been issuing offers for two years has
+   * tens of thousands and this feeds a page.
+   */
+  async list(options: { status?: string; limit?: number } = {}): Promise<DocumentRecord[]> {
+    const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
+
+    return withTenant(this.ctx, async (tx) => {
+      const rows = await (options.status
+        ? tx
+            .select()
+            .from(generatedDocuments)
+            .where(eq(generatedDocuments.status, options.status as "draft"))
+            .orderBy(desc(generatedDocuments.createdAt))
+            .limit(limit)
+        : tx
+            .select()
+            .from(generatedDocuments)
+            .orderBy(desc(generatedDocuments.createdAt))
+            .limit(limit));
+
+      const out: DocumentRecord[] = [];
+      for (const row of rows) {
+        const doc = await this.getIn(tx, row.id);
+        if (doc) out.push(doc);
+      }
+      return out;
     });
   }
 

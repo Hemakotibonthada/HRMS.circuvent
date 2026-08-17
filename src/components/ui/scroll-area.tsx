@@ -13,7 +13,13 @@ function ScrollArea({
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
-      className={cn("relative", className)}
+      // `min-h-0`/`min-w-0` are what actually let this scroll. A flex or grid
+      // item defaults to `min-height: auto`, meaning it will not shrink below
+      // its content — so a scroll area holding long content grew past its
+      // container, the container clipped it, and the rest became unreachable
+      // instead of scrolling. On anything that is not a flex or grid item
+      // these are already the computed default, so this is inert elsewhere.
+      className={cn("relative min-h-0 min-w-0", className)}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport

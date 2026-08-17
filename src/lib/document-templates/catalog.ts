@@ -729,6 +729,417 @@ const ONBOARDING_WELCOME = `${emailOpen("Welcome aboard")}
         </div>
 ${EMAIL_CLOSE}`;
 
+// ─── Offer letters for the other forms of engagement ─────────
+//
+// The catalog carried one offer letter, written for full-time employment, and
+// the letters screen offered "Offer Letter" as a single choice. An internship
+// issued on that template promises provident fund, a probation period and an
+// annual CTC — none of which an intern has. That is not a formatting problem:
+// the document is signed, and it is the company's own statement of what the
+// person is entitled to.
+//
+// Which tokens each of these may and may not carry is decided in
+// `src/lib/offer-rules.ts`, and `catalog.test.ts` checks these bodies against
+// those rules rather than against a list repeated here. So a template that
+// starts mentioning gratuity to an apprentice fails the build.
+
+const INTERNSHIP_OFFER = `${letterOpen("{{company_name}} · Internship Offer")}
+${letterhead(
+  `          <span class="meta-label">Offer date</span>
+          <span class="meta-value">{{issue_date}}</span>
+          <span class="meta-label">Reference</span>
+          <span class="meta-value">{{application_reference}}</span>`,
+  true
+)}
+
+      <div class="candidate-block">
+        <p>{{full_name}}</p>
+        <p>{{candidate_email}}</p>
+      </div>
+
+      <h1>Your internship at {{company_name}}</h1>
+
+      <p>Dear <strong>{{full_name}}</strong>,</p>
+      <p>
+        We are pleased to offer you an internship as <strong>{{position_title}}</strong> at
+        {{company_name}}. This is a training placement, and it is designed so that you finish it
+        having done real work you can point to.
+      </p>
+      <p>
+        Your internship runs from <strong>{{start_date}}</strong> to
+        <strong>{{engagement_end_date}}</strong>. You will be mentored by
+        <strong>{{mentor_name}}</strong> and work <strong>{{work_mode}}</strong>, with expected
+        hours of <strong>{{working_hours}}</strong>.
+      </p>
+
+      <div class="section">
+        <p class="section-title">Stipend</p>
+        <div class="section-body">
+          <p>
+            You will receive a stipend of <strong>{{stipend_amount}}</strong> per month, paid in
+            line with our normal payment cycle.
+          </p>
+          <p>
+            A stipend is paid to support you during training rather than as wages for employment.
+            An internship does not attract provident fund, employees' state insurance or gratuity,
+            and no such deduction or contribution will be made. The stipend remains your income and
+            you should account for it accordingly.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">What you can expect</p>
+        <div class="section-body">
+          <ul class="bullet">
+            <li>Work on <strong>{{project_summary}}</strong>, with your mentor reviewing progress.</li>
+            <li>{{learning_outcomes}}</li>
+            <li>A certificate on successful completion of the full term.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">What we ask of you</p>
+        <div class="section-body">
+          <ul class="bullet">
+            <li><strong>Confidentiality.</strong> Anything you see here stays here, during and after the internship.</li>
+            <li><strong>Intellectual property.</strong> Work produced during the internship belongs to {{company_name}}.</li>
+            <li><strong>Conduct.</strong> The same standards of integrity and respect we hold ourselves to.</li>
+            <li><strong>Data and devices.</strong> Company-approved access, handled securely.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Ending the internship</p>
+        <div class="section-body">
+          <p>
+            Either of us may end the internship early with <strong>{{notice_period}}</strong>
+            written notice. We would much rather talk first if something is not working.
+          </p>
+          <p>
+            This internship does not create an employment relationship and carries no commitment
+            to an offer of employment at the end of it. Where a role is open and you are a fit, we
+            will tell you.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Your contacts</p>
+        <div class="section-body">
+          <p><strong>Mentor:</strong> {{mentor_name}} · {{mentor_email}}</p>
+          <p><strong>People operations:</strong> {{hr_contact_name}} · {{hr_contact_email}}</p>
+        </div>
+      </div>
+
+      <div class="note">
+        This offer is open until <strong>{{offer_valid_until}}</strong>. Please confirm by then so
+        we can get your onboarding started.
+      </div>
+
+      <div class="signature">
+        <p>Warm regards,</p>
+        <strong>{{signatory_name}}</strong>
+        <span>{{signatory_title}}</span>
+        <span>{{company_name}}</span>
+      </div>
+
+      <div class="footer">
+        <p>
+          This internship is contingent on verification of your student or graduate status and on
+          the completion of onboarding formalities.
+        </p>
+      </div>
+${LETTER_CLOSE}`;
+
+const APPRENTICESHIP_OFFER = `${letterOpen("{{company_name}} · Apprenticeship Offer")}
+${letterhead(
+  `          <span class="meta-label">Offer date</span>
+          <span class="meta-value">{{issue_date}}</span>
+          <span class="meta-label">Reference</span>
+          <span class="meta-value">{{application_reference}}</span>`,
+  true
+)}
+
+      <div class="candidate-block">
+        <p>{{full_name}}</p>
+        <p>{{candidate_email}}</p>
+      </div>
+
+      <h1>Your apprenticeship at {{company_name}}</h1>
+
+      <p>Dear <strong>{{full_name}}</strong>,</p>
+      <p>
+        We are pleased to engage you as an apprentice in the trade of
+        <strong>{{trade_name}}</strong> at {{company_name}}, in the role of
+        <strong>{{position_title}}</strong>.
+      </p>
+      <p>
+        Your apprenticeship runs from <strong>{{start_date}}</strong> to
+        <strong>{{engagement_end_date}}</strong>, working <strong>{{work_mode}}</strong> with
+        expected hours of <strong>{{working_hours}}</strong>.
+      </p>
+
+      <div class="section">
+        <p class="section-title">Stipend</p>
+        <div class="section-body">
+          <p>
+            You will receive a stipend of <strong>{{stipend_amount}}</strong> per month, at or
+            above the rate prescribed for your trade and period of training.
+          </p>
+          <p>
+            An apprentice is a trainee and not a worker, so the labour enactments — including
+            provident fund, employees' state insurance and gratuity — do not apply to this
+            engagement. Your training records will be maintained as the scheme requires.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Your training</p>
+        <div class="section-body">
+          <ul class="bullet">
+            <li>Structured training in <strong>{{trade_name}}</strong> under a designated supervisor.</li>
+            <li>{{training_plan}}</li>
+            <li>Assessment on completion, and a certificate recording what you covered.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">What we ask of you</p>
+        <div class="section-body">
+          <ul class="bullet">
+            <li>Attend and complete the training programme for its full term.</li>
+            <li>Follow all safety instructions and site rules without exception.</li>
+            <li>Maintain confidentiality over anything you learn here.</li>
+            <li>Keep your training record up to date.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Ending the apprenticeship</p>
+        <div class="section-body">
+          <p>
+            Either of us may end this engagement with <strong>{{notice_period}}</strong> written
+            notice. Completing the apprenticeship does not by itself create a right to employment.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        This offer is open until <strong>{{offer_valid_until}}</strong>.
+      </div>
+
+      <div class="signature">
+        <p>Warm regards,</p>
+        <strong>{{signatory_name}}</strong>
+        <span>{{signatory_title}}</span>
+        <span>{{company_name}}</span>
+      </div>
+
+      <div class="footer">
+        <p>
+          This engagement is contingent on registration of the apprenticeship as required and on
+          the completion of onboarding formalities.
+        </p>
+      </div>
+${LETTER_CLOSE}`;
+
+const CONTRACT_OFFER = `${letterOpen("{{company_name}} · Contract Engagement")}
+${letterhead(
+  `          <span class="meta-label">Issue date</span>
+          <span class="meta-value">{{issue_date}}</span>
+          <span class="meta-label">Reference</span>
+          <span class="meta-value">{{application_reference}}</span>`,
+  true
+)}
+
+      <div class="candidate-block">
+        <p>{{full_name}}</p>
+        <p>{{candidate_email}}</p>
+      </div>
+
+      <h1>Engagement as {{position_title}}</h1>
+
+      <p>Dear <strong>{{full_name}}</strong>,</p>
+      <p>
+        We are pleased to engage you as <strong>{{position_title}}</strong> with
+        {{company_name}} on a fixed-term basis. This is a contract for services: you are engaged
+        as an independent contractor and not as an employee.
+      </p>
+      <p>
+        The engagement runs from <strong>{{start_date}}</strong> to
+        <strong>{{engagement_end_date}}</strong>, delivered <strong>{{work_mode}}</strong> with
+        expected availability of <strong>{{working_hours}}</strong>.
+      </p>
+
+      <div class="section">
+        <p class="section-title">Fees and payment</p>
+        <div class="section-body">
+          <p>
+            Your fees are <strong>{{professional_fees}}</strong> for the engagement, payable
+            <strong>{{payment_schedule}}</strong> against an invoice.
+          </p>
+          <p>
+            Tax will be deducted at source on your professional fees under section 194J of the
+            Income-tax Act. As this is a contract for services and not employment, no provident
+            fund, employees' state insurance or gratuity arises, and you remain responsible for
+            your own statutory registrations and filings, including goods and services tax where
+            it applies to you.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Scope</p>
+        <div class="section-body">
+          <ul class="bullet">
+            <li>{{scope_of_work}}</li>
+            <li>Deliverables and acceptance as agreed with <strong>{{manager_name}}</strong>.</li>
+            <li>You control how and when the work is done, subject to the deadlines agreed.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Confidentiality and ownership</p>
+        <div class="section-body">
+          <ul class="bullet">
+            <li><strong>Confidentiality.</strong> Company information stays confidential, during and after the term.</li>
+            <li><strong>Intellectual property.</strong> Work product created under this engagement is assigned to {{company_name}} on payment.</li>
+            <li><strong>Data protection.</strong> Personal data you handle is processed only on our instructions.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Ending the engagement</p>
+        <div class="section-body">
+          <p>
+            Either party may terminate on <strong>{{notice_period}}</strong> written notice. Fees
+            for work properly performed up to termination remain payable.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        This offer is open until <strong>{{offer_valid_until}}</strong>.
+      </div>
+
+      <div class="signature">
+        <p>Warm regards,</p>
+        <strong>{{signatory_name}}</strong>
+        <span>{{signatory_title}}</span>
+        <span>{{company_name}}</span>
+      </div>
+
+      <div class="footer">
+        <p>
+          Nothing in this letter creates a relationship of employment, partnership or agency
+          between you and {{company_name}}.
+        </p>
+      </div>
+${LETTER_CLOSE}`;
+
+const PART_TIME_OFFER = `${letterOpen("{{company_name}} · Offer of Part-time Employment")}
+${letterhead(
+  `          <span class="meta-label">Offer date</span>
+          <span class="meta-value">{{issue_date}}</span>
+          <span class="meta-label">Reference</span>
+          <span class="meta-value">{{application_reference}}</span>`,
+  true
+)}
+
+      <div class="candidate-block">
+        <p>{{full_name}}</p>
+        <p>{{candidate_email}}</p>
+      </div>
+
+      <h1>Welcome to {{company_name}}</h1>
+
+      <p>Dear <strong>{{full_name}}</strong>,</p>
+      <p>
+        We are delighted to offer you the part-time position of
+        <strong>{{position_title}}</strong> at {{company_name}}.
+      </p>
+      <p>
+        Your first day is planned for <strong>{{start_date}}</strong>. You will report to
+        <strong>{{manager_name}}</strong> and work <strong>{{work_mode}}</strong> for
+        <strong>{{weekly_hours}}</strong> hours a week, scheduled as
+        <strong>{{working_hours}}</strong>. Your probation period is
+        <strong>{{probation_period}}</strong>.
+      </p>
+
+      <div class="section">
+        <p class="section-title">Salary</p>
+        <div class="section-body">
+          <p>
+            Your salary is <strong>{{monthly_salary}}</strong> per month, paid in line with our
+            payroll calendar.
+          </p>
+          <p>
+            You are an employee, engaged for fewer hours. Provident fund, employees' state
+            insurance where the wage ceilings are met, professional tax and income tax will be
+            deducted in accordance with the statutes in force.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Leave and benefits</p>
+        <div class="section-body">
+          <ul class="bullet">
+            <li>Leave accrues in proportion to your contracted hours.</li>
+            <li>{{additional_benefits}}</li>
+            <li>Public holidays falling on your working days are paid.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Policies you will acknowledge</p>
+        <div class="section-body">
+          <ul class="bullet">
+            <li><strong>Code of conduct.</strong> Integrity, respect and professionalism in all dealings.</li>
+            <li><strong>Data privacy and security.</strong> Handling of personal and company data under the controls in force.</li>
+            <li><strong>Confidentiality.</strong> Execution of the non-disclosure agreement on or before joining.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Notice</p>
+        <div class="section-body">
+          <p>
+            Either of us may end this employment on <strong>{{notice_period}}</strong> written
+            notice, after probation.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        This offer is open until <strong>{{offer_valid_until}}</strong>.
+      </div>
+
+      <div class="signature">
+        <p>Warm regards,</p>
+        <strong>{{signatory_name}}</strong>
+        <span>{{signatory_title}}</span>
+        <span>{{company_name}}</span>
+      </div>
+
+      <div class="footer">
+        <p>
+          This offer is contingent on the completion of onboarding formalities, background
+          verification and adherence to company policies.
+        </p>
+      </div>
+${LETTER_CLOSE}`;
+
 // ─── The catalog ─────────────────────────────────────────────
 
 export const TEMPLATE_CATALOG: readonly TemplateSeed[] = [
@@ -741,6 +1152,42 @@ export const TEMPLATE_CATALOG: readonly TemplateSeed[] = [
     // The one document in the set that creates a contract, so it is the one
     // that is signed. The candidate signs first: countersigning an offer the
     // candidate has not accepted is a company signature on nothing.
+    requiresSignature: true,
+    signatoryRoles: ["employee", "hr"],
+  },
+  {
+    templateType: "offer_letter_internship",
+    name: "Internship Offer Letter",
+    category: "letter",
+    description: "Stipendiary internship offer, fixed term, issued to a candidate",
+    body: INTERNSHIP_OFFER,
+    requiresSignature: true,
+    signatoryRoles: ["employee", "hr"],
+  },
+  {
+    templateType: "offer_letter_apprenticeship",
+    name: "Apprenticeship Offer Letter",
+    category: "letter",
+    description: "Apprenticeship engagement under a trade, fixed term",
+    body: APPRENTICESHIP_OFFER,
+    requiresSignature: true,
+    signatoryRoles: ["employee", "hr"],
+  },
+  {
+    templateType: "offer_letter_contract",
+    name: "Contract Engagement Letter",
+    category: "letter",
+    description: "Fixed-term contract for services, taxed under section 194J",
+    body: CONTRACT_OFFER,
+    requiresSignature: true,
+    signatoryRoles: ["employee", "hr"],
+  },
+  {
+    templateType: "offer_letter_part_time",
+    name: "Part-time Offer Letter",
+    category: "letter",
+    description: "Part-time employment offer, salary stated monthly",
+    body: PART_TIME_OFFER,
     requiresSignature: true,
     signatoryRoles: ["employee", "hr"],
   },
