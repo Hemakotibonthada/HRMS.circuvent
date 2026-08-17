@@ -74,6 +74,23 @@ export interface DocumentRecord {
   }[];
 }
 
+/**
+ * The outcome of a signing action, and who took it.
+ *
+ * `sign` and `decline` used to return the document alone, which meant the
+ * route had to work out afterwards which of the signatories had just acted —
+ * and there is no reliable way to do that from the record. Comparing
+ * `signedAt` timestamps picks the wrong slot when two people sign in the same
+ * second, and a decline sets no timestamp the route can see at all.
+ *
+ * The repository already resolved the token to exactly one slot in order to do
+ * the work. Returning it costs nothing and removes the guess.
+ */
+export interface SignedResult {
+  document: DocumentRecord;
+  signatory: { email: string; role: string; name?: string };
+}
+
 export interface GenerateRequest {
   templateId: string;
   employeeId?: string;
@@ -465,7 +482,7 @@ export class NeonDocumentsRepository {
     documentId: string,
     token: string,
     evidence: { signatureImageUrl?: string; ipAddress?: string; userAgent?: string }
-  ): Promise<DocumentRecord> {
+  ): Promise<SignedResult> {
     const presented = await hashToken(token);
 
     return withTenant(this.ctx, async (tx) => {
@@ -544,11 +561,22 @@ export class NeonDocumentsRepository {
         })
         .where(eq(generatedDocuments.id, documentId));
 
-      return (await this.getIn(tx, documentId))!;
+      return {
+        document: (await this.getIn(tx, documentId))!,
+        signatory: {
+          email: slot.signatoryEmail,
+          role: slot.signatoryRole,
+          name: slot.signatoryName ?? undefined,
+        },
+      };
     });
   }
 
-  async decline(documentId: string, token: string, reason: string): Promise<DocumentRecord> {
+  async decline(
+    documentId: string,
+    token: string,
+    reason: string
+  ): Promise<SignedResult> {
     const presented = await hashToken(token);
 
     return withTenant(this.ctx, async (tx) => {
@@ -575,7 +603,14 @@ export class NeonDocumentsRepository {
         .set({ status: "declined" })
         .where(eq(generatedDocuments.id, documentId));
 
-      return (await this.getIn(tx, documentId))!;
+      return {
+        document: (await this.getIn(tx, documentId))!,
+        signatory: {
+          email: slot.signatoryEmail,
+          role: slot.signatoryRole,
+          name: slot.signatoryName ?? undefined,
+        },
+      };
     });
   }
 
@@ -649,6 +684,62 @@ export class NeonDocumentsRepository {
         if (doc) out.push(doc);
       }
       return out;
+    });
+  }
+
+  /**
+   * Issues a fresh signing link for whoever still has to sign.
+   *
+   * A reminder needs a working link and the original cannot be recovered:
+   * tokens are stored as hashes precisely so that a leaked database does not
+   * hand over every outstanding contract. So a reminder mints a new one, and
+   * the previous link stops working.
+   *
+   * That trade is deliberate and is stated in the reminder itself. The
+   * alternative — storing tokens in a form that can be re-read — would make
+   * every offer in the table a usable credential, which is a far worse
+   * property than a candidate having to use the most recent email.
+   *
+   * Only slots that have neither signed nor declined are re-issued. Reviving a
+   * link for someone who already signed would let a signature be replaced.
+   */
+  async reissueSigningTokens(
+    documentId: string
+  ): Promise<{ document: DocumentRecord; links: { email: string; role: string; token: string }[] }> {
+    return withTenant(this.ctx, async (tx) => {
+      const [document] = await tx
+        .select()
+        .from(generatedDocuments)
+        .where(eq(generatedDocuments.id, documentId))
+        .for("update")
+        .limit(1);
+
+      if (!document) throw new NotFoundError("Document", documentId);
+      if (!["sent", "viewed", "partially_signed"].includes(document.status)) {
+        throw new RepositoryError(`This document is ${document.status}`, 409);
+      }
+
+      const slots = await tx
+        .select()
+        .from(documentSignatures)
+        .where(eq(documentSignatures.documentId, documentId))
+        .orderBy(asc(documentSignatures.sequence));
+
+      const links: { email: string; role: string; token: string }[] = [];
+
+      for (const slot of slots) {
+        if (slot.signedAt || slot.declinedAt) continue;
+
+        const { token, hash } = await createAccessToken();
+        await tx
+          .update(documentSignatures)
+          .set({ accessTokenHash: hash })
+          .where(eq(documentSignatures.id, slot.id));
+
+        links.push({ email: slot.signatoryEmail, role: slot.signatoryRole, token });
+      }
+
+      return { document: (await this.getIn(tx, documentId))!, links };
     });
   }
 

@@ -14,6 +14,7 @@ import { NeonLeaveRepository } from "@/db/repositories/leave.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { notifyEmployee } from "@/lib/notifications/notify";
 
 const schema = z
   .object({
@@ -93,6 +94,32 @@ export async function POST(
       parsed.data.action === "approve"
         ? await repo.approve(id, ctx.userId)
         : await repo.reject(id, ctx.userId, parsed.data.reason!);
+
+    // The employee is told. Until now a decision changed a row and nothing
+    // else: the person who applied found out by reloading the page, which for
+    // a rejection means they keep planning around leave they have not got.
+    //
+    // Announced after the decision is committed and never allowed to fail it —
+    // losing the email is bad, losing the approval because the mail server was
+    // slow is worse.
+    void notifyEmployee(ctx, {
+      employeeId: existing.employeeId,
+      type: parsed.data.action === "approve" ? "leave.approved" : "leave.rejected",
+      data: {
+        leaveType: existing.leaveType ?? "leave",
+        startDate: existing.startDate ?? "",
+        endDate: existing.endDate ?? "",
+        approverName: ctx.email ?? "your manager",
+        reason: parsed.data.reason ?? "",
+      },
+      actionUrl: "/leave",
+      // One decision, one notification. A double-clicked approve is already
+      // refused by the repository, but the guard costs nothing and stops a
+      // retry at the HTTP layer sending a second copy.
+      idempotencyKey: `leave-decision:${id}:${parsed.data.action}`,
+    }).catch((error) => {
+      console.error(`[leave] Could not notify on ${id}:`, error);
+    });
 
     return NextResponse.json(updated);
   } catch (error) {

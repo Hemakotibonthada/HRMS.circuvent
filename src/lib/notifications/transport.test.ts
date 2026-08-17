@@ -8,6 +8,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deliver, transportFor, type Recipient } from "@/lib/notifications/transport";
 import type { DispatchDecision } from "@/lib/notifications/engine";
+import { mailConfigured, sendMail } from "@/lib/mailer";
+
+// Email goes over the same SMTP path as password resets and offer letters, so
+// it is mocked at the mailer rather than at `fetch`. It used to POST to the
+// Resend API on a key that appears in no example configuration — the tests
+// passed because they mocked the provider, and production would have sent
+// nothing at all.
+vi.mock("@/lib/mailer", () => ({
+  mailConfigured: vi.fn(() => true),
+  sendMail: vi.fn(async () => true),
+}));
+
+const mockedSendMail = vi.mocked(sendMail);
+const mockedMailConfigured = vi.mocked(mailConfigured);
+
+/** The message handed to the mail server on the last email send. */
+function lastEmail(): { subject: string; html: string; text?: string } {
+  const call = mockedSendMail.mock.calls.at(-1);
+  if (!call) throw new Error("No email was sent");
+  return call[0];
+}
 
 const recipient: Recipient = {
   userId: "u1",
@@ -32,8 +53,11 @@ function decision(over: Partial<DispatchDecision> = {}): DispatchDecision {
 const originalFetch = global.fetch;
 
 beforeEach(() => {
-  process.env.RESEND_API_KEY = "test-key";
   delete process.env.EXPO_PUSH_ENABLED;
+  mockedSendMail.mockReset();
+  mockedSendMail.mockResolvedValue(true);
+  mockedMailConfigured.mockReset();
+  mockedMailConfigured.mockReturnValue(true);
 });
 
 afterEach(() => {
@@ -49,41 +73,33 @@ function mockFetch(handler: (url: string, init?: RequestInit) => Response | Prom
 
 describe("deliver", () => {
   it("sends over every planned channel", async () => {
-    mockFetch((url) =>
-      url.includes("resend")
-        ? Response.json({ id: "email-1" })
-        : Response.json({ data: [{ status: "ok", id: "push-1" }] })
-    );
+    mockFetch(() => Response.json({ data: [{ status: "ok", id: "push-1" }] }));
 
     const results = await deliver(decision(), recipient);
 
     expect(results.map((r) => r.channel).sort()).toEqual(["email", "in_app", "push"]);
     expect(results.every((r) => r.ok)).toBe(true);
+    expect(mockedSendMail).toHaveBeenCalledTimes(1);
   });
 
   it("keeps other channels working when one provider fails", async () => {
     // An email outage must not lose the push notification, and neither must
     // lose the in-app record.
-    mockFetch((url) =>
-      url.includes("resend")
-        ? new Response("service unavailable", { status: 503 })
-        : Response.json({ data: [{ status: "ok", id: "push-1" }] })
-    );
+    mockedSendMail.mockResolvedValue(false);
+    mockFetch(() => Response.json({ data: [{ status: "ok", id: "push-1" }] }));
 
     const results = await deliver(decision(), recipient);
     const byChannel = Object.fromEntries(results.map((r) => [r.channel, r]));
 
     expect(byChannel.email.ok).toBe(false);
-    expect(byChannel.email.error).toContain("503");
+    expect(byChannel.email.error).toMatch(/rejected/i);
     expect(byChannel.push.ok).toBe(true);
     expect(byChannel.in_app.ok).toBe(true);
   });
 
   it("does not let a transport that throws take down the batch", async () => {
-    mockFetch((url) => {
-      if (url.includes("resend")) throw new Error("socket hang up");
-      return Response.json({ data: [{ status: "ok" }] });
-    });
+    mockedSendMail.mockRejectedValue(new Error("socket hang up"));
+    mockFetch(() => Response.json({ data: [{ status: "ok" }] }));
 
     const results = await deliver(decision(), recipient);
     expect(results.find((r) => r.channel === "email")?.ok).toBe(false);
@@ -91,28 +107,23 @@ describe("deliver", () => {
   });
 
   it("skips an unconfigured channel without calling it", async () => {
-    // A tenant with no email provider simply does not get email; that is not
-    // an error worth alerting on.
-    delete process.env.RESEND_API_KEY;
-    const fetchSpy = vi.fn(async () => Response.json({ data: [{ status: "ok" }] }));
-    global.fetch = fetchSpy as unknown as typeof fetch;
+    // A tenant with no mail server simply does not get email; that is not an
+    // error worth alerting on.
+    mockedMailConfigured.mockReturnValue(false);
 
     const results = await deliver(decision({ channels: ["email"] }), recipient);
 
     expect(results[0].ok).toBe(false);
     expect(results[0].error).toContain("not configured");
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mockedSendMail).not.toHaveBeenCalled();
   });
 
   it("reports a missing address rather than calling the provider", async () => {
-    const fetchSpy = vi.fn(async () => Response.json({}));
-    global.fetch = fetchSpy as unknown as typeof fetch;
-
     const results = await deliver(decision({ channels: ["email"] }), { userId: "u1" });
 
     expect(results[0].ok).toBe(false);
     expect(results[0].error).toMatch(/no email address/i);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mockedSendMail).not.toHaveBeenCalled();
   });
 
   it("sends nothing for a suppressed decision", async () => {
@@ -123,6 +134,7 @@ describe("deliver", () => {
 
     expect(results).toEqual([]);
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mockedSendMail).not.toHaveBeenCalled();
   });
 
   it("treats a partially rejected push as delivered", async () => {
@@ -164,26 +176,15 @@ describe("email content", () => {
   it("sends both a plain-text and an HTML part", async () => {
     // HTML-only mail scores worse with spam filters and renders badly in
     // clients that prefer text.
-    let body: Record<string, unknown> = {};
-    mockFetch((url, init) => {
-      if (url.includes("resend")) body = JSON.parse(String(init?.body));
-      return Response.json({ id: "e1" });
-    });
-
     await deliver(decision({ channels: ["email"] }), recipient);
 
-    expect(typeof body.text).toBe("string");
-    expect(typeof body.html).toBe("string");
-    expect(String(body.text)).toContain("casual leave");
+    const mail = lastEmail();
+    expect(typeof mail.text).toBe("string");
+    expect(typeof mail.html).toBe("string");
+    expect(String(mail.text)).toContain("casual leave");
   });
 
   it("escapes markup in the subject and body", async () => {
-    let body: Record<string, string> = {};
-    mockFetch((url, init) => {
-      if (url.includes("resend")) body = JSON.parse(String(init?.body));
-      return Response.json({ id: "e1" });
-    });
-
     await deliver(
       decision({
         channels: ["email"],
@@ -193,22 +194,22 @@ describe("email content", () => {
       recipient
     );
 
-    expect(body.html).not.toContain("<script>");
-    expect(body.html).not.toContain("<img src=x");
-    expect(body.html).toContain("&lt;script&gt;");
+    const mail = lastEmail();
+    expect(mail.html).not.toContain("<script>");
+    expect(mail.html).not.toContain("<img src=x");
+    expect(mail.html).toContain("&lt;script&gt;");
   });
 
   it("turns a relative action URL into an absolute one", async () => {
     // A relative link in an email client goes nowhere.
-    let body: Record<string, string> = {};
-    mockFetch((url, init) => {
-      if (url.includes("resend")) body = JSON.parse(String(init?.body));
-      return Response.json({ id: "e1" });
-    });
-
     await deliver(decision({ channels: ["email"], actionUrl: "/leave" }), recipient);
 
-    expect(body.text).toContain("https://hrms.circuvent.com/leave");
+    expect(lastEmail().text).toContain("https://hrms.circuvent.com/leave");
+  });
+
+  it("addresses the message to the recipient", async () => {
+    await deliver(decision({ channels: ["email"] }), recipient);
+    expect(mockedSendMail.mock.calls.at(-1)?.[0].to).toBe("asha@circuvent.com");
   });
 });
 

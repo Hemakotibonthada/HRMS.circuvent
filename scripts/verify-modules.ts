@@ -19,6 +19,7 @@ import {
   render,
 } from "../src/lib/document-rules";
 import { ruleFor, validateOffer } from "../src/lib/offer-rules";
+import { recipientsFor } from "../src/lib/document-notify";
 
 const MIGRATIONS_DIR = join(process.cwd(), "drizzle");
 
@@ -578,6 +579,81 @@ async function main() {
     }).valid
   );
   check("and an intern is never told they get provident fund", !ruleFor("internship").statutory.providentFund);
+
+  // Reminders mint a fresh token, and the old one stops working.
+  //
+  // A reminder needs a working link and the original cannot be recovered,
+  // because tokens are stored hashed on purpose. So it re-issues. The property
+  // that matters is that re-issuing never revives a slot that has already been
+  // used: reviving a signed slot would let a signature be replaced.
+  const beforeReissue = storedToken;
+
+  const { token: freshToken, hash: freshHash } = await createAccessToken();
+  await db.query(
+    `UPDATE hrms.document_signatures SET access_token_hash = $1
+     WHERE document_id = $2 AND signatory_role = 'employee' AND signed_at IS NULL AND declined_at IS NULL`,
+    [freshHash, document.id]
+  );
+
+  const afterReissue = (
+    await db.query<{ access_token_hash: string }>(
+      `SELECT access_token_hash FROM hrms.document_signatures WHERE document_id = $1 AND signatory_role = 'employee'`,
+      [document.id]
+    )
+  ).rows[0].access_token_hash;
+
+  check("a reminder issues a different token", afterReissue !== beforeReissue);
+  check("the old link stops working", (await hashToken(token)) !== afterReissue);
+  check("and the new one works", (await hashToken(freshToken)) === afterReissue);
+
+  // Sign the candidate slot, then try to re-issue again. The signed row must
+  // carry the hash of what was signed — the schema enforces that, which is why
+  // this sets both.
+  await db.query(
+    `UPDATE hrms.document_signatures
+     SET signed_at = now(), signed_content_hash = $2, access_token_hash = NULL
+     WHERE document_id = $1 AND signatory_role = 'employee'`,
+    [document.id, contentHash]
+  );
+
+  const { hash: laterHash } = await createAccessToken();
+  await db.query(
+    `UPDATE hrms.document_signatures SET access_token_hash = $1
+     WHERE document_id = $2 AND signatory_role = 'employee' AND signed_at IS NULL AND declined_at IS NULL`,
+    [laterHash, document.id]
+  );
+
+  const signedSlotToken = (
+    await db.query<{ access_token_hash: string | null }>(
+      `SELECT access_token_hash FROM hrms.document_signatures WHERE document_id = $1 AND signatory_role = 'employee'`,
+      [document.id]
+    )
+  ).rows[0].access_token_hash;
+
+  check(
+    "a signed slot is never given a working link again",
+    signedSlotToken === null,
+    `got ${signedSlotToken}`
+  );
+
+  // Who hears about each event.
+  const slotsForNotify = [
+    { email: "asha@example.test", role: "employee" },
+    { email: "people@acme.test", role: "hr" },
+  ];
+
+  check(
+    "a candidate is never copied on an internal notice",
+    recipientsFor(slotsForNotify, "signed").every((t) => t.audience === "internal")
+  );
+  check(
+    "a withdrawal reaches the candidate",
+    recipientsFor(slotsForNotify, "voided").some((t) => t.email === "asha@example.test")
+  );
+  check(
+    "and a completed envelope reaches both sides",
+    recipientsFor(slotsForNotify, "completed").length === 2
+  );
 
   // ── Offer tenant isolation ─────────────────────────────────
   await db.exec(`SET ROLE hrms_app`);

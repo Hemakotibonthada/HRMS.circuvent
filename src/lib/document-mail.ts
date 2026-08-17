@@ -202,6 +202,14 @@ export function offerReminderEmail(ctx: OfferMailContext): EmailBody {
       ) +
       deadlineHtml +
       (ctx.signUrl ? button(ctx.signUrl, "Read and sign your offer") : "") +
+      // Signing tokens are stored hashed, so a reminder cannot re-send the
+      // original link — it mints a new one and the old link stops working.
+      // Saying so is the difference between a candidate using this email and a
+      // candidate clicking the first one, getting an error, and assuming the
+      // offer was withdrawn.
+      (ctx.signUrl
+        ? footNote("This link replaces the one in our earlier email, which no longer works.")
+        : footNote("Please use the link in our earlier email to sign.")) +
       footNote("If you have decided against it, just reply and tell us — that is genuinely fine.") +
       contact.html +
       WRAPPER_CLOSE,
@@ -209,7 +217,9 @@ export function offerReminderEmail(ctx: OfferMailContext): EmailBody {
       `Hi ${greet(ctx.recipientName)},\n\n` +
       `You have an unsigned offer for ${ctx.positionTitle} at ${ctx.companyName}.` +
       deadlineText +
-      (ctx.signUrl ? `\n\nRead and sign your offer:\n${ctx.signUrl}` : "") +
+      (ctx.signUrl
+        ? `\n\nRead and sign your offer:\n${ctx.signUrl}\n\nThis link replaces the one in our earlier email, which no longer works.`
+        : `\n\nPlease use the link in our earlier email to sign.`) +
       `\n\nIf you have decided against it, just reply and tell us — that is genuinely fine.` +
       contact.text,
   };

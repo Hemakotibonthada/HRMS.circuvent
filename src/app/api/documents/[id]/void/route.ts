@@ -9,6 +9,7 @@ import { NeonDocumentsRepository } from "@/db/repositories/documents.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { dispatchDocumentEvent } from "@/lib/document-dispatch";
 
 const bodySchema = z.object({
   reason: z.string().trim().min(5, "Say why this document is being voided").max(500),
@@ -54,7 +55,22 @@ export async function POST(
 
   try {
     const document = await new NeonDocumentsRepository(ctx).voidDocument(id, parsed.data.reason);
-    return NextResponse.json(document);
+
+    // The candidate is told, because the signing link they were sent has just
+    // stopped working. Without this they discover the withdrawal by clicking a
+    // link that errors, and conclude the system is broken rather than that the
+    // offer is gone. Failures are logged, never raised: the document is
+    // already voided and re-voiding it returns 409.
+    let delivery: Awaited<ReturnType<typeof dispatchDocumentEvent>> = [];
+    try {
+      delivery = await dispatchDocumentEvent(ctx, document, "voided", {
+        reason: parsed.data.reason,
+      });
+    } catch (error) {
+      console.error(`[documents] Could not announce withdrawal of ${id}:`, error);
+    }
+
+    return NextResponse.json({ ...document, delivery });
   } catch (error) {
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 });

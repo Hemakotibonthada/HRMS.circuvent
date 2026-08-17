@@ -18,6 +18,29 @@ import { z } from "zod";
 import { NeonDocumentsRepository } from "@/db/repositories/documents.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { checkRateLimit } from "@/lib/api-context";
+import { dispatchDocumentEvent, type DispatchOptions } from "@/lib/document-dispatch";
+import type { DocumentEvent } from "@/lib/document-notify";
+
+/**
+ * Announces an event without letting the announcement break the thing.
+ *
+ * By the time this runs the signature is committed and the token is burned. An
+ * exception escaping here would turn a successful signing into a 500, and the
+ * candidate would try again with a link that no longer works — losing a
+ * legally significant act to a mail server being slow.
+ */
+async function announce(
+  ctx: { orgId: string },
+  document: Parameters<typeof dispatchDocumentEvent>[1],
+  event: DocumentEvent,
+  options: DispatchOptions
+): Promise<void> {
+  try {
+    await dispatchDocumentEvent(ctx, document, event, options);
+  } catch (error) {
+    console.error(`[sign] Could not announce ${event} for ${document.id}:`, error);
+  }
+}
 
 const signSchema = z.object({
   action: z.literal("sign"),
@@ -122,11 +145,24 @@ export async function POST(
     const repo = new NeonDocumentsRepository(ctx);
 
     if (parsed.data.action === "decline") {
-      const document = await repo.decline(id, parsed.data.token, parsed.data.reason);
+      const { document, signatory } = await repo.decline(
+        id,
+        parsed.data.token,
+        parsed.data.reason
+      );
+
+      // Announced after the decline is committed, and failures are swallowed:
+      // the candidate's answer is recorded either way, and turning a working
+      // decline into a 500 would send them back to a token already consumed.
+      await announce(ctx, document, "declined", {
+        actorEmail: signatory.email,
+        reason: parsed.data.reason,
+      });
+
       return NextResponse.json({ status: document.status });
     }
 
-    const document = await repo.sign(id, parsed.data.token, {
+    const { document, signatory } = await repo.sign(id, parsed.data.token, {
       signatureImageUrl: parsed.data.signatureImageUrl,
       // Evidence of who signed and from where. Taken from the request, never
       // from the body: a self-reported IP address is not evidence of anything.
@@ -136,6 +172,16 @@ export async function POST(
         undefined,
       userAgent: request.headers.get("user-agent") ?? undefined,
     });
+
+    // "completed" tells the candidate they are hired and closes the loop for
+    // the company; "signed" only concerns the company, because a candidate
+    // does not need an email confirming the thing they just did.
+    await announce(
+      ctx,
+      document,
+      document.status === "completed" ? "completed" : "signed",
+      { actorEmail: signatory.email }
+    );
 
     return NextResponse.json({
       status: document.status,

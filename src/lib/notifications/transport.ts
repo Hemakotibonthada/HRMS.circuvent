@@ -14,6 +14,7 @@
 // a no-op instead of throwing at import time.
 
 import type { Channel, DispatchDecision } from "./engine";
+import { mailConfigured, sendMail } from "@/lib/mailer";
 
 export interface DeliveryResult {
   channel: Channel;
@@ -38,13 +39,32 @@ export interface Transport {
   send(decision: DispatchDecision, recipient: Recipient): Promise<DeliveryResult>;
 }
 
-// ─── Email (Resend) ──────────────────────────────────────────
+// ─── Email (SMTP, via src/lib/mailer.ts) ─────────────────────
 
+/**
+ * Email, over the same SMTP path as every other message this product sends.
+ *
+ * This used to POST to the Resend API and gate itself on `RESEND_API_KEY`,
+ * which left two unrelated mail systems in one product. `mailer.ts` states the
+ * position plainly — "There is no third-party sending service ... routing it
+ * through an external provider is how the storefront ended up silently
+ * dropping every verification code" — and password resets and offer letters
+ * already go through it.
+ *
+ * The practical cost of the split was worse than the inconsistency. The
+ * notification engine was wired to nothing, so nobody had noticed that
+ * `RESEND_API_KEY` appears in no example configuration and no deployment
+ * document. The first leave approval routed through here would have found the
+ * transport unconfigured and sent nothing at all — the exact failure the
+ * comment in `mailer.ts` was written about.
+ *
+ * The HTML and plain-text builders are unchanged; only the wire is.
+ */
 class EmailTransport implements Transport {
   readonly channel: Channel = "email";
 
   isConfigured(): boolean {
-    return !!process.env.RESEND_API_KEY;
+    return mailConfigured();
   }
 
   async send(decision: DispatchDecision, recipient: Recipient): Promise<DeliveryResult> {
@@ -52,43 +72,23 @@ class EmailTransport implements Transport {
       return { channel: "email", ok: false, error: "Recipient has no email address" };
     }
 
-    const from = process.env.NOTIFICATIONS_FROM_EMAIL ?? "HRMS <no-reply@circuvent.com>";
-
     try {
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          from,
-          to: recipient.email,
-          subject: decision.subject,
-          text: buildPlainText(decision),
-          html: buildHtml(decision),
-        }),
-        // Without a timeout a hung provider holds the worker until the
-        // platform kills it, and the whole batch stalls behind one message.
-        signal: AbortSignal.timeout(10_000),
+      const ok = await sendMail({
+        to: recipient.email,
+        subject: decision.subject,
+        text: buildPlainText(decision),
+        html: buildHtml(decision),
       });
 
-      if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        return {
-          channel: "email",
-          ok: false,
-          error: `Resend responded ${response.status}: ${body.slice(0, 200)}`,
-        };
-      }
-
-      const json = (await response.json()) as { id?: string };
-      return { channel: "email", ok: true, externalId: json.id };
+      return ok
+        ? { channel: "email", ok: true }
+        : { channel: "email", ok: false, error: "The mail server rejected the message" };
     } catch (error) {
       return { channel: "email", ok: false, error: describe(error) };
     }
   }
 }
+
 
 // ─── Push (Expo) ─────────────────────────────────────────────
 

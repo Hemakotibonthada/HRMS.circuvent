@@ -1353,3 +1353,82 @@ credential for somebody else's contract.
 under a hash that changes if a single rupee does, that the signing token is stored only as a hash
 and the plaintext appears nowhere in the row, and that another tenant sees no offers, no tokens and
 no templates.
+
+---
+
+## The whole notification subsystem was connected to nothing
+
+Five offer emails were written last round and one was wired. The reminder, the
+acceptance, the internal signed notice and the withdrawal were exported into a
+vacuum — complete, escaped, thirty-three tests between them, and unreachable by
+any code path. Checking properly turned up the same defect one level up:
+`src/lib/notifications/` — engine, transports and templates, about twelve
+hundred lines with fifty passing tests — was imported by nothing outside its own
+test files. Leave was approved and the employee found out by reloading the page.
+
+A test suite cannot catch this. Every one of those modules had good tests and
+the tests passed, because a test imports the module directly. What was missing
+was not correctness but connection.
+
+### Now wired
+
+- **Signing** (`/api/sign/[id]`) announces on completion: the candidate is told
+  they are hired, the company is told the envelope is closed. A partial
+  signature notifies the company only, because nobody needs an email confirming
+  the thing they just did.
+- **Withdrawal** (`/api/documents/[id]/void`) tells the candidate, because the
+  link they were sent has just stopped working. Without it they discover the
+  withdrawal by clicking a link that errors, and conclude the system is broken
+  rather than that the offer is gone.
+- **Reminders** (`POST /api/documents/reminders`) chase outstanding offers seven,
+  three and one day before expiry. Accepts an administrator or the shared
+  service token, so a scheduler can drive it.
+- **Leave decisions** (`/api/leave/[id]/decision`) notify the employee through
+  the engine that previously had no callers.
+
+`recipientsFor` decides who hears about what, as a pure function with twenty-eight
+tests. The rule that matters is direction of travel: internal notices carry other
+signatories' addresses and get forwarded around a company as a matter of routine,
+so nothing sent to a candidate names anyone else, and no internal message ever
+carries a signing link — a link is a working credential for one person's contract.
+
+### Two mail systems, one of them unconfigurable
+
+`notifications/transport.ts` sent email by POSTing to the Resend API, gated on
+`RESEND_API_KEY`. `mailer.ts` states the opposite position in its own header:
+"There is no third-party sending service ... routing it through an external
+provider is how the storefront ended up silently dropping every verification
+code" — and password resets and offer letters already go through it.
+
+The split survived because the engine was wired to nothing, so nobody noticed
+that `RESEND_API_KEY` appears in no example configuration and no deployment
+document. The first leave approval routed through it would have found the
+transport unconfigured and sent nothing at all — the exact failure that comment
+was written about. Email now goes over the one SMTP path, and the tests mock the
+mailer rather than a provider they were never going to call.
+
+`src/lib/notification-templates.ts` — 575 lines, thirty templates, a second
+notification system duplicating the engine's — was imported by nothing at all,
+including tests. Deleted.
+
+### Reminders re-issue the link, and say so
+
+A reminder needs a working link and the original cannot be recovered: tokens are
+stored hashed precisely so a leaked database does not hand over every outstanding
+contract. So a reminder mints a new one and the previous link stops working. The
+email says that in as many words, because a candidate clicking the first email,
+getting an error and concluding the offer was withdrawn is a worse outcome than
+the one the re-issue avoids. A slot that has already signed or declined is never
+re-issued — reviving it would let a signature be replaced.
+
+### The gate
+
+`npm run audit:unwired` reads the modules that exist to be dispatched and reports
+any export used *nowhere* — not by a caller, not by its own module. Internal use
+is the discriminator: `formatDateForEmail` is exported so a test can reach it and
+called three lines down, which is fine, while `offerReminderEmail` was reachable
+from nothing. Planting a plausible unused email body fails the audit by name.
+
+Nine PGlite checks added (65 total) covering token re-issue, that an old link
+stops working, that a signed slot is never given a working one again, and the
+direction of travel for each event.
