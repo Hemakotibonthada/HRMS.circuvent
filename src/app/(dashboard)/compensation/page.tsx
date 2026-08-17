@@ -23,8 +23,8 @@ import {
   PieChart, Pie, Cell, Legend, Tooltip as RTooltip,
   AreaChart, Area,
 } from "recharts";
-import { useEmployeeStore, usePayrollStore, startSync } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { useEmployeeStore, startSync } from "@/stores/unified-store";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════
@@ -46,17 +46,17 @@ const GRADES = ["Junior", "Mid-Level", "Senior", "Lead", "Manager", "Director"];
 
 export default function CompensationPage() {
   const empStore = useEmployeeStore();
-  const payStore = usePayrollStore();
   const { items: employees, loading, initialized } = empStore;
-  const { items: payroll } = payStore;
   const [tab, setTab] = useState("bands");
   const [selectedGrade, setSelectedGrade] = useState("all");
   const [detailEmp, setDetailEmp] = useState<typeof employees[0] | null>(null);
 
+  // The payroll store was synced here and never read — `items: payroll` was
+  // destructured and unused. It only ever produced a 404 on every poll,
+  // because payroll has its own route rather than a document collection.
   useEffect(() => {
     if (!empStore.initialized) startSync(COLLECTIONS.employees, empStore);
-    if (!payStore.initialized) startSync(COLLECTIONS.payroll, payStore);
-  }, [empStore, payStore]);
+  }, [empStore]);
 
   // Assign grade based on designation
   const getGrade = (designation: string) => {

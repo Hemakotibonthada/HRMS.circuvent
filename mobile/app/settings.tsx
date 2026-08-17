@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { StyleSheet, Switch, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
+import { Card } from "@/components/Card";
+import { Screen } from "@/components/Screen";
+import { AppText } from "@/components/Typography";
 import { checkSupport, isEnabled, setEnabled, unlock, type BiometricSupport } from "@/lib/biometrics";
 import { useSession } from "@/lib/session";
+import { useSync } from "@/lib/sync";
 import { useTheme } from "@/theme/ThemeProvider";
 
 const KIND_LABEL: Record<string, string> = {
@@ -15,7 +20,9 @@ const KIND_LABEL: Record<string, string> = {
 
 export default function SettingsScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { user, signOut } = useSession();
+  const { pending } = useSync();
 
   const [support, setSupport] = useState<BiometricSupport | null>(null);
   const [enabled, setEnabledState] = useState(false);
@@ -28,78 +35,56 @@ export default function SettingsScreen() {
     })();
   }, []);
 
-  const toggle = useCallback(
-    async (next: boolean) => {
-      setNote(null);
+  const toggle = useCallback(async (next: boolean) => {
+    setNote(null);
 
-      if (next) {
-        // Proved once before the setting is stored. Turning the lock on
-        // without checking it works leaves someone locked out on their next
-        // launch by a setting they had no way to test.
-        const result = await unlock("Confirm it is you");
-        if (result !== "unlocked") {
-          setNote("Biometric unlock was not turned on, because the check did not pass.");
-          return;
-        }
+    if (next) {
+      // Proved once before the setting is stored. Turning the lock on without
+      // checking it works leaves someone locked out on their next launch by a
+      // setting they had no way to test.
+      const result = await unlock("Confirm it is you");
+      if (result !== "unlocked") {
+        setNote("Biometric unlock was not turned on, because the check did not pass.");
+        return;
       }
+    }
 
-      await setEnabled(next);
-      setEnabledState(next);
-    },
-    []
-  );
+    await setEnabled(next);
+    setEnabledState(next);
+  }, []);
 
-  const label = support?.available ? KIND_LABEL[support.kind] ?? "Biometric unlock" : "Biometric unlock";
+  const label = support?.available
+    ? KIND_LABEL[support.kind] ?? "Biometric unlock"
+    : "Biometric unlock";
 
   return (
-    <SafeAreaView
-      style={[styles.safe, { backgroundColor: theme.colors.background }]}
-      edges={["bottom"]}
-    >
-      <ScrollView contentContainerStyle={{ padding: theme.spacing.lg }}>
-        {user ? (
-          <View style={{ marginBottom: theme.spacing.xl }}>
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.fontSize.title3,
-                lineHeight: theme.lineHeight.title3,
-                fontWeight: theme.fontWeight.semibold,
-              }}
-            >
-              {user.firstName} {user.lastName}
-            </Text>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.fontSize.footnote,
-                lineHeight: theme.lineHeight.footnote,
-              }}
-            >
-              {user.email}
-            </Text>
-          </View>
-        ) : null}
+    <Screen>
+      {user ? (
+        <Card>
+          <AppText variant="title3" weight="semibold" heading>
+            {user.firstName} {user.lastName}
+          </AppText>
+          <AppText variant="footnote" tone="muted">
+            {user.email}
+          </AppText>
+        </Card>
+      ) : null}
 
+      <AppText
+        variant="footnote"
+        weight="semibold"
+        tone="muted"
+        heading
+        style={{ marginTop: theme.spacing.xl, marginBottom: theme.spacing.sm }}
+      >
+        Security
+      </AppText>
+
+      <Card>
         <View style={styles.between}>
           <View style={styles.grow}>
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.fontSize.body,
-                lineHeight: theme.lineHeight.body,
-              }}
-            >
-              {label}
-            </Text>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.fontSize.caption,
-                lineHeight: theme.lineHeight.caption,
-                marginTop: 2,
-              }}
-            >
+            <AppText variant="body">{label}</AppText>
+            <AppText variant="caption" tone="muted" style={{ marginTop: 2 }}>
               {support === null
                 ? "Checking…"
                 : support.available
@@ -107,7 +92,7 @@ export default function SettingsScreen() {
                   : support.reason === "not_enrolled"
                     ? "Set up a biometric in your device settings to use this."
                     : "This device does not support biometric unlock."}
-            </Text>
+            </AppText>
           </View>
 
           <Switch
@@ -119,33 +104,58 @@ export default function SettingsScreen() {
           />
         </View>
 
-        {note ? (
-          <Text
-            accessibilityRole="alert"
-            style={{
-              color: theme.colors.danger,
-              fontSize: theme.fontSize.footnote,
-              lineHeight: theme.lineHeight.footnote,
-              marginTop: theme.spacing.md,
-            }}
-          >
-            {note}
-          </Text>
-        ) : null}
+        {/* Said here rather than only in the roadmap: someone turning this on
+            should not believe it is doing more than it does. */}
+        <AppText variant="caption" tone="muted" style={{ marginTop: theme.spacing.md }}>
+          This unlocks a session you already have. It is not a way of signing
+          in, and it proves nothing to the server.
+        </AppText>
+      </Card>
 
-        <Button
-          label="Sign out"
-          variant="secondary"
-          onPress={() => void signOut()}
-          style={{ marginTop: theme.spacing.xxl }}
+      {note ? (
+        <Banner
+          tone="error"
+          title="Biometric unlock was not turned on"
+          description={note}
+          style={{ marginTop: theme.spacing.md }}
         />
-      </ScrollView>
-    </SafeAreaView>
+      ) : null}
+
+      <Button
+        label="Two-step verification"
+        variant="secondary"
+        onPress={() => router.push("/two-factor")}
+        accessibilityHint="Set up or turn off the code your authenticator app gives you"
+        style={{ marginTop: theme.spacing.md }}
+      />
+
+      <Button
+        label="Sign out"
+        variant="secondary"
+        onPress={() => void signOut()}
+        accessibilityHint="Signs you out on this device"
+        style={{ marginTop: theme.spacing.xxl }}
+      />
+
+      {pending.length > 0 ? (
+        // Warned before the tap, not after. Signing out with unsent work is a
+        // decision that should be made knowingly.
+        <AppText
+          variant="caption"
+          tone="warning"
+          align="center"
+          style={{ marginTop: theme.spacing.sm }}
+        >
+          {pending.length === 1
+            ? "1 action has not been sent yet."
+            : `${pending.length} actions have not been sent yet.`}
+        </AppText>
+      ) : null}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
   between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   grow: { flex: 1, paddingRight: 16 },
 });

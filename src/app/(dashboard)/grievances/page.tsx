@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { addDaysToKey, dateKeyInZone } from "@/lib/date-keys";
 import { create } from "zustand";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { type BaseRecord } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -153,16 +154,18 @@ export default function GrievancesPage() {
     if (!form.title || !form.filedBy) { toast.error("Title and filed by are required"); return; }
     try {
       const now = new Date();
-      const slaDeadline = new Date(now);
-      slaDeadline.setDate(slaDeadline.getDate() + 14);
+      // 14 days from today's *calendar* date in the org's zone. Adding to the
+      // key rather than to a Date keeps the deadline on the day a person
+      // would count to, and cannot be shifted by a UTC render.
+      const filedDate = dateKeyInZone(now);
       await genericService(COLLECTIONS.grievances).create({
         ...form,
         status: "Filed",
         assignedTo: "",
-        filedDate: now.toISOString().split("T")[0],
+        filedDate,
         resolvedDate: "",
         resolution: "",
-        slaDeadline: slaDeadline.toISOString().split("T")[0],
+        slaDeadline: addDaysToKey(filedDate, 14),
       });
       toast.success("Grievance filed successfully");
       setCreateOpen(false); resetForm();
@@ -172,7 +175,7 @@ export default function GrievancesPage() {
   const handleStatusUpdate = async (g: GrievanceDoc, newStatus: string) => {
     try {
       const updates: Partial<GrievanceDoc> = { status: newStatus };
-      if (newStatus === "Closed") updates.resolvedDate = new Date().toISOString().split("T")[0];
+      if (newStatus === "Closed") updates.resolvedDate = dateKeyInZone(new Date());
       await genericService(COLLECTIONS.grievances).update(g.id, updates as Record<string, unknown>);
       store.updateItem(g.id, updates);
       toast.success(`Status updated to ${newStatus}`);

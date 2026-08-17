@@ -17,7 +17,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -51,6 +50,20 @@ interface SessionValue {
 const SessionContext = createContext<SessionValue | null>(null);
 
 function resolveBaseUrl(): string {
+  // Two sources, checked in this order. The build-time variable wins because
+  // it is what EAS sets per profile — preview builds point at staging,
+  // production at production — and app.json is one file shared by both.
+  //
+  // `process.env.EXPO_PUBLIC_*` is substituted into the bundle at build time
+  // by Expo, so this is a literal by the time it runs; it cannot be read
+  // dynamically and there is no `process.env` on a device to read it from.
+  //
+  // The env var was named in the error message below long before anything
+  // read it, so anyone who followed the instruction set it and still got the
+  // same error.
+  const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL;
+  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) return fromEnv.trim();
+
   const configured = Constants.expoConfig?.extra?.apiBaseUrl;
   if (typeof configured === "string" && configured.length > 0) return configured;
 
@@ -67,33 +80,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>("loading");
   const [user, setUser] = useState<SessionUser | null>(null);
 
-  // Held in a ref so that `onSignedOut` — created once, in the client — always
-  // sees current state rather than a stale closure.
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  const api = useMemo(
+  // Built once, in a lazy initialiser, and never rebuilt.
+  //
+  // This was a `useMemo` guarded by an `isMounted` ref, which was wrong twice
+  // over. A memo is a cache: React is free to discard and recompute it, and a
+  // second MobileApiClient would carry its own in-flight refresh — two clients
+  // racing to rotate the same refresh token is exactly what the server treats
+  // as a replay, and it revokes the whole session family. `useState` with an
+  // initialiser is the construct that actually promises "once".
+  //
+  // The ref is gone rather than moved. It guarded `setState` after unmount,
+  // and React 18 removed that warning because the call was always a harmless
+  // no-op; the guard defended against nothing while reading a ref during
+  // render, which is a genuine side effect. Ordering *within* the mounted
+  // lifetime is still handled, by the `cancelled` flag scoped to its effect.
+  const [api] = useState(
     () =>
       new MobileApiClient({
         baseUrl: resolveBaseUrl(),
         tokens: new SecureTokenStore(),
         onSignedOut: () => {
-          if (!mounted.current) return;
           setUser(null);
           setStatus("signed_out");
         },
-      }),
-    []
+      })
   );
 
   const loadUser = useCallback(async () => {
     const profile = await api.get<{ user: SessionUser }>("/api/auth/me");
-    if (!mounted.current) return;
     setUser(profile.user);
     setStatus("signed_in");
   }, [api]);
@@ -105,7 +119,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       try {
         await loadUser();
       } catch (error) {
-        if (cancelled || !mounted.current) return;
+        if (cancelled) return;
 
         // Offline with a stored token is not signed out. Forcing a password
         // on a train with no signal, when the token is still valid, is the
@@ -114,7 +128,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         // in a basement car park.
         if (error instanceof OfflineError) {
           const stored = await new SecureTokenStore().getAccessToken();
-          if (!cancelled && mounted.current) {
+          if (!cancelled) {
             setStatus(stored ? "signed_in" : "signed_out");
           }
           return;
@@ -139,7 +153,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await api.signOut();
-    if (!mounted.current) return;
     setUser(null);
     setStatus("signed_out");
   }, [api]);

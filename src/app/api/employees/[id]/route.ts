@@ -11,6 +11,7 @@ import { NeonEmployeeRepository } from "@/db/repositories/employee.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
+import { canViewOthersSalary } from "@/lib/rbac";
 
 const updateSchema = z
   .object({
@@ -74,10 +75,12 @@ export async function GET(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Employee not found" }, { status: 404 });
     }
 
-    // An ordinary employee may read their own record, not a colleague's
-    // salary. Managers and above get the full directory.
-    const privileged = ["owner", "admin", "hr", "manager"].includes(ctx.role);
-    if (!privileged && employee.id !== ctx.userId) {
+    // Directory access is not salary access. Managers hold `employees.view`
+    // but deliberately not `payroll.view`, so they get the record without the
+    // pay — the same rule `direct-reports` already applies. An ordinary
+    // employee still sees their own salary.
+    const ownRecord = employee.id === ctx.userId;
+    if (!ownRecord && !canViewOthersSalary(ctx.role)) {
       const { salary: _salary, ...publicFields } = employee;
       return NextResponse.json(publicFields);
     }

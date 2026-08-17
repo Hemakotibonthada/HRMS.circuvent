@@ -7,6 +7,7 @@
 // is how the storefront ended up silently dropping every verification code.
 
 import nodemailer, { type Transporter } from "nodemailer";
+import { expandToPeople } from "@/lib/directory-sdk";
 
 let transporter: Transporter | null = null;
 
@@ -59,17 +60,27 @@ export async function sendMail(options: {
     return false;
   }
 
+  // A group address is a real address to everything upstream of here, and it
+  // is also a real mailbox on the server, so mail sent to it would be filed
+  // there and nobody in the group would ever see it. Expanded at the last
+  // moment rather than when the recipient was chosen, so a person added to the
+  // group since then still receives this message.
+  const recipients = await expandToPeople(
+    options.to.split(",").map((a) => a.trim()).filter(Boolean)
+  );
+  const to = recipients.length > 0 ? recipients.join(", ") : options.to;
+
   try {
     await t.sendMail({
       from: process.env.EMAIL_FROM?.trim() || `Circuvent HRMS <${process.env.SMTP_USER?.trim()}>`,
-      to: options.to,
+      to,
       subject: options.subject,
       html: options.html,
       text: options.text,
     });
     return true;
   } catch (e) {
-    console.error(`[mail] Failed to send "${options.subject}" to ${options.to}:`, e);
+    console.error(`[mail] Failed to send "${options.subject}" to ${to}:`, e);
     return false;
   }
 }

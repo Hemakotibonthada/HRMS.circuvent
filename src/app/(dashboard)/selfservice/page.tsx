@@ -24,7 +24,7 @@ import {
   useEmployeeStore, useLeaveStore, useGoalStore, useAttendanceStore,
   useExpenseStore, useTicketStore, startSync,
 } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { useEffect } from "react";
 import Link from "next/link";

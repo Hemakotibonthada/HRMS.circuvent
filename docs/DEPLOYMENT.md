@@ -57,9 +57,9 @@ minutes, but the certificate issuance waits on it.
 
 ### Records to leave alone
 
-If `circuvent.com` currently has records for Firebase Hosting, leave them until
-the cutover is complete and verified. Deleting them first means the old site is
-down while the new one is still issuing certificates.
+If the apex still has records pointing at a previous host, leave them until the
+cutover is complete and verified. Deleting them first means the old site is down
+while the new one is still issuing certificates.
 
 ---
 
@@ -97,12 +97,44 @@ the single most expensive mistake available here.
 | `JWT_SECRET` | generated, 32+ bytes | separate value | A shared secret means a preview token works in production. |
 | `REFRESH_SECRET` | generated, separate from above | separate value | |
 | `NEXT_PUBLIC_APP_URL` | `https://hrms.circuvent.com` | Vercel's preview URL | Used to build signing links; a wrong value sends candidates to a dead host. |
-| `DATA_BACKEND` | `neon` | `neon` | `firestore` and `dual` exist for the migration; see PLATFORM-ARCHITECTURE.md §3. |
 | `RESEND_API_KEY` | production key | **test key** | A preview deploy must not be able to email real candidates. |
-| `ENCRYPTION_KEY` | 32 bytes, base64 | separate value | Encrypts `bank_details`, `aadhaar_number`, `mfa_secret`, SSO client secrets. |
+| `ENCRYPTION_KEY` | 32 bytes, base64 | separate value | **Required.** Encrypts `mfa_secret`, SSO `client_secret`, `aadhaar_number` and `pan_number` at rest. Writes fail closed without it rather than silently storing plaintext. |
+| `ENCRYPTION_KEY_PREVIOUS` | unset, except during a rotation | — | Comma-separated retired keys, kept decrypt-only so a rotation need not be simultaneous with rewriting every row. |
 
 Generate secrets with `openssl rand -base64 32`. Do not reuse one across two
 variables — if one leaks you want to rotate one thing, not four.
+
+### Encrypting existing rows
+
+`decryptField` reads plaintext transparently, so turning encryption on does not
+lock out anyone already enrolled in MFA — but it also means nothing already in
+the database gets encrypted. Rewrite it explicitly:
+
+```bash
+npm run db:encrypt-fields -- --dry-run   # report only
+npm run db:encrypt-fields                # rewrite what needs it
+```
+
+Idempotent and safe to interrupt: a row already wrapped with the current key is
+skipped.
+
+### Rotating the key
+
+```bash
+# 1. Both keys present: new one current, old one decrypt-only.
+ENCRYPTION_KEY=<new> ENCRYPTION_KEY_PREVIOUS=<old> npm run db:encrypt-fields
+# 2. When it reports nothing left to rewrite, drop ENCRYPTION_KEY_PREVIOUS.
+```
+
+The backfill decrypts before re-encrypting. Skipping that step wraps the old
+ciphertext in a second envelope, which reads back as garbage — every enrolled
+user is locked out, and it only surfaces at their next sign-in.
+`npm run db:verify:encryption` exercises exactly this path against a real
+Postgres, because it is not a mistake a unit test catches.
+
+> **`bank_details` is not yet encrypted.** It is a `jsonb` column, so storing a
+> ciphertext string in it needs a schema change rather than a backfill. Nothing
+> writes to it today. Tracked in `docs/ROADMAP.md`.
 
 ### All apps
 
@@ -146,23 +178,28 @@ make all 62 of those checks meaningless.
 
 ## 5. Cutover
 
-The order matters. Each step is reversible until the last one.
+**Completed.** HRMS serves all reads and writes from Neon, and Firebase has been
+removed from the repository entirely — see `docs/ROADMAP.md` §1.6.7 for the
+inventory of what was deleted.
 
-1. **Point the subdomains at Vercel** while `circuvent.com` still serves
-   Firebase. Nothing customer-facing changes.
-2. **Run `scripts/migrate-to-neon.ts --dry-run`** against the staging branch.
-   It reports what it would write without writing it.
-3. **Run it for real against staging**, then `--verify`, which re-reads both
-   sides and compares.
-4. **Set `DATA_BACKEND=dual`** in production. Writes go to both Firestore and
-   Neon; reads still come from Firestore. Run it for a week.
+The sequence that was followed, kept because it is the pattern the remaining
+Office Suite apps should use for their own cutovers:
+
+1. **Point the subdomains at Vercel** while the apex still serves the old host.
+   Nothing customer-facing changes.
+2. **Dry-run the data migration** against the staging branch — report what it
+   would write without writing it.
+3. **Run it for real against staging**, then verify by re-reading both sides and
+   comparing.
+4. **Dual-write** in production: writes to both stores, reads still from the
+   old one. Run it for a week.
 5. **Compare.** Any divergence is a bug in the repository layer, and this is
    the only phase where finding it is cheap.
-6. **Set `DATA_BACKEND=neon`.** Reads switch over. Firestore keeps receiving
-   writes, so a rollback is one environment variable.
+6. **Switch reads.** The old store keeps receiving writes, so rollback is one
+   environment variable.
 7. **After a month with no rollback**, stop the dual writes.
-8. **Move the apex** from Firebase to Vercel. This is the irreversible-feeling
-   step, and it is deliberately last.
+8. **Move the apex.** This is the irreversible-feeling step, and it is
+   deliberately last.
 
 Do not compress steps 4–7. The dual-write window is the only opportunity to
 discover a divergence while both systems still hold the truth.

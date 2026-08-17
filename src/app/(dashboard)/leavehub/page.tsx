@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useToday } from "@/hooks/use-now";
+import { addDaysToKey, dateKeyInZone } from "@/lib/date-keys";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +28,7 @@ import {
   Tooltip as RTooltip,
 } from "recharts";
 import { useLeaveStore, useEmployeeStore, startSync, type LeaveDoc } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════
@@ -99,16 +101,19 @@ export default function LeaveHubPage() {
   }, [leaves]);
 
   // Team calendar data — who is on leave today and this week
+  const today = useToday();
   const teamCalendar = useMemo(() => {
-    const today = new Date().toISOString().split("T")[0];
-    const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+    // `toISOString()` is UTC, so before 05:30 IST this asked about yesterday
+    // and quietly dropped anyone whose leave started today.
+    if (!today) return [];
+    const weekEnd = addDaysToKey(today, 7);
     return leaves
       .filter(l => l.status === "approved" && l.fromDate <= weekEnd && l.toDate >= today)
       .map(l => ({
         ...l,
         initials: l.employeeName?.split(" ").map(n => n[0]).join("").slice(0, 2) || "??",
       }));
-  }, [leaves]);
+  }, [leaves, today]);
 
   // Leave type distribution for chart
   const typeDistribution = useMemo(() => {
@@ -135,12 +140,12 @@ export default function LeaveHubPage() {
     const to = new Date(form.toDate);
     const days = Math.ceil((to.getTime() - from.getTime()) / 86400000) + 1;
     try {
-      const { genericService } = await import("@/lib/firestore-service");
+      const { genericService } = await import("@/lib/collection-service");
       await genericService(COLLECTIONS.leaves).create({
         ...form,
         days,
         status: "pending",
-        appliedOn: new Date().toISOString().split("T")[0],
+        appliedOn: dateKeyInZone(new Date()),
       });
       toast.success("Leave application submitted!");
       setApplyOpen(false);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useToday } from "@/hooks/use-now";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useMeetingStore, startSync } from "@/stores/unified-store";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 
 const STATUS_COLORS: Record<string, string> = {
   confirmed: "status-active",
@@ -44,7 +45,7 @@ export default function MeetingsPage() {
     );
   }, [items, search]);
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = useToday() ?? "";
   const confirmed = items.filter((m) => m.status === "confirmed").length;
   const todayMeetings = items.filter((m) => m.date === todayStr).length;
   const totalAttendees = items.reduce((s, m) => s + (m.attendees || 0), 0);

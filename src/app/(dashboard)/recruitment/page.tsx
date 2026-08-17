@@ -28,7 +28,7 @@ import {
   Tooltip as RTooltip,
 } from "recharts";
 import { useJobStore, startSync, type JobDoc } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { clickable } from "@/lib/a11y/clickable";
 

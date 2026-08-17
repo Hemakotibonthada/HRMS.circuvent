@@ -22,7 +22,7 @@ import {
 import {
   useEmployeeStore, useGoalStore, useLeaveStore, startSync,
 } from "@/stores/unified-store";
-import { COLLECTIONS, genericService } from "@/lib/firestore-service";
+import { COLLECTIONS, genericService } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ec4899","#ef4444","#6366f1","#14b8a6"];

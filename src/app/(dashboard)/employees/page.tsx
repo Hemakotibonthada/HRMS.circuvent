@@ -23,7 +23,13 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useEmployeeStore, startSync, type EmployeeDoc } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
+import {
+  createEmployee,
+  listDepartments,
+  validateEmployeeForm,
+  type DepartmentOption,
+} from "@/lib/employee-client";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { useRBAC } from "@/hooks/use-rbac";
 import { createEmployeeAcrossApps, syncEmployeeToOtherApps } from "@/lib/cross-app-sync";
@@ -59,6 +65,26 @@ export default function EmployeesPage() {
   const [tab, setTab] = useState("all");
   // Form state
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", department: "", designation: "", joiningDate: "", employmentType: "Full-time", location: "", status: "active", salary: "", password: "", syncToApps: true });
+  const [creating, setCreating] = useState(false);
+
+  /**
+   * Real departments, for resolving the picker's name to a `departmentId`.
+   *
+   * `/api/departments` did not exist until now, so the form could only offer
+   * hardcoded names and the API — which wants a uuid — silently dropped them.
+   * That is why the directory shows "Unassigned".
+   */
+  const [departmentOptions, setDepartmentOptions] = useState<DepartmentOption[]>([]);
+
+  const loadDepartments = useCallback(async () => {
+    try {
+      setDepartmentOptions(await listDepartments());
+    } catch {
+      // The form still works; a new department is created on first use.
+    }
+  }, []);
+
+  useEffect(() => { void loadDepartments(); }, [loadDepartments]);
 
   useEffect(() => { if (!initialized) startSync(COLLECTIONS.employees, store); }, [initialized, store]);
 
@@ -91,9 +117,16 @@ export default function EmployeesPage() {
   const resetForm = () => setForm({ firstName: "", lastName: "", email: "", phone: "", department: "", designation: "", joiningDate: "", employmentType: "Full-time", location: "", status: "active", salary: "", password: "", syncToApps: true });
 
   const handleCreate = async () => {
-    if (!form.firstName || !form.lastName || !form.email || !form.department) {
-      toast.error("Please fill required fields"); return;
+    // Checked here so a missing designation or joining date is named before a
+    // round trip, rather than coming back as an unexplained "Validation
+    // failed".
+    const issues = validateEmployeeForm(form);
+    if (issues.length > 0) {
+      toast.error(issues.map((i) => i.message).join("\n"));
+      return;
     }
+
+    setCreating(true);
     try {
       // If sync to other apps is enabled and password provided, create across all apps
       if (form.syncToApps && form.password) {
@@ -118,16 +151,27 @@ export default function EmployeesPage() {
           toast.success(`${form.firstName} ${form.lastName} added.`);
         } else {
           toast.error(syncResult.errors[0] ?? "Could not add this employee.");
+          return;
         }
       } else {
-        // Just create in HRMS only
-        await genericService(COLLECTIONS.employees).create({
-          ...form, salary: form.salary ? parseFloat(form.salary) : 0,
-        });
-        toast.success(`${form.firstName} ${form.lastName} added to HRMS!`);
+        // Goes through the real employee route, mapping the form onto its
+        // contract — `joiningDate` is `joinDate` there, employment types are
+        // snake_case, and a department is a uuid rather than a name.
+        await createEmployee(form, departmentOptions);
+        toast.success(`${form.firstName} ${form.lastName} added.`);
       }
+
+      // The employees store subscribes and polls, so the new row arrives on
+      // its own. Departments are re-read because this may have created one.
+      void loadDepartments();
       setCreateOpen(false); resetForm();
-    } catch (err) { toast.error("Failed to add employee"); }
+    } catch (err) {
+      // The server names the field. Repeating "Failed to add employee" over
+      // the top of that is what made this impossible to diagnose.
+      toast.error(err instanceof Error ? err.message : "Failed to add employee");
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleUpdate = async () => {
@@ -444,8 +488,8 @@ export default function EmployeesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setCreateOpen(false); setEditOpen(false); }}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={editOpen ? handleUpdate : handleCreate}>
-              {editOpen ? "Save Changes" : "Add Employee"}
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" disabled={creating} onClick={editOpen ? handleUpdate : handleCreate}>
+              {creating ? "Saving…" : editOpen ? "Save Changes" : "Add Employee"}
             </Button>
           </DialogFooter>
         </DialogContent>

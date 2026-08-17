@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { listMyPayslips, type MyPayslip } from "@/lib/payroll-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,52 +26,101 @@ interface Declaration {
   id: string; section: string; category: string; description: string; amount: number; limit: number; proofUploaded: boolean; status: "declared" | "verified" | "rejected";
 }
 
-const DECLARATIONS: Declaration[] = [
-  { id: "D001", section: "80C", category: "PPF", description: "Public Provident Fund", amount: 72000, limit: 150000, proofUploaded: true, status: "verified" },
-  { id: "D002", section: "80C", category: "ELSS", description: "Equity Linked Savings Scheme", amount: 50000, limit: 150000, proofUploaded: true, status: "verified" },
-  { id: "D003", section: "80C", category: "LIC", description: "Life Insurance Premium", amount: 24000, limit: 150000, proofUploaded: false, status: "declared" },
-  { id: "D004", section: "80C", category: "EPF", description: "Employee Provident Fund", amount: 21600, limit: 150000, proofUploaded: true, status: "verified" },
-  { id: "D005", section: "80D", category: "Medical", description: "Health Insurance - Self & Family", amount: 25000, limit: 25000, proofUploaded: true, status: "verified" },
-  { id: "D006", section: "80D", category: "Medical", description: "Health Insurance - Parents", amount: 50000, limit: 50000, proofUploaded: true, status: "declared" },
-  { id: "D007", section: "80E", category: "Education", description: "Education Loan Interest", amount: 42000, limit: 0, proofUploaded: false, status: "declared" },
-  { id: "D008", section: "80G", category: "Donations", description: "PM CARES Fund", amount: 10000, limit: 0, proofUploaded: true, status: "verified" },
-  { id: "D009", section: "HRA", category: "HRA", description: "House Rent Allowance", amount: 240000, limit: 300000, proofUploaded: true, status: "verified" },
-  { id: "D010", section: "LTA", category: "LTA", description: "Leave Travel Allowance", amount: 30000, limit: 40000, proofUploaded: false, status: "declared" },
-  { id: "D011", section: "80C", category: "NPS", description: "National Pension System (80CCD)", amount: 50000, limit: 50000, proofUploaded: true, status: "verified" },
-  { id: "D012", section: "80TTA", category: "Savings", description: "SB Interest Deduction", amount: 8500, limit: 10000, proofUploaded: true, status: "verified" },
-];
-
-const GROSS_INCOME = 1800000;
 const STANDARD_DEDUCTION = 75000;
 
+/**
+ * Statutory ceilings for FY 2025-26. A fact about Indian tax law, not about
+ * any employee, so it belongs in the source.
+ */
 const SECTION_LIMITS: Record<string, number> = { "80C": 150000, "80D": 75000, "80E": 0, "80G": 0, "HRA": 300000, "LTA": 40000, "80TTA": 10000 };
 
-const TDS_MONTHLY = [
-  { month: "Apr", tds: 15000, cumulative: 15000 }, { month: "May", tds: 15000, cumulative: 30000 },
-  { month: "Jun", tds: 15000, cumulative: 45000 }, { month: "Jul", tds: 14000, cumulative: 59000 },
-  { month: "Aug", tds: 14000, cumulative: 73000 }, { month: "Sep", tds: 14000, cumulative: 87000 },
-  { month: "Oct", tds: 13500, cumulative: 100500 }, { month: "Nov", tds: 13500, cumulative: 114000 },
-  { month: "Dec", tds: 13500, cumulative: 127500 }, { month: "Jan", tds: 12000, cumulative: 139500 },
-  { month: "Feb", tds: 12000, cumulative: 151500 }, { month: "Mar", tds: 12000, cumulative: 163500 },
-];
-
-const PREV_DECLARATIONS = [
-  { year: "FY 2024-25", totalDeductions: 485000, taxPaid: 163500, regime: "Old" },
-  { year: "FY 2023-24", totalDeductions: 420000, taxPaid: 178200, regime: "Old" },
-  { year: "FY 2022-23", totalDeductions: 350000, taxPaid: 195000, regime: "New" },
-];
-
+/**
+ * Generic guidance. Deliberately impersonal — the previous version said
+ * "you have room for an additional ₹2,400" and "Parents health insurance
+ * proof pending", both computed from investments the employee never made.
+ */
 const TAX_TIPS = [
-  "Maximize your 80C limit - you have room for an additional ₹2,400",
-  "Consider NPS Tier-I for additional ₹50,000 deduction under 80CCD(1B)",
-  "Upload pending proofs for LIC premium and LTA before March 31",
-  "Parents health insurance (80D) proof pending - upload for ₹50,000 deduction",
+  "Section 80C covers PPF, ELSS, life insurance premiums and your own EPF contribution.",
+  "NPS Tier-I allows a further deduction under 80CCD(1B), over and above 80C.",
+  "Proofs for the financial year are usually due before 31 March — check with your HR team.",
+  "The new regime has lower rates but almost no deductions. Which is better depends on what you actually claim.",
 ];
 
 export default function TaxPage() {
   const [regime, setRegime] = useState<"old" | "new">("old");
   const [showDialog, setShowDialog] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["80C", "80D"]));
+
+  /**
+   * Real figures, from released payslips.
+   *
+   * This page previously ran on constants: `GROSS_INCOME = 1800000`, twelve
+   * hardcoded TDS rows, three prior years of tax paid, and twelve invented
+   * 80C declarations with amounts — ₹72,000 of PPF, ₹50,000 of ELSS, a life
+   * insurance premium. It rendered them under an employee's own name on a
+   * page they file taxes from.
+   *
+   * Declarations have no storage anywhere in the product, so they are shown
+   * as empty rather than invented. Gross income and TDS do exist — they are on
+   * every payslip — and are summed here from the real ones.
+   */
+  const [payslips, setPayslips] = useState<MyPayslip[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const mine = await listMyPayslips();
+        if (!cancelled) setPayslips(mine);
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : "Your payslips could not be read");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Year to date, from what has actually been released. Zero when no payslip
+  // exists yet, which is the honest answer for a new joiner.
+  const GROSS_INCOME = useMemo(
+    () => payslips.reduce((sum, slip) => sum + (slip.gross ?? 0), 0),
+    [payslips]
+  );
+
+  const TDS_MONTHLY = useMemo(() => {
+    const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let cumulative = 0;
+    return [...payslips]
+      .sort((a, b) =>
+        (a.periodYear ?? 0) - (b.periodYear ?? 0) || (a.periodMonth ?? 0) - (b.periodMonth ?? 0)
+      )
+      .map((slip) => {
+        // Total deductions, not income tax alone: the payslip DTO does not
+        // break TDS out separately, and labelling the whole figure "TDS" would
+        // be the same kind of confident wrongness this page is being cured of.
+        const deducted = slip.totalDeductions ?? 0;
+        cumulative += deducted;
+        return {
+          month: MONTH_LABELS[(slip.periodMonth ?? 1) - 1] ?? "",
+          tds: deducted,
+          cumulative,
+        };
+      });
+  }, [payslips]);
+
+  /** No storage exists for declarations, so there are none to show. */
+  const DECLARATIONS: Declaration[] = useMemo(() => [], []);
+
+  /** Nor for prior years. */
+  const PREV_DECLARATIONS: { year: string; totalDeductions: number; taxPaid: number; regime: string }[] =
+    useMemo(() => [], []);
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {

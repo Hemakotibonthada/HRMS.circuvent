@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { create } from "zustand";
 import { useEmployeeStore, startSync, type BaseRecord } from "@/stores/unified-store";
 import { DataEmptyState, DataLoadingSkeleton } from "@/components/data-empty-state";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 
 // ─── Inline Location Store ──────────────────────────────────
 interface LocationDoc extends BaseRecord {

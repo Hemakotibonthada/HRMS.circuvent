@@ -16,7 +16,7 @@ import {
   ResponsiveContainer, Legend, PieChart, Pie, Cell,
 } from "recharts";
 import { useEmployeeStore, useAttendanceStore, startSync } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════

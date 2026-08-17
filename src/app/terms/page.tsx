@@ -1,5 +1,13 @@
 import Link from "next/link";
 import { Building2 } from "lucide-react";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata({
+  title: "Terms of Service",
+  description:
+    "The terms governing use of Circuvent HRMS — tenant responsibilities, acceptable use, data ownership, service availability and termination.",
+  path: "/terms",
+});
 
 export default function TermsPage() {
   return (

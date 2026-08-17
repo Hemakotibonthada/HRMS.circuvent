@@ -136,6 +136,16 @@ const eslintConfig = [
       ...jsxA11y.flatConfigs.recommended.rules,
     },
   },
+  {
+    // CommonJS build configuration. Metro and friends load these with
+    // `require` before any ESM loader exists, so `require` is the only thing
+    // that works here — flagging it is the rule being wrong about the file
+    // rather than the file being wrong.
+    files: ["**/*.config.js", "**/*.config.cjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

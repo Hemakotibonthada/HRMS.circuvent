@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { dateKeyInZone } from "@/lib/date-keys";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,7 @@ import {
   Tooltip as RTooltip,
 } from "recharts";
 import { useAssetStore, startSync } from "@/stores/unified-store";
-import { COLLECTIONS, genericService } from "@/lib/firestore-service";
+import { COLLECTIONS, genericService } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ec4899","#ef4444","#6366f1","#14b8a6"];
@@ -73,7 +74,7 @@ export default function ProvisioningPage() {
     try {
       await genericService(COLLECTIONS.assets).create({
         ...form, status: "available", condition: "new",
-        purchaseDate: new Date().toISOString().split("T")[0], cost: 0,
+        purchaseDate: dateKeyInZone(new Date()), cost: 0,
         serialNumber: `SN-${Date.now().toString(36).toUpperCase()}`,
       });
       toast.success("Asset request submitted!");

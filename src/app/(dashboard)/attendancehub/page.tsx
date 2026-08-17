@@ -19,7 +19,7 @@ import {
   ResponsiveContainer, Legend, Cell,
 } from "recharts";
 import { useAttendanceStore, startSync, type AttendanceDoc } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════

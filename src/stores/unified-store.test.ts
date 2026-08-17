@@ -10,7 +10,7 @@ const remove = vi.fn();
 const create = vi.fn();
 const subscribe = vi.fn(() => () => {});
 
-vi.mock("@/lib/firestore-service", () => ({
+vi.mock("@/lib/collection-service", () => ({
   genericService: () => ({ update, remove, create, subscribe }),
   employeeService: {},
   leaveService: {},

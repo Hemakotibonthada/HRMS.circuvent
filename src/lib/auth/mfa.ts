@@ -22,7 +22,13 @@ const PERIOD_SECONDS = 30;
 const WINDOW = 1;
 
 export interface TotpEnrolment {
-  /** Base32 secret to persist (encrypted) on identity.users.mfa_secret. */
+  /**
+   * Base32 secret to persist on identity.users.mfa_secret.
+   *
+   * Encrypt it with `lib/crypto/field-encryption` first — `POST /api/auth/mfa`
+   * does. Storing it raw is what this comment used to describe as already
+   * happening, and did not.
+   */
   secret: string;
   /** otpauth:// URI to render as a QR code. */
   uri: string;

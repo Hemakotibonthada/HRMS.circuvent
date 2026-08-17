@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Only the values Android itself needs before Compose takes over: the launcher
+  icon background and the window background that is on screen for the frame
+  between process start and the first composition.
+
+  Every other colour lives in the Compose theme, which is generated from the
+  same audited palette as the web app. Two copies of a colour is how a product
+  ends up disagreeing with itself about whether a shade is readable.
+-->
+<resources>
+    <color name="ic_launcher_background">#783FF5</color>
+    <color name="window_background">#F4F4F7</color>
+</resources>

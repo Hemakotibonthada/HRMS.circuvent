@@ -410,59 +410,6 @@ export const useAnalyticsStore = create<AnalyticsStore>((set) => ({
     })),
 }));
 
-// ─── Search Store ────────────────────────────────────────────
-
-interface SearchResult {
-  id: string;
-  type: "employee" | "document" | "page" | "announcement" | "ticket" | "policy";
-  title: string;
-  subtitle: string;
-  url: string;
-  icon: string;
-  relevance: number;
-}
-
-interface SearchStore {
-  query: string;
-  results: SearchResult[];
-  isSearching: boolean;
-  recentSearches: string[];
-  setQuery: (query: string) => void;
-  search: (query: string) => Promise<void>;
-  clearResults: () => void;
-  addRecentSearch: (query: string) => void;
-  clearRecentSearches: () => void;
-}
-
-export const useSearchStore = create<SearchStore>((set) => ({
-  query: "",
-  results: [],
-  isSearching: false,
-  recentSearches: [],
-  setQuery: (query) => set({ query }),
-  search: async (query) => {
-    set({ isSearching: true });
-    // Simulate search delay
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    // Mock results based on query
-    const mockResults: SearchResult[] = [
-      { id: "1", type: "employee" as const, title: "Vikram Mehta", subtitle: "Lead Engineer · Engineering", url: "/employees", icon: "👤", relevance: 95 },
-      { id: "2", type: "page" as const, title: "Leave Management", subtitle: "Apply and manage leaves", url: "/leave", icon: "📅", relevance: 80 },
-      { id: "3", type: "document" as const, title: "HR Policy Handbook", subtitle: "Latest version · PDF", url: "/documents", icon: "📄", relevance: 75 },
-    ].filter((r) => r.title.toLowerCase().includes(query.toLowerCase()));
-    set({ results: mockResults, isSearching: false });
-  },
-  clearResults: () => set({ results: [], query: "" }),
-  addRecentSearch: (query) =>
-    set((state) => ({
-      recentSearches: [
-        query,
-        ...state.recentSearches.filter((s) => s !== query),
-      ].slice(0, 5),
-    })),
-  clearRecentSearches: () => set({ recentSearches: [] }),
-}));
-
 // ─── Onboarding Checklist Store ──────────────────────────────
 
 interface OnboardingTask {

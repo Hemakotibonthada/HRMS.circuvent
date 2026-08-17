@@ -13,7 +13,6 @@ export async function GET() {
     environment: process.env.NODE_ENV,
     features: {
       localAuth: process.env.NEXT_PUBLIC_USE_LOCAL_CREDS === "true",
-      firebase: !!process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     },
     uptime: process.uptime(),
   });

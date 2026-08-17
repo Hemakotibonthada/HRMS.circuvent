@@ -27,7 +27,7 @@ import {
   useEmployeeStore, useDepartmentStore, useGoalStore, useLeaveStore,
   startSync,
 } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════

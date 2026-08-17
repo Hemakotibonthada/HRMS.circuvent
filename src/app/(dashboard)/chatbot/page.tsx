@@ -17,6 +17,70 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  ANSWERABLE_QUESTIONS,
+  detectIntent,
+  formatHolidays,
+  formatLeaveBalance,
+  navigationAnswer,
+  unknownAnswer,
+  type AssistantAnswer,
+} from "@/lib/assistant";
+import { dateKeyInZone } from "@/lib/date-keys";
+
+/**
+ * Answers a question, fetching real data where there is a route for it.
+ *
+ * A failed fetch says so. It does not fall back to a plausible number, which
+ * is the behaviour that made the previous assistant dangerous: an employee
+ * asking their leave balance got a confident answer whether or not anything
+ * had been read.
+ */
+async function answerQuestion(query: string): Promise<AssistantAnswer> {
+  const intent = detectIntent(query);
+
+  if (intent === "leave_balance") {
+    try {
+      const year = new Date().getFullYear();
+      const response = await fetch(`/api/leave/balances?year=${year}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error();
+      const body = (await response.json()) as {
+        balances: { leaveType: string; available: number; used: number; pending: number }[];
+      };
+      return formatLeaveBalance(body.balances ?? [], year);
+    } catch {
+      return {
+        kind: "unknown",
+        content:
+          "I could not read your leave balance just now. The Leave page shows it directly, and it is the same figure your manager sees.",
+        actions: [{ label: "Leave management", href: "/leave" }],
+      };
+    }
+  }
+
+  if (intent === "holidays") {
+    try {
+      const response = await fetch(`/api/holidays?year=${new Date().getFullYear()}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error();
+      const body = (await response.json()) as {
+        items: { name: string; holidayDate: string; isOptional: boolean }[];
+      };
+      return formatHolidays(body.items ?? [], dateKeyInZone(new Date()));
+    } catch {
+      return {
+        kind: "unknown",
+        content: "I could not read the holiday calendar just now.",
+        actions: [{ label: "Holiday calendar", href: "/holidays" }],
+      };
+    }
+  }
+
+  return navigationAnswer(intent) ?? unknownAnswer(query);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // HR AI ASSISTANT / CHATBOT
@@ -59,136 +123,13 @@ const QUICK_ACTIONS: QuickAction[] = [
   { id: "q12", label: "Referral bonus", prompt: "What is the employee referral bonus amount?", icon: Heart, color: "from-fuchsia-500 to-pink-500", category: "Benefits" },
 ];
 
-const AI_RESPONSES: Record<string, { content: string; actions?: Message["actions"]; sources?: string[] }> = {
-  "leave balance": {
-    content: "Here's your current leave balance for FY 2025-26:\n\n🟢 **Casual Leave**: 6 remaining (12 total, 4 used, 2 pending)\n🔴 **Sick Leave**: 10 remaining (12 total, 2 used)\n🟢 **Earned Leave**: 5 remaining (15 total, 3 used, 7 pending)\n🟡 **Comp Off**: 2 remaining (3 total, 1 used)\n🔵 **WFH**: 13 remaining (24 total, 8 used, 3 pending)\n\nYou have a total of **36 leave days** remaining this year.",
-    actions: [
-      { label: "Apply Leave", href: "/leave", icon: ArrowRight },
-      { label: "View Calendar", href: "/holidays", icon: ArrowRight },
-    ],
-    sources: ["Leave Management System", "HR Policy v3.2"],
-  },
-  "payslip": {
-    content: "To view your payslip, please visit the **Payslip** page where you can see your complete earnings and deductions breakdown.\n\nYour payslip includes:\n• **Earnings:** Basic Pay, HRA, Special Allowance, Other Allowances\n• **Deductions:** PF, Professional Tax, Income Tax (TDS)\n• **Net Pay** after all deductions\n\nYou can also download your payslip as PDF from there.",
-    actions: [
-      { label: "View Full Payslip", href: "/payslip", icon: ArrowRight },
-      { label: "Tax Details", href: "/tax", icon: ArrowRight },
-    ],
-    sources: ["Payroll System", "Tax Module"],
-  },
-  "casual leave": {
-    content: "To apply for **Casual Leave**, follow these steps:\n\n1. Go to **Leave Management** → Click **Apply Leave**\n2. Select **Casual Leave** as the leave type\n3. Choose your **From** and **To** dates\n4. Enter the **reason** for leave\n5. Click **Apply**\n\n📌 **Key rules:**\n• Max 3 consecutive CL days without manager pre-approval\n• Apply at least 1 day in advance (except emergencies)\n• CL cannot be carried forward to next year\n• You have **6 CL remaining** for this year\n\nWould you like me to start a leave application for you?",
-    actions: [
-      { label: "Apply Leave Now", href: "/leave", icon: ArrowRight },
-    ],
-    sources: ["Leave Policy v2.1", "Employee Handbook"],
-  },
-  "holidays": {
-    content: "Here are the **upcoming company holidays** in 2026:\n\n📅 **April 2026:**\n• Apr 14 — Ambedkar Jayanti (Tuesday)\n• Apr 18 — Good Friday (Friday) 🎉\n\n📅 **May 2026:**\n• May 1 — May Day / Labour Day (Thursday)\n\n📅 **June-August:**\n• Aug 15 — Independence Day (Friday) 🇮🇳\n• Aug 27 — Ganesh Chaturthi (Wednesday)\n\n📅 **Oct-Dec:**\n• Oct 2 — Gandhi Jayanti / Dussehra (Thursday)\n• Oct 20 — Diwali (Monday) 🪔\n• Dec 25 — Christmas (Thursday) 🎄\n\nTotal remaining holidays this year: **8 days**",
-    actions: [
-      { label: "View Full Calendar", href: "/holidays", icon: ArrowRight },
-    ],
-    sources: ["Holiday Calendar 2026"],
-  },
-  "expense": {
-    content: "Here's the **Expense Reimbursement Policy** summary:\n\n💳 **Approval Limits:**\n• Up to ₹5,000 — Auto-approved\n• ₹5,001 - ₹25,000 — Manager approval\n• ₹25,001 - ₹1,00,000 — Department Head\n• Above ₹1,00,000 — CEO approval\n\n📋 **Categories:** Travel, Equipment, Training, Software, Books, Events, Client Meetings, Marketing\n\n📎 **Receipt Required:** Mandatory for all claims above ₹500\n\n⏱️ **Submission Deadline:** Within 30 days of expense\n\n💰 **Reimbursement Cycle:** Processed with next payroll\n\n**Your pending claims:** ₹3,200 (1 claim awaiting approval)",
-    actions: [
-      { label: "Submit Expense", href: "/expenses", icon: ArrowRight },
-      { label: "View Claims", href: "/expenses", icon: ArrowRight },
-    ],
-    sources: ["Expense Policy v1.5", "Finance Guidelines"],
-  },
-  "wfh": {
-    content: "Here's the **Work From Home Policy:**\n\n🏠 **Eligibility:** All confirmed employees (post-probation)\n\n📅 **WFH Allowance:** Up to 2 days/week (48 days/year)\n\n📋 **How to Apply:**\n1. Go to **WFH** page → Click **Request WFH**\n2. Select dates and provide reason\n3. Submit for manager approval\n\n⚡ **Rules:**\n• Apply at least 1 day in advance\n• Must be reachable during work hours (9 AM - 6 PM)\n• Internet connectivity required\n• Attend all scheduled meetings\n• Manager can recall to office if needed\n\n📊 **Your WFH this month:** 3 days used, 5 remaining",
-    actions: [
-      { label: "Request WFH", href: "/wfh", icon: ArrowRight },
-    ],
-    sources: ["WFH Policy v2.0", "HR Guidelines"],
-  },
-  "vpn": {
-    content: "I can help you raise an **IT Helpdesk ticket** for VPN issues! Here are some quick troubleshooting steps first:\n\n🔧 **Try these first:**\n1. Restart your VPN client\n2. Check your internet connection\n3. Try connecting to a different VPN server\n4. Clear VPN cache/reinstall the client\n5. Check if your corporate password has expired\n\n⚠️ **Still not working?** Let me raise a ticket:\n• **Category:** IT Support\n• **Priority:** High (VPN is critical for remote work)\n• **SLA:** 4 hours resolution\n\nWould you like me to create this ticket?",
-    actions: [
-      { label: "Create IT Ticket", href: "/helpdesk", icon: ArrowRight },
-      { label: "Contact IT Team", href: "/helpdesk", icon: ArrowRight },
-    ],
-    sources: ["IT Support Knowledge Base"],
-  },
-  "performance": {
-    content: "Here's your **Performance Review** information:\n\n📊 **Current Cycle:** Q1 FY26 (Apr 1 - Apr 30, 2026)\n• Status: **Active** — Self-assessment opens Apr 1\n• Manager review deadline: Apr 20\n• Calibration: Apr 25-30\n\n🎯 **Your Q4 Results:**\n• Self Rating: 4.2/5\n• Manager Rating: 4.0/5\n• Final Rating: **4.1/5 (Exceeds Expectations)**\n\n📈 **Goals Status:**\n• 4 goals set for Q1\n• 2 on track, 1 at risk, 1 completed\n• Overall weighted progress: 68%\n\n🏆 **Next Review:** Annual Review in July 2026",
-    actions: [
-      { label: "View My Reviews", href: "/performance", icon: ArrowRight },
-      { label: "Update Goals", href: "/goals", icon: ArrowRight },
-    ],
-    sources: ["Performance Management System"],
-  },
-  "training": {
-    content: "Here are **training courses** available for you:\n\n🚀 **Recommended Based on Your Role:**\n1. **React & Next.js Mastery** — 24 hrs, Self-paced ⭐4.7\n2. **AWS Solutions Architect** — 40 hrs, Certification 🏆\n3. **DevOps & CI/CD Pipeline** — 18 hrs, Self-paced ⭐4.5\n\n📋 **Mandatory (Due Soon):**\n• ⚠️ POSH Compliance Training — Due Apr 15\n• ✅ Data Privacy & GDPR — Completed\n\n📚 **Learning Paths:**\n• Full Stack Developer (4 courses, 74 hrs)\n• Engineering Manager (3 courses, 36 hrs)\n\n💡 **Learning Budget:** ₹50,000/year (₹35,000 remaining)",
-    actions: [
-      { label: "Browse Courses", href: "/training", icon: ArrowRight },
-      { label: "My Enrollments", href: "/training", icon: ArrowRight },
-    ],
-    sources: ["LMS", "Learning & Development"],
-  },
-  "new joiner": {
-    content: "Welcome to the team! 🎉 Here is your onboarding checklist:\n\n📋 **This Week:**\n• Complete HR document submission\n• Set up development environment\n• POSH training enrollment\n• Security awareness training\n• Read company handbook\n\n📋 **First Month:**\n• Submit first deliverable\n• 2-week manager check-in\n• 30-day HR check-in\n\nCheck the **Onboarding Dashboard** for your buddy assignment, manager details, and full task list.",
-    actions: [
-      { label: "Onboarding Dashboard", href: "/onboarding", icon: ArrowRight },
-      { label: "Employee Handbook", href: "/documents", icon: ArrowRight },
-    ],
-    sources: ["Onboarding Guide", "Employee Handbook"],
-  },
-  "salary structure": {
-    content: "Your salary structure typically follows this breakdown:\n\n📊 **Standard CTC Components:**\n• **Basic Pay:** ~40% of CTC\n• **HRA:** ~20% of CTC\n• **Special Allowance:** ~15-18% of CTC\n• **Other Allowances:** ~2-5% of CTC\n\n📊 **Employer Contributions:**\n• PF (Employer): 12% of Basic (capped at ₹1,800/month)\n• Gratuity: ~4.81% of Basic\n• Insurance: As per company policy\n\nFor your exact breakdown, please visit the **Payslip** page or use the **Salary Calculator**.",
-    actions: [
-      { label: "View Payslip", href: "/payslip", icon: ArrowRight },
-      { label: "Tax Calculator", href: "/calculator", icon: ArrowRight },
-    ],
-    sources: ["Compensation Structure", "Payroll System"],
-  },
-  "referral": {
-    content: "Here's the **Employee Referral Program** details:\n\n💰 **Referral Bonus:**\n• Engineering roles: **₹50,000**\n• Design roles: **₹40,000**\n• Non-tech roles: **₹25,000**\n• Leadership roles: **₹75,000**\n\n📋 **How it works:**\n1. Check open positions on **Careers** page\n2. Submit referral via **Referrals** module\n3. Your referral goes through normal hiring pipeline\n4. Bonus paid after referral completes 90 days\n\n📊 **Your Referrals:**\n• Total referred: 3\n• Hired: 1 (Kavya Menon ✅)\n• In pipeline: 1\n• Rejected: 1\n\n💵 **Pending bonus:** ₹50,000 (pays Apr 2026)",
-    actions: [
-      { label: "Refer Someone", href: "/referrals", icon: ArrowRight },
-      { label: "Open Positions", href: "/recruitment", icon: ArrowRight },
-    ],
-    sources: ["Referral Policy v3.0"],
-  },
-};
+// Answers come from `@/lib/assistant`, which either fetches real data or says
+// where to look. The bank of hardcoded replies that used to live here reported
+// invented leave balances, a fabricated performance rating and a made-up
+// learning budget — each with a "source" attached, which is what made them
+// believable.
 
-function getAIResponse(query: string): { content: string; actions?: Message["actions"]; sources?: string[] } {
-  const q = query.toLowerCase();
-  if (q.includes("leave balance") || q.includes("leave remaining")) return AI_RESPONSES["leave balance"];
-  if (q.includes("payslip") || q.includes("salary credited")) return AI_RESPONSES["payslip"];
-  if (q.includes("casual leave") || q.includes("apply") && q.includes("leave")) return AI_RESPONSES["casual leave"];
-  if (q.includes("holiday") || q.includes("company holiday")) return AI_RESPONSES["holidays"];
-  if (q.includes("expense") || q.includes("reimbursement")) return AI_RESPONSES["expense"];
-  if (q.includes("wfh") || q.includes("work from home") || q.includes("remote")) return AI_RESPONSES["wfh"];
-  if (q.includes("vpn") || q.includes("ticket") || q.includes("helpdesk")) return AI_RESPONSES["vpn"];
-  if (q.includes("performance") || q.includes("review cycle") || q.includes("appraisal")) return AI_RESPONSES["performance"];
-  if (q.includes("training") || q.includes("course") || q.includes("learning")) return AI_RESPONSES["training"];
-  if (q.includes("new joiner") || q.includes("onboarding") || q.includes("first day")) return AI_RESPONSES["new joiner"];
-  if (q.includes("salary structure") || q.includes("ctc") || q.includes("salary component")) return AI_RESPONSES["salary structure"];
-  if (q.includes("referral") || q.includes("refer")) return AI_RESPONSES["referral"];
-  
-  return {
-    content: `I understand you're asking about "${query}". While I don't have a specific answer for that right now, here are some things I can help with:\n\n• 📅 Leave balance & applications\n• 💰 Payslip & salary details\n• 📋 Company policies (WFH, expenses, etc.)\n• 🎯 Performance reviews & goals\n• 📚 Training & learning\n• 🎫 IT helpdesk & support\n• 👋 Onboarding help\n• 💼 Referral program\n\nTry asking me about any of these topics!`,
-    actions: [
-      { label: "Browse FAQ", href: "/knowledgebase", icon: ArrowRight },
-      { label: "Contact HR", href: "/helpdesk", icon: ArrowRight },
-    ],
-  };
-}
-
-const SUGGESTED_QUESTIONS = [
-  "What is my leave balance?",
-  "Show me my latest payslip",
-  "When is the next holiday?",
-  "How do I apply for WFH?",
-  "What training should I complete?",
-  "When is my performance review?",
-  "What is the referral bonus?",
-  "Explain my salary structure",
-];
+const SUGGESTED_QUESTIONS = [...ANSWERABLE_QUESTIONS];
 
 const CATEGORIES = ["All", "Leave", "Payroll", "Policy", "IT", "Performance", "Learning", "Benefits", "Calendar", "Onboarding"];
 
@@ -227,17 +168,18 @@ export default function ChatbotPage() {
     setInput("");
     setIsTyping(true);
 
-    // Simulate AI thinking
-    await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 1200));
+    // No artificial delay. The previous version waited 800-2000ms to look like
+    // it was thinking, which dressed a table lookup up as reasoning.
+    const answer = await answerQuestion(text);
 
-    const response = getAIResponse(text);
     const aiMsg: Message = {
       id: `a-${Date.now()}`,
       role: "assistant",
-      content: response.content,
+      content: answer.content,
       timestamp: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
-      actions: response.actions,
-      sources: response.sources,
+      actions: answer.actions.map((a) => ({ ...a, icon: ArrowRight })),
+      // Only ever set on an answer that really read something.
+      sources: answer.source ? [answer.source] : undefined,
     };
     setMessages(prev => [...prev, aiMsg]);
     setIsTyping(false);

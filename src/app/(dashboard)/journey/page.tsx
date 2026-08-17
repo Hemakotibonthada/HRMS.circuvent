@@ -26,7 +26,7 @@ import {
 import {
   useEmployeeStore, useGoalStore, useFeedbackStore, startSync,
 } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { useNowMs } from "@/hooks/use-now";
 import { clickable } from "@/lib/a11y/clickable";

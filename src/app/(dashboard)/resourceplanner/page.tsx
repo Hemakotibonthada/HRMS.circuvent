@@ -23,7 +23,7 @@ import {
   PieChart, Pie, Cell, Legend, Tooltip as RTooltip,
 } from "recharts";
 import { useEmployeeStore, useJobStore, useTeamStore, startSync } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { clickable } from "@/lib/a11y/clickable";
 

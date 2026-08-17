@@ -24,7 +24,7 @@ import {
   useEmployeeStore, useDepartmentStore, startSync,
   type EmployeeDoc, type DepartmentDoc,
 } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { clickable } from "@/lib/a11y/clickable";
 

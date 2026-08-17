@@ -8,7 +8,10 @@ import {
   calculateProfessionalTax,
   calculateSalaryStructure,
   generatePayslip,
+  getNewRegimeSlabs,
+  getOldRegimeSlabs,
 } from "@/lib/payroll-engine";
+import { NEW_REGIME_SLABS_FY2526, OLD_REGIME_SLABS } from "@/lib/statutory-india";
 
 const CTC_12L = 1_200_000;
 
@@ -230,5 +233,65 @@ describe("generatePayslip", () => {
     });
     expect(lowPaid.esiEmployee).toBeGreaterThan(0);
     expect(lowPaid.esiEmployer).toBeGreaterThan(lowPaid.esiEmployee);
+  });
+});
+
+// ─── Slab display is derived, not transcribed ────────────────
+//
+// The two `get*RegimeSlabs` functions used to be hand-typed copies of the slab
+// tables in `statutory-india.ts`. They agreed at the time, which is exactly
+// why the duplication was dangerous: Indian slabs move with every Finance Act,
+// and the second copy is the one nobody remembers. If it drifts, the portal
+// shows an employee a slab structure that payroll did not apply to them.
+//
+// These tests pin both halves of that: the exact strings, so the refactor that
+// removed the duplication is provably behaviour-preserving, and the boundaries
+// against the table itself, so a future rate change cannot pass while the
+// display still shows the old one.
+
+describe("tax slab display", () => {
+  it("renders the new regime exactly as it was published", () => {
+    expect(getNewRegimeSlabs()).toEqual([
+      { range: "Up to ₹4,00,000", rate: "Nil" },
+      { range: "₹4,00,001 - ₹8,00,000", rate: "5%" },
+      { range: "₹8,00,001 - ₹12,00,000", rate: "10%" },
+      { range: "₹12,00,001 - ₹16,00,000", rate: "15%" },
+      { range: "₹16,00,001 - ₹20,00,000", rate: "20%" },
+      { range: "₹20,00,001 - ₹24,00,000", rate: "25%" },
+      { range: "Above ₹24,00,000", rate: "30%" },
+    ]);
+  });
+
+  it("renders the old regime exactly as it was published", () => {
+    expect(getOldRegimeSlabs()).toEqual([
+      { range: "Up to ₹2,50,000", rate: "Nil" },
+      { range: "₹2,50,001 - ₹5,00,000", rate: "5%" },
+      { range: "₹5,00,001 - ₹10,00,000", rate: "20%" },
+      { range: "Above ₹10,00,000", rate: "30%" },
+    ]);
+  });
+
+  it("shows one row per slab that tax is actually computed from", () => {
+    expect(getNewRegimeSlabs()).toHaveLength(NEW_REGIME_SLABS_FY2526.length);
+    expect(getOldRegimeSlabs()).toHaveLength(OLD_REGIME_SLABS.length);
+  });
+
+  it("shows the rate the computation uses, for every slab", () => {
+    for (const [i, slab] of NEW_REGIME_SLABS_FY2526.entries()) {
+      const shown = getNewRegimeSlabs()[i].rate;
+      expect(shown).toBe(slab.rate === 0 ? "Nil" : `${slab.rate}%`);
+    }
+  });
+
+  it("shows the boundary the computation uses, for every slab", () => {
+    for (const [i, slab] of NEW_REGIME_SLABS_FY2526.entries()) {
+      const shown = getNewRegimeSlabs()[i].range;
+      const upper = slab.toMinor === null ? null : Number(slab.toMinor / 100n);
+      if (upper === null) {
+        expect(shown).toContain(Number(slab.fromMinor / 100n).toLocaleString("en-IN"));
+      } else {
+        expect(shown).toContain(upper.toLocaleString("en-IN"));
+      }
+    }
   });
 });

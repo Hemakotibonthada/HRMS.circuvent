@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Building2, Eye, EyeOff, ArrowRight } from "lucide-react";
@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
+import { SsoButton } from "@/components/sso-button";
+import { SsoError } from "@/components/sso-error";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,6 +18,28 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Sticky once the server has asked for a second factor.
+  //
+  // It has to be sticky, because a *wrong* code comes back as `mfa_invalid`
+  // rather than `mfa_required` — the server has already accepted the password
+  // and is answering a narrower question. Deriving the step from the latest
+  // response alone would drop the field the moment someone mistyped, which
+  // reads as "my password stopped working".
+  const [needsSecondFactor, setNeedsSecondFactor] = useState(false);
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  const [code, setCode] = useState("");
+
+  // Focus is moved to the code field when the step appears, rather than with
+  // `autoFocus`. The distinction matters: `autoFocus` fires on mount, which on
+  // a page like this steals focus before the user has read anything. Moving it
+  // in response to the step changing is the deliberate version — a keyboard or
+  // screen-reader user is otherwise left at the bottom of a form whose new
+  // field appeared above them, with no announcement that it did.
+  const codeInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (needsSecondFactor) codeInputRef.current?.focus();
+  }, [needsSecondFactor, useBackupCode]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +54,18 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email,
+          password,
+          // Sent only on the second step, and only in the field the user
+          // actually filled — an empty string would be a code the server has
+          // to reject.
+          ...(needsSecondFactor && code.trim()
+            ? useBackupCode
+              ? { backupCode: code.trim() }
+              : { totpCode: code.trim() }
+            : {}),
+        }),
       });
       const body = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -45,6 +80,7 @@ export default function LoginPage() {
         // account and a wrong password deliberately produce the same message —
         // so its wording is shown rather than second-guessed here.
         if (body.mfaRequired) {
+          setNeedsSecondFactor(true);
           toast.error("Enter your two-step verification code to continue.");
         } else if (body.passwordResetRequired) {
           toast.error("Your password must be reset before signing in.");
@@ -54,6 +90,9 @@ export default function LoginPage() {
             `Too many attempts. Try again in ${Math.ceil(body.retryAfterSeconds / 60)} minute(s).`
           );
         } else {
+          // Covers `mfa_invalid`, which arrives without `mfaRequired`. The
+          // field stays put; only the entry is cleared.
+          if (needsSecondFactor) setCode("");
           toast.error(body.error || "Login failed. Please try again.");
         }
         return;
@@ -97,6 +136,8 @@ export default function LoginPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
+              <SsoError />
+              <SsoButton />
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -136,6 +177,41 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
+              {needsSecondFactor && (
+                <div className="space-y-2">
+                  <Label htmlFor="code">
+                    {useBackupCode ? "Recovery code" : "Authenticator code"}
+                  </Label>
+                  <Input
+                    id="code"
+                    ref={codeInputRef}
+                    // `text` with a numeric hint rather than `type="number"`:
+                    // a number input strips the leading zeros a TOTP code can
+                    // start with, and recovery codes are not numbers at all.
+                    type="text"
+                    inputMode={useBackupCode ? "text" : "numeric"}
+                    placeholder={useBackupCode ? "XXXXX-XXXXX" : "123456"}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    // Lets a password manager or the iOS SMS/TOTP suggestion
+                    // fill it, instead of forcing a copy-paste out of the app.
+                    autoComplete="one-time-code"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUseBackupCode((previous) => !previous);
+                      setCode("");
+                    }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {useBackupCode
+                      ? "Use your authenticator app instead"
+                      : "Lost your device? Use a recovery code"}
+                  </button>
+                </div>
+              )}
               <Button
                 type="submit"
                 disabled={loading}
@@ -148,7 +224,7 @@ export default function LoginPage() {
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
-                    Sign In <ArrowRight className="h-4 w-4" />
+                    {needsSecondFactor ? "Verify" : "Sign In"} <ArrowRight className="h-4 w-4" />
                   </span>
                 )}
               </Button>

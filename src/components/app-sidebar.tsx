@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { BrandMark } from "@/components/brand-mark";
 import { usePathname, useRouter } from "next/navigation";
-import { Building2, ChevronDown, LogOut, Settings, User, CreditCard } from "lucide-react";
+import { ChevronDown, LogOut, Settings, User, CreditCard } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
@@ -54,9 +55,7 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/dashboard" className="flex items-center gap-3" />}>
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
-                  <Building2 className="h-5 w-5" />
-                </div>
+                <BrandMark size={36} className="shrink-0" />
                 <div className="flex flex-col">
                   <span className="text-sm font-bold tracking-tight">
                     {organization?.name ?? "Circuvent HRMS"}

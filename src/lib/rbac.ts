@@ -357,6 +357,35 @@ export function hasPermission(role: Role, permission: Permission): boolean {
   return ROLE_PERMISSIONS[role]?.includes(permission) ?? false;
 }
 
+/**
+ * A role as the API layer sees it, which has an `owner` above `admin`.
+ *
+ * `ROLE_PERMISSIONS` has no `owner` entry, so passing one to `hasPermission`
+ * silently returns false and denies the most privileged account in the
+ * organization. Anything checking a permission against `ApiContext.role` must
+ * come through here.
+ */
+export type PrivilegedRole = Role | "owner";
+
+/** Permission check for an API-layer role. `owner` is never less than `admin`. */
+export function roleHasPermission(role: PrivilegedRole, permission: Permission): boolean {
+  return hasPermission(role === "owner" ? "admin" : role, permission);
+}
+
+/**
+ * Whether this role may see another person's pay.
+ *
+ * Salary is the most sensitive field in the product and the permission model
+ * withholds it from managers deliberately — a reporting line is not authority
+ * to see someone's pay. Expressed as one function so that decision lives in a
+ * single place rather than being re-derived as a role array at each route,
+ * which is how `/api/employees` came to hand a manager the whole directory's
+ * compensation while `/api/employees/[id]/direct-reports` stripped it.
+ */
+export function canViewOthersSalary(role: PrivilegedRole): boolean {
+  return roleHasPermission(role, "payroll.view");
+}
+
 export function hasAnyPermission(role: Role, permissions: Permission[]): boolean {
   return permissions.some((p) => hasPermission(role, p));
 }

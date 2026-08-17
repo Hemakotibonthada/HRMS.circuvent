@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The building mark, echoing the glyph the web app uses in its own header and
+  drawn from rectangles rather than traced from an icon set, so there is no
+  question about what is being redistributed.
+
+  108dp canvas. The launcher may mask anything outside the central 66dp, so
+  the whole mark sits between 38 and 72 on both axes — comfortably inside the
+  safe zone, because a foreground that fills its square loses its corners on
+  every device with a circular mask.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Tower -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,32 L58,32 A2,2 0 0 1 60,34 L60,76 L38,76 L38,34 A2,2 0 0 1 40,32 Z" />
+
+    <!-- Annexe -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M62,48 L70,48 A2,2 0 0 1 72,50 L72,76 L60,76 L60,50 A2,2 0 0 1 62,48 Z" />
+
+    <!-- Windows, knocked back so the mark reads as a building and not a bar
+         chart at launcher size. -->
+    <path android:fillColor="#00000047" android:pathData="M42,38 h5 v5 h-5 z" />
+    <path android:fillColor="#00000047" android:pathData="M51,38 h5 v5 h-5 z" />
+    <path android:fillColor="#00000047" android:pathData="M42,47 h5 v5 h-5 z" />
+    <path android:fillColor="#00000047" android:pathData="M51,47 h5 v5 h-5 z" />
+    <path android:fillColor="#00000047" android:pathData="M42,56 h5 v5 h-5 z" />
+    <path android:fillColor="#00000047" android:pathData="M51,56 h5 v5 h-5 z" />
+    <path android:fillColor="#00000047" android:pathData="M42,65 h5 v5 h-5 z" />
+    <path android:fillColor="#00000047" android:pathData="M51,65 h5 v5 h-5 z" />
+    <path android:fillColor="#00000047" android:pathData="M64,56 h5 v5 h-5 z" />
+    <path android:fillColor="#00000047" android:pathData="M64,65 h5 v5 h-5 z" />
+</vector>

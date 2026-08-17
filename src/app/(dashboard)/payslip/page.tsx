@@ -22,8 +22,9 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip as RTooltip,
 } from "recharts";
-import { usePayrollStore, startSync, type PayrollDoc } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { type PayrollDoc } from "@/stores/unified-store";
+import { listMyPayslips } from "@/lib/payroll-client";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { clickable } from "@/lib/a11y/clickable";
 
@@ -58,13 +59,64 @@ function computeTax(annual: number, slabs: typeof OLD_REGIME_SLABS): number {
 }
 
 export default function PayslipPage() {
-  const store = usePayrollStore();
-  const { items, loading, initialized } = store;
   const [tab, setTab] = useState("current");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
   const [detailItem, setDetailItem] = useState<PayrollDoc | null>(null);
 
-  useEffect(() => { if (!initialized) startSync(COLLECTIONS.payroll, store); }, [initialized, store]);
+  /**
+   * The employee's own payslips, from `/api/payroll/payslips`.
+   *
+   * This page went through `genericService(COLLECTIONS.payroll)`, which falls
+   * back to `/api/collections/payroll` — a collection the document store
+   * deliberately refuses, because payroll has its own table. Every request
+   * 404'd, so the page showed no payslips and no error. There has been a
+   * correct route for this all along, and it releases only approved and paid
+   * runs so nobody sees a figure that is still being corrected.
+   */
+  const [items, setItems] = useState<PayrollDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const payslips = await listMyPayslips();
+        if (cancelled) return;
+        setItems(
+          payslips.map((slip) => ({
+            id: slip.id,
+            employeeId: slip.employeeId,
+            employeeName: slip.employeeName ?? "",
+            department: "",
+            month: MONTHS[(slip.periodMonth ?? 1) - 1] ?? "",
+            year: slip.periodYear ?? new Date().getFullYear(),
+            basicPay: 0,
+            hra: 0,
+            specialAllowance: 0,
+            grossEarnings: slip.gross,
+            totalDeductions: slip.totalDeductions,
+            netPay: slip.netPay,
+            status: slip.status,
+          }) as PayrollDoc)
+        );
+        setLoadError(null);
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : "Payslips could not be loaded");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setInitialized(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Current month payslip
   const currentPayslip = useMemo(() => {

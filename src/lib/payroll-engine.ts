@@ -3,6 +3,10 @@ import {
   calculatePf,
   calculateIncomeTax as calculateStatutoryTax,
   calculateProfessionalTax as calculateStatutoryPt,
+  NEW_REGIME_SLABS_FY2526,
+  OLD_REGIME_SLABS,
+  type TaxSlab,
+  type Minor,
 } from "@/lib/statutory-india";
 // ═══════════════════════════════════════════════════════════════
 // INDIAN PAYROLL COMPUTATION ENGINE
@@ -536,23 +540,41 @@ export function getWorkingDaysInMonth(year: number, month: number): number {
 
 // ─── Utility: Tax Slab Display ───────────────────────────────
 
+/**
+ * Renders the slab table that payroll actually computes with.
+ *
+ * These two lists were transcribed by hand from the slab tables in
+ * `statutory-india.ts`. They agreed, but only because nobody had changed a
+ * rate yet: Indian slabs move with every Finance Act, and the next person to
+ * update a rate would have had to know that the number appears twice — once
+ * where tax is computed and once where it is shown to the employee whose tax
+ * it is. Miss the second and the portal explains a deduction it did not make.
+ *
+ * Deriving the display removes the choice. There is one slab table; this
+ * formats it.
+ */
+function formatSlabs(slabs: TaxSlab[]): Array<{ range: string; rate: string }> {
+  const rupees = (minor: Minor) => Number(minor / 100n).toLocaleString("en-IN");
+
+  return slabs.map((slab, index) => {
+    const from = slab.fromMinor;
+    const to = slab.toMinor;
+
+    const range =
+      index === 0
+        ? `Up to ₹${rupees(to ?? from)}`
+        : to === null
+          ? `Above ₹${rupees(from)}`
+          : `₹${rupees(from + 100n)} - ₹${rupees(to)}`;
+
+    return { range, rate: slab.rate === 0 ? "Nil" : `${slab.rate}%` };
+  });
+}
+
 export function getNewRegimeSlabs(): Array<{ range: string; rate: string }> {
-  return [
-    { range: "Up to ₹4,00,000", rate: "Nil" },
-    { range: "₹4,00,001 - ₹8,00,000", rate: "5%" },
-    { range: "₹8,00,001 - ₹12,00,000", rate: "10%" },
-    { range: "₹12,00,001 - ₹16,00,000", rate: "15%" },
-    { range: "₹16,00,001 - ₹20,00,000", rate: "20%" },
-    { range: "₹20,00,001 - ₹24,00,000", rate: "25%" },
-    { range: "Above ₹24,00,000", rate: "30%" },
-  ];
+  return formatSlabs(NEW_REGIME_SLABS_FY2526);
 }
 
 export function getOldRegimeSlabs(): Array<{ range: string; rate: string }> {
-  return [
-    { range: "Up to ₹2,50,000", rate: "Nil" },
-    { range: "₹2,50,001 - ₹5,00,000", rate: "5%" },
-    { range: "₹5,00,001 - ₹10,00,000", rate: "20%" },
-    { range: "Above ₹10,00,000", rate: "30%" },
-  ];
+  return formatSlabs(OLD_REGIME_SLABS);
 }

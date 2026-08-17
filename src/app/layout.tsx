@@ -1,6 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Open_Sans } from "next/font/google";
 import { Providers } from "@/components/providers";
+import {
+  baseMetadata,
+  jsonLd,
+  organizationJsonLd,
+  siteConfig,
+  softwareApplicationJsonLd,
+  websiteJsonLd,
+} from "@/lib/seo";
 import "./globals.css";
 
 const openSans = Open_Sans({
@@ -8,11 +16,12 @@ const openSans = Open_Sans({
   variable: "--font-sans",
 });
 
-export const metadata: Metadata = {
-  title: "Circuvent HRMS | Human Resource Management System",
-  description:
-    "Modern cloud-based HRMS by Circuvent Technologies. Manage employees, attendance, payroll, recruitment, performance and more.",
-  icons: { icon: "/favicon.ico" },
+export const metadata: Metadata = baseMetadata;
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: siteConfig.themeColor,
 };
 
 export default function RootLayout({
@@ -23,8 +32,21 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
-        <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#7c3aed" />
+        {/* Structured data. `manifest`, icons, theme colour and every OG/Twitter
+            tag come from the metadata and viewport exports above; only JSON-LD
+            has no Metadata API equivalent and has to be emitted by hand. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLd(organizationJsonLd()) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLd(websiteJsonLd()) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLd(softwareApplicationJsonLd()) }}
+        />
       </head>
       <body className={`${openSans.variable} font-sans antialiased`}>
         <Providers>{children}</Providers>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { dateKeyInZone, toLocalDateKey } from "@/lib/date-keys";
 import { useNowMs } from "@/hooks/use-now";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ import {
   useCelebrationStore, useEmployeeStore, startSync,
   type CelebrationDoc, type EmployeeDoc,
 } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -67,19 +68,20 @@ export default function CelebrationsPage() {
 
   const upcomingFromEmployees = useMemo(() => {
     // `new Date()` inside the memo was impure, so the value went stale and the
-    // server and client disagreed. The anniversary is also built without
-    // mutating a Date in place: the React Compiler bails out of optimising a
-    // component when it sees a locally created object mutated after the fact.
-    if (!nowMs) return [];
-    const now = new Date(nowMs);
-    const currentYear = now.getFullYear();
+    // server and client disagreed.
+    //
+    // Written as a single expression with no early return and no mutation
+    // after the fact. The React Compiler could not preserve this memo while it
+    // used `forEach`+`push` and an in-place `sort`: it treats a value as frozen
+    // once a closure has captured it, so mutating `upcoming` afterwards made it
+    // bail out of optimising the entire component.
+    const now = nowMs === null ? null : new Date(nowMs);
+    const currentYear = now === null ? 0 : now.getFullYear();
 
-    const upcoming: { name: string; type: string; date: string; department: string; daysUntil: number }[] = [];
-
-    employees.forEach(emp => {
-      if (!emp.joiningDate) return;
+    const upcoming = now === null ? [] : employees.flatMap(emp => {
+      if (!emp.joiningDate) return [];
       const jd = new Date(emp.joiningDate);
-      if (Number.isNaN(jd.getTime())) return;
+      if (Number.isNaN(jd.getTime())) return [];
 
       const thisYear = new Date(currentYear, jd.getMonth(), jd.getDate());
       const anniversary = thisYear < now
@@ -87,18 +89,21 @@ export default function CelebrationsPage() {
         : thisYear;
 
       const daysUntil = Math.ceil((anniversary.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      if (daysUntil <= 30) {
-        upcoming.push({
-          name: `${emp.firstName} ${emp.lastName}`,
-          type: "anniversary",
-          date: anniversary.toISOString().split("T")[0],
-          department: emp.department || "—",
-          daysUntil,
-        });
-      }
+      if (daysUntil > 30) return [];
+
+      return [{
+        name: `${emp.firstName} ${emp.lastName}`,
+        type: "anniversary",
+        // `anniversary` is local midnight, so toISOString() would shift it
+        // back a day everywhere east of UTC — including IST, this product's
+        // default zone. Formatted from local parts instead.
+        date: toLocalDateKey(anniversary),
+        department: emp.department || "—",
+        daysUntil,
+      }];
     });
 
-    return upcoming.sort((a, b) => a.daysUntil - b.daysUntil);
+    return [...upcoming].sort((a, b) => a.daysUntil - b.daysUntil);
   }, [employees, nowMs]);
 
   const filtered = useMemo(() => {
@@ -152,7 +157,7 @@ export default function CelebrationsPage() {
       await genericService(COLLECTIONS.celebrations).create({
         employeeName: wishTarget?.employeeName || "Team",
         type: "wish",
-        date: new Date().toISOString().split("T")[0],
+        date: dateKeyInZone(new Date()),
         department: wishTarget?.department || "",
         details: wishMessage,
       });

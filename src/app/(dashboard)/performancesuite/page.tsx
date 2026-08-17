@@ -26,7 +26,7 @@ import {
   AreaChart, Area, Tooltip as RTooltip,
 } from "recharts";
 import { useGoalStore, useEmployeeStore, startSync, type GoalDoc } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════

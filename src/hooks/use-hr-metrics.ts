@@ -16,7 +16,7 @@ import {
   type EmployeeDoc, type LeaveDoc, type AttendanceDoc,
   type PayrollDoc, type ExpenseDoc, type GoalDoc,
 } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 
 // ─── Workforce Metrics Hook ──────────────────────────────────
 

@@ -34,6 +34,10 @@ const PUBLIC_PREFIXES = [
   "/refer",
   "/api/public/referral",
   "/api/auth/login",
+  // The whole point of these is to obtain a session, so requiring one first
+  // would make single sign-on impossible to start or finish.
+  "/api/auth/sso",
+  "/api/auth/callback",
   "/api/auth/register",
   "/api/auth/forgot-password",
   "/api/auth/reset-password",
@@ -56,6 +60,22 @@ const PUBLIC_PREFIXES = [
   // by a session — the caller is Okta or Entra, which has no browser. Every
   // handler calls authenticateScim before touching data.
   "/api/scim",
+  // ── discovery and link-preview surfaces ────────────────────────────────
+  // Googlebot, Bingbot and every chat client that unfurls a link arrive with
+  // no cookie and follow no redirects into a sign-in form. Gating these does
+  // not protect anything -- none of them expose tenant data -- it just means
+  // robots.txt and the sitemap answer with the login page, and a pasted link
+  // renders as a bare grey URL instead of a preview card. That failure is
+  // invisible from inside the app, which is why it is worth naming here.
+  "/robots.txt",
+  "/sitemap.xml",
+  "/manifest.json",
+  "/opengraph-image",
+  "/twitter-image",
+  "/icon",
+  "/icons",
+  "/apple-icon",
+  "/.well-known",
 ];
 
 function isPublic(pathname: string): boolean {

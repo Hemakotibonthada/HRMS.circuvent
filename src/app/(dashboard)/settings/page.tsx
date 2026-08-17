@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { TwoFactorSettings } from "@/components/two-factor-settings";
 import {
   Settings, Building2, Users, Shield, Bell, Palette, Globe,
   Lock, Mail, Key, Database, Clock, Calendar, Save, RotateCcw,
@@ -180,10 +181,14 @@ export default function SettingsPage() {
           {/* ─── Security ─── */}
           {activeSection === "security" && (
             <>
-              <Card><CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Shield className="h-4 w-4 text-red-500" />Authentication</CardTitle></CardHeader>
+              {/* The caller's own second factor. Everything else on this tab is
+                  an organisation-wide policy; this one acts on the person
+                  reading it, which is why it sits first and separate. */}
+              <TwoFactorSettings />
+              <Card><CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Shield className="h-4 w-4 text-red-500" />Organisation policy</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   {[
-                    { label: "Two-Factor Authentication", desc: "Require 2FA for all users", key: "twoFactor" as const },
+                    { label: "Two-Factor Authentication", desc: "Require 2FA for every user in the organisation", key: "twoFactor" as const },
                     { label: "Single Sign-On (SSO)", desc: "Allow login via Google/Microsoft SSO", key: "sso" as const },
                     { label: "IP Whitelisting", desc: "Restrict access to specific IP addresses", key: "ipWhitelist" as const },
                     { label: "Audit Logging", desc: "Log all user actions for compliance", key: "auditLogging" as const },

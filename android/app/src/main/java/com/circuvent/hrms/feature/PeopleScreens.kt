@@ -1,0 +1,551 @@
+package com.circuvent.hrms.feature
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.unit.dp
+import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.core.design.Theme
+import com.circuvent.hrms.core.ui.AppButton
+import com.circuvent.hrms.core.ui.AppCard
+import com.circuvent.hrms.core.ui.AppText
+import com.circuvent.hrms.core.ui.Banner
+import com.circuvent.hrms.core.ui.BannerTone
+import com.circuvent.hrms.core.ui.ButtonVariant
+import com.circuvent.hrms.core.ui.EmptyState
+import com.circuvent.hrms.core.ui.PillTone
+import com.circuvent.hrms.core.ui.SkeletonRows
+import com.circuvent.hrms.core.ui.StatusPill
+import com.circuvent.hrms.core.ui.TextTone
+import com.circuvent.hrms.core.ui.screenPadding
+import com.circuvent.hrms.data.PendingApprovalDto
+import com.circuvent.hrms.data.ReferralDto
+import com.circuvent.hrms.data.ReferralStatsDto
+import com.circuvent.hrms.data.SwapDto
+import com.circuvent.hrms.data.SessionUser
+import kotlinx.coroutines.launch
+
+private fun words(value: String): String =
+    value.replace('_', ' ').trim().replaceFirstChar { it.uppercase() }
+
+/**
+ * Referrals.
+ *
+ * The bonus figures are deliberately absent for an ordinary employee — the
+ * server strips them rather than zeroing them, so this screen renders their
+ * absence as nothing at all. Showing "Bonus: ₹0" to somebody who is owed a
+ * bonus would be worse than showing nothing, and it is what a naive default
+ * would produce.
+ */
+@Composable
+fun ReferralsScreen(container: AppContainer, onRefer: () -> Unit) {
+    var state by remember {
+        mutableStateOf<Loaded<Pair<List<ReferralDto>, ReferralStatsDto>>>(Loaded.Loading)
+    }
+
+    LaunchedEffect(Unit) {
+        state = try {
+            Loaded.Ready(container.repository.referrals() to container.repository.referralStats())
+        } catch (e: Throwable) {
+            failureOf("Your referrals", e)
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = screenPadding(),
+        verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm),
+    ) {
+        item { AppButton("Refer someone", onRefer, contentDescription = "Opens the referral form") }
+
+        item {
+            when (val current = state) {
+                is Loaded.Loading -> SkeletonRows(count = 3, rowHeight = 84.dp)
+                is Loaded.Failed -> Banner(BannerTone.ERROR, current.title, description = current.description)
+                is Loaded.Ready -> {
+                    val (referrals, stats) = current.value
+                    Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
+                        AppCard {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Figure("Referred", stats.total.toString())
+                                Figure("In pipeline", stats.inPipeline.toString())
+                                Figure("Hired", stats.hired.toString())
+                            }
+                            // Rendered only when the server actually sent it.
+                            stats.bonusPaid?.let {
+                                AppText(
+                                    "₹%,.0f paid".format(it) +
+                                        (stats.bonusPending?.let { p -> " · ₹%,.0f pending".format(p) } ?: ""),
+                                    size = Theme.type.footnote,
+                                    lineHeight = Theme.type.footnoteLine,
+                                    tone = TextTone.MUTED,
+                                    modifier = Modifier.padding(top = Theme.spacing.sm),
+                                )
+                            }
+                        }
+
+                        if (referrals.isEmpty()) {
+                            EmptyState(
+                                title = "No referrals yet",
+                                description = "Anyone you put forward appears here, with how far they have got.",
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        (state as? Loaded.Ready)?.value?.first?.let { referrals ->
+            items(referrals, key = { it.id }) { referral ->
+                AppCard(
+                    contentDescription = "${referral.candidateName} for ${referral.positionTitle}, ${words(referral.status)}",
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppText(referral.candidateName, weight = FontWeight.Medium, maxLines = 1)
+                        StatusPill(
+                            words(referral.status),
+                            when (referral.status) {
+                                "hired" -> PillTone.SUCCESS
+                                "rejected" -> PillTone.DANGER
+                                "submitted", "screening", "interviewing" -> PillTone.INFO
+                                else -> PillTone.NEUTRAL
+                            },
+                        )
+                    }
+                    AppText(
+                        referral.positionTitle,
+                        size = Theme.type.footnote,
+                        lineHeight = Theme.type.footnoteLine,
+                        tone = TextTone.MUTED,
+                    )
+                    referral.rejectionReason?.let {
+                        AppText(
+                            it,
+                            size = Theme.type.caption,
+                            lineHeight = Theme.type.captionLine,
+                            tone = TextTone.MUTED,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Figure(label: String, value: String) {
+    Column {
+        AppText(value, size = Theme.type.title3, lineHeight = Theme.type.title3Line, weight = FontWeight.Bold)
+        AppText(label, size = Theme.type.caption, lineHeight = Theme.type.captionLine, tone = TextTone.MUTED)
+    }
+}
+
+/**
+ * Refer someone.
+ *
+ * Only what the server needs, and nothing that would be guesswork on a phone.
+ * The candidate fills in their own details through the invite link the server
+ * emails them, so asking for a CV upload here would be asking somebody to find
+ * a file on a handset for no reason.
+ */
+@Composable
+fun ReferScreen(container: AppContainer, onDone: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var position by remember { mutableStateOf("") }
+    var relationship by remember { mutableStateOf("") }
+    var recommendation by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<Pair<String, String?>?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
+
+    // Mirrors the server's zod schema exactly. Stricter would reject what it
+    // would have taken; looser costs a round trip to be told what the phone
+    // already knew.
+    val nameOk = name.trim().length in 2..150
+    val emailOk = email.trim().let { it.length <= 320 && it.contains('@') && it.contains('.') }
+    val positionOk = position.trim().length in 2..150
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(screenPadding()),
+        verticalArrangement = Arrangement.spacedBy(Theme.spacing.md),
+    ) {
+        error?.let { (title, description) -> Banner(BannerTone.ERROR, title, description = description) }
+
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it.take(150) },
+            label = { Text("Their name") },
+            singleLine = true,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it.take(320) },
+            label = { Text("Their email") },
+            supportingText = { Text("We email them a link to fill in their own details") },
+            singleLine = true,
+            enabled = !busy,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = position,
+            onValueChange = { position = it.take(150) },
+            label = { Text("Role they would suit") },
+            singleLine = true,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = relationship,
+            onValueChange = { relationship = it.take(120) },
+            label = { Text("How you know them (optional)") },
+            singleLine = true,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = recommendation,
+            onValueChange = { recommendation = it.take(2000) },
+            label = { Text("Why you recommend them (optional)") },
+            minLines = 3,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        AppButton(
+            label = "Send referral",
+            enabled = nameOk && emailOk && positionOk,
+            busy = busy,
+            onClick = {
+                busy = true
+                error = null
+                scope.launch {
+                    try {
+                        container.repository.refer(
+                            name.trim(), email.trim(), position.trim(),
+                            relationship.trim().ifBlank { null },
+                            recommendation.trim().ifBlank { null },
+                        )
+                        onDone()
+                    } catch (e: com.circuvent.hrms.data.net.OfflineException) {
+                        error = "This was not sent" to
+                            "A referral needs a connection so the invitation email goes out. Nothing has been lost."
+                    } catch (e: Exception) {
+                        error = "This was not sent" to e.message
+                    } finally {
+                        busy = false
+                    }
+                }
+            },
+        )
+        AppButton("Cancel", onDone, variant = ButtonVariant.GHOST, enabled = !busy)
+    }
+}
+
+/**
+ * The approvals inbox, over the workflow engine.
+ *
+ * Broader than the leave queue: this is whatever the workflow engine has routed
+ * to this person, whichever process it came from. An overdue item is named as
+ * overdue rather than merely sorted first, because sort order is invisible to
+ * somebody reading one row at a time with a screen reader.
+ */
+@Composable
+fun WorkflowInboxScreen(container: AppContainer) {
+    var state by remember { mutableStateOf<Loaded<List<PendingApprovalDto>>>(Loaded.Loading) }
+    var busyId by remember { mutableStateOf<String?>(null) }
+    var rejecting by remember { mutableStateOf<String?>(null) }
+    var comment by remember { mutableStateOf("") }
+    var commentError by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val scope = rememberCoroutineScope()
+
+    suspend fun load() {
+        state = try {
+            Loaded.Ready(container.repository.pendingApprovals().pending)
+        } catch (e: Throwable) {
+            failureOf("Your approvals", e)
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
+    fun decide(id: String, approved: Boolean, why: String?) {
+        busyId = id
+        error = null
+        scope.launch {
+            try {
+                container.repository.decideWorkflow(id, approved, why)
+                rejecting = null
+                comment = ""
+                load()
+            } catch (e: Exception) {
+                error = e.message ?: "The decision was not recorded."
+            } finally {
+                busyId = null
+            }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = screenPadding(),
+        verticalArrangement = Arrangement.spacedBy(Theme.spacing.md),
+    ) {
+        error?.let { item { Banner(BannerTone.ERROR, "The decision was not recorded", description = it) } }
+
+        item {
+            when (val current = state) {
+                is Loaded.Loading -> SkeletonRows(count = 3, rowHeight = 120.dp)
+                is Loaded.Failed -> Banner(BannerTone.ERROR, current.title, description = current.description)
+                is Loaded.Ready -> if (current.value.isEmpty()) {
+                    EmptyState(
+                        title = "Nothing is waiting for you",
+                        description = "Anything routed to you for a decision — from any process — appears here.",
+                    )
+                }
+            }
+        }
+
+        (state as? Loaded.Ready)?.value?.let { pending ->
+            items(pending, key = { it.instanceId }) { item ->
+                val busy = busyId == item.instanceId
+
+                AppCard(
+                    contentDescription = "${words(item.entityType)}: ${item.stepName}" +
+                        if (item.isOverdue) ", overdue" else "",
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppText(words(item.entityType), weight = FontWeight.Medium)
+                        // Named, not merely sorted first. Sort order is
+                        // invisible to somebody reading one row at a time.
+                        if (item.isOverdue) StatusPill("Overdue", PillTone.DANGER)
+                    }
+                    AppText(
+                        item.stepName,
+                        size = Theme.type.footnote,
+                        lineHeight = Theme.type.footnoteLine,
+                        tone = TextTone.MUTED,
+                    )
+                    item.dueAt?.let {
+                        AppText(
+                            "Due $it",
+                            size = Theme.type.caption,
+                            lineHeight = Theme.type.captionLine,
+                            tone = TextTone.MUTED,
+                        )
+                    }
+
+                    if (rejecting == item.instanceId) {
+                        OutlinedTextField(
+                            value = comment,
+                            onValueChange = { comment = it.take(2000) },
+                            label = { Text("Why are you rejecting this?") },
+                            supportingText = { commentError?.let { Text(it) } },
+                            isError = commentError != null,
+                            minLines = 2,
+                            enabled = !busy,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = Theme.spacing.md),
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
+                            AppButton(
+                                label = "Confirm rejection",
+                                variant = ButtonVariant.DANGER,
+                                fullWidth = false,
+                                busy = busy,
+                                onClick = {
+                                    // The server refuses a rejection with a
+                                    // comment under three characters, and it is
+                                    // right to: somebody told only "rejected"
+                                    // has nothing to act on.
+                                    if (comment.trim().length < 3) {
+                                        commentError = "Give a reason. The person needs to know why."
+                                    } else {
+                                        commentError = null
+                                        decide(item.instanceId, false, comment.trim())
+                                    }
+                                },
+                            )
+                            AppButton(
+                                label = "Back",
+                                variant = ButtonVariant.GHOST,
+                                fullWidth = false,
+                                onClick = { rejecting = null; commentError = null; comment = "" },
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.padding(top = Theme.spacing.md),
+                            horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm),
+                        ) {
+                            AppButton(
+                                label = "Approve",
+                                fullWidth = false,
+                                busy = busy,
+                                onClick = { decide(item.instanceId, true, null) },
+                                contentDescription = "Approve ${item.stepName}",
+                            )
+                            AppButton(
+                                label = "Reject",
+                                variant = ButtonVariant.SECONDARY,
+                                fullWidth = false,
+                                enabled = !busy,
+                                onClick = { rejecting = item.instanceId; comment = ""; commentError = null },
+                                contentDescription = "Reject ${item.stepName}",
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Shift swaps.
+ *
+ * A swap is a two-step thing and the screen says so: somebody offers a shift,
+ * somebody else accepts it, and a manager decides. The server re-checks its
+ * rostering constraints at the accept, not at the offer, so an accepted swap
+ * can still be refused — which is why the outcome is read back from the server
+ * rather than assumed here.
+ */
+@Composable
+fun SwapsScreen(container: AppContainer, user: SessionUser?) {
+    var state by remember { mutableStateOf<Loaded<List<SwapDto>>>(Loaded.Loading) }
+    var busyId by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val scope = rememberCoroutineScope()
+
+    suspend fun load() {
+        state = try {
+            Loaded.Ready(container.repository.swaps())
+        } catch (e: Throwable) {
+            failureOf("Your swaps", e)
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = screenPadding(),
+        verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm),
+    ) {
+        error?.let { item { Banner(BannerTone.ERROR, "That did not work", description = it) } }
+
+        item {
+            when (val current = state) {
+                is Loaded.Loading -> SkeletonRows(count = 3, rowHeight = 90.dp)
+                is Loaded.Failed -> Banner(BannerTone.ERROR, current.title, description = current.description)
+                is Loaded.Ready -> if (current.value.isEmpty()) {
+                    EmptyState(
+                        title = "No swaps",
+                        description = "Offer a shift from the Shifts tab, and anything offered to you appears here.",
+                    )
+                }
+            }
+        }
+
+        (state as? Loaded.Ready)?.value?.let { swaps ->
+            items(swaps, key = { it.id }) { swap ->
+                val mine = swap.requestedById == user?.id || swap.requestedById == user?.employeeId
+                val busy = busyId == swap.id
+
+                AppCard(contentDescription = "Swap, ${words(swap.status)}") {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppText(if (mine) "You offered a shift" else "Offered to you", weight = FontWeight.Medium)
+                        StatusPill(
+                            words(swap.status),
+                            when (swap.status) {
+                                "approved", "accepted" -> PillTone.SUCCESS
+                                "rejected", "cancelled" -> PillTone.DANGER
+                                "pending", "awaiting_approval" -> PillTone.WARNING
+                                else -> PillTone.NEUTRAL
+                            },
+                        )
+                    }
+
+                    swap.reason?.let {
+                        AppText(it, size = Theme.type.footnote, lineHeight = Theme.type.footnoteLine, tone = TextTone.MUTED)
+                    }
+                    swap.rejectionReason?.let {
+                        AppText(it, size = Theme.type.caption, lineHeight = Theme.type.captionLine, tone = TextTone.DANGER)
+                    }
+
+                    // Offered to somebody else and still open: they can take it.
+                    if (!mine && swap.status == "pending") {
+                        AppButton(
+                            label = "Take this shift",
+                            fullWidth = false,
+                            busy = busy,
+                            modifier = Modifier.padding(top = Theme.spacing.sm),
+                            onClick = {
+                                busyId = swap.id
+                                error = null
+                                scope.launch {
+                                    try {
+                                        container.repository.acceptSwap(swap.id)
+                                        // Read back rather than assumed: the
+                                        // rostering constraints are re-checked
+                                        // at the accept, so this can still be
+                                        // refused.
+                                        load()
+                                    } catch (e: Exception) {
+                                        error = e.message
+                                    } finally {
+                                        busyId = null
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

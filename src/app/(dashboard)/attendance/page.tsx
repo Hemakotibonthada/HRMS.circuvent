@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useToday } from "@/hooks/use-now";
+import { dateKeyInZone } from "@/lib/date-keys";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +29,7 @@ import {
   Tooltip as RTooltip,
 } from "recharts";
 import { useAttendanceStore, startSync, type AttendanceDoc } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════
@@ -67,7 +69,11 @@ export default function AttendancePage() {
     return () => clearInterval(interval);
   }, []);
 
-  const today = new Date().toISOString().split("T")[0];
+  // `new Date().toISOString()` renders in UTC, so in IST every load before
+  // 05:30 asked for yesterday — the early shift's own clock-in was missing
+  // from "today". `useToday` is zoned and returns null until mounted, so the
+  // server and the first client paint agree.
+  const today = useToday() ?? "";
 
   const filtered = useMemo(() => {
     let result = items;
@@ -96,7 +102,7 @@ export default function AttendancePage() {
     return WEEKDAYS.map((day, i) => {
       const d = new Date(now);
       d.setDate(d.getDate() - d.getDay() + i + 1);
-      const dateStr = d.toISOString().split("T")[0];
+      const dateStr = dateKeyInZone(d);
       const dayRecords = items.filter(a => a.date === dateStr);
       return {
         name: day,

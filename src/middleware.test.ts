@@ -62,6 +62,25 @@ describe("middleware", () => {
       expect(response.status).toBe(307);
     });
 
+    it("lets crawlers and link unfurlers reach the discovery routes", async () => {
+      // These arrive with no cookie and do not follow a redirect into a sign-in
+      // form. Gated, robots.txt and the sitemap answer with the login page and
+      // a pasted link renders without a preview card — a failure that is
+      // invisible from inside the app, so it is pinned here instead.
+      for (const path of [
+        "/robots.txt",
+        "/sitemap.xml",
+        "/manifest.json",
+        "/opengraph-image",
+        "/twitter-image",
+        "/icon",
+        "/apple-icon",
+      ]) {
+        const response = await middleware(makeRequest(path));
+        expect(response.status, `${path} should be reachable without a session`).toBe(200);
+      }
+    });
+
     it("keeps /api/auth/me protected", async () => {
       // Session introspection requires a session.
       const response = await middleware(makeRequest("/api/auth/me"));

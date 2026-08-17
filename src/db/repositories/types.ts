@@ -1,18 +1,18 @@
 // ═══════════════════════════════════════════════════════════════
 // REPOSITORY CONTRACT
 // ═══════════════════════════════════════════════════════════════
-// The seam that lets Firestore and Neon run side by side during the migration
-// (docs/PLATFORM-ARCHITECTURE.md §3).
+// The seam between the application and Postgres.
 //
 // Zustand stores and React components depend on these interfaces, never on
-// Firestore or Drizzle directly, so switching backends is a config change
-// rather than a rewrite of 92 modules.
+// Drizzle directly, so the storage layer can change without rewriting 92
+// modules.
 //
-// One asymmetry is unavoidable and shapes the design: Firestore is queried
-// from the browser, Postgres cannot be. Every Neon-backed call therefore goes
-// through an API route, which is also where authorization and tenant scoping
-// belong — the Firestore design had to trust the client to scope its own
-// queries.
+// One constraint shapes the design: Postgres cannot be queried from the
+// browser. Every call therefore goes through an API route, which is also
+// where authorization and tenant scoping belong — a design that lets the
+// client scope its own queries is a design that trusts the client.
+
+import type { MinorUnits } from "@/lib/money/minor";
 
 export type SortDirection = "asc" | "desc";
 
@@ -285,10 +285,23 @@ export interface PayrollRunRecord {
   runType: string;
   status: PayrollRunStatus;
   employeeCount: number;
-  /** Major currency units for display. */
+  /**
+   * Major currency units, as a float, for displaying one value.
+   *
+   * Do not add these together. Use the `*Minor` fields below and
+   * `sumMinor` from `@/lib/money/minor`, which is exact.
+   */
   totalGross: number;
   totalDeductions: number;
   totalNet: number;
+  /**
+   * The same amounts as exact whole paise, carried as strings because JSON
+   * has no bigint. These are the authoritative values — the floats above are
+   * derived from them.
+   */
+  totalGrossMinor: MinorUnits;
+  totalDeductionsMinor: MinorUnits;
+  totalNetMinor: MinorUnits;
   processedById?: string;
   processedAt?: string;
   approvedById?: string;
@@ -316,18 +329,85 @@ export interface PayrollRecordDto {
   presentDays: number;
   lopDays: number;
   /**
-   * Major units, as a float, for display only.
+   * Major units, as a float, for displaying one value.
    *
    * Storage is bigint minor units precisely because floats lose money. These
-   * are the converted values and must never be summed or compared for
-   * equality on the client; ask the server for a total instead.
+   * are the converted values: safe to print, never safe to sum or compare for
+   * equality. The `*Minor` fields below carry the exact amounts, so a total
+   * no longer requires asking the server — `sumMinor` from
+   * `@/lib/money/minor` adds them without losing a paise.
    */
   gross: number;
   totalDeductions: number;
   netPay: number;
+  /** The same amounts as exact whole paise. Authoritative. */
+  grossMinor: MinorUnits;
+  totalDeductionsMinor: MinorUnits;
+  netPayMinor: MinorUnits;
   status: string;
   anomalies: string[];
   payslipUrl?: string;
+}
+
+// ─── Expenses ────────────────────────────────────────────────
+
+/** One line on a claim. Amounts are exact paise. */
+export interface ExpenseLineItemDto {
+  description: string;
+  amountMinor: MinorUnits;
+  category?: string;
+}
+
+/**
+ * Where a claim has got to.
+ *
+ * Wider than the `approval_status` column, because reimbursement is recorded
+ * by a timestamp rather than a status — a paid claim is still `approved` in
+ * the database. Anything asking "what can happen next" needs this, not the
+ * column.
+ */
+export type ExpenseStageDto = "pending" | "approved" | "rejected" | "cancelled" | "reimbursed";
+
+export interface ExpenseClaimRecord {
+  id: string;
+  claimNumber: string;
+  employeeId: string;
+  employeeName?: string;
+  title: string;
+  category: string;
+  expenseDate: string;
+  description?: string;
+  lineItems: ExpenseLineItemDto[];
+  receipts: string[];
+  anomalies: string[];
+
+  status: string;
+  stage: ExpenseStageDto;
+
+  /** Major units for display. Do not sum these — use the `*Minor` fields. */
+  amount: number;
+  approvedAmount?: number;
+  /** Exact paise, as strings. Authoritative. */
+  amountMinor: MinorUnits;
+  approvedAmountMinor?: MinorUnits;
+  currency: string;
+
+  approvedById?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+  reimbursedAt?: string;
+  createdAt: string;
+}
+
+export interface ExpenseSubmission {
+  employeeId: string;
+  title: string;
+  category: string;
+  expenseDate: string;
+  lineItems: ExpenseLineItemDto[];
+  description?: string;
+  receipts?: string[];
+  currency?: string;
 }
 
 export interface PayrollRepository {

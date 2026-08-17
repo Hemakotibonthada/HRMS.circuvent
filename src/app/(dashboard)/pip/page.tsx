@@ -26,7 +26,7 @@ import {
   PieChart, Pie, Cell, Legend, Tooltip as RTooltip,
 } from "recharts";
 import { useGoalStore, useEmployeeStore, startSync, type GoalDoc } from "@/stores/unified-store";
-import { COLLECTIONS, genericService } from "@/lib/firestore-service";
+import { COLLECTIONS, genericService } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════

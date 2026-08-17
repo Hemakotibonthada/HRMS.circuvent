@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      A framework parent, not a Material Components one. The app is Compose
+      end to end; an XML theme exists only to paint the window before the
+      first frame and to hand the system bars to Compose. Pulling in the
+      Material Components library for a theme nothing reads would be a
+      dependency with no reader.
+    -->
+    <style name="Theme.CircuventHR" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- Dark icons on the light background. The night variant flips it. -->
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

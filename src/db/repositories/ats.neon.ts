@@ -11,7 +11,13 @@
 
 import { and, asc, count, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
-import { applications, candidates, employees, jobPostings } from "@/db/schema/hrms";
+import {
+  applications,
+  candidates,
+  employees,
+  interviews,
+  jobPostings,
+} from "@/db/schema/hrms";
 import {
   applicationEvents,
   applicationSources,
@@ -34,6 +40,7 @@ import {
   type Scorecard,
 } from "@/lib/ats";
 import { NotFoundError, RepositoryError } from "./types";
+import { minorToMajor, toMinor } from "@/lib/money/minor";
 
 function toStage(row: typeof pipelineStages.$inferSelect): PipelineStage {
   return {
@@ -44,6 +51,129 @@ function toStage(row: typeof pipelineStages.$inferSelect): PipelineStage {
     requiredScorecards: row.requiredScorecards,
     autoRejectBelow: row.autoRejectBelow ?? undefined,
   };
+}
+
+export interface JobPostingRecord {
+  id: string;
+  title: string;
+  slug: string;
+  departmentId?: string;
+  locationId?: string;
+  employmentType: string;
+  experienceMinYears?: number;
+  experienceMaxYears?: number;
+  /** Major units for display; exact paise beside them. See lib/money/minor. */
+  salaryMin?: number;
+  salaryMax?: number;
+  salaryMinMinor?: string;
+  salaryMaxMinor?: string;
+  description?: string;
+  requirements: string[];
+  skills: string[];
+  openings: number;
+  filled: number;
+  status: string;
+  isPublished: boolean;
+  publishedAt?: string;
+  closesOn?: string;
+  createdAt: string;
+}
+
+export interface InterviewRecord {
+  id: string;
+  applicationId: string;
+  candidateName?: string;
+  jobTitle?: string;
+  round: number;
+  interviewType: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  meetingUrl?: string;
+  panelistIds: string[];
+  status: string;
+  overallRating?: number;
+  recommendation?: string;
+  createdAt: string;
+}
+
+function toJobRecord(row: typeof jobPostings.$inferSelect): JobPostingRecord {
+  return {
+    id: row.id,
+    title: row.title,
+    slug: row.slug,
+    departmentId: row.departmentId ?? undefined,
+    locationId: row.locationId ?? undefined,
+    employmentType: row.employmentType,
+    experienceMinYears: row.experienceMinYears ?? undefined,
+    experienceMaxYears: row.experienceMaxYears ?? undefined,
+    salaryMin: row.salaryMinMinor === null ? undefined : minorToMajor(row.salaryMinMinor),
+    salaryMax: row.salaryMaxMinor === null ? undefined : minorToMajor(row.salaryMaxMinor),
+    salaryMinMinor: row.salaryMinMinor === null ? undefined : toMinor(row.salaryMinMinor),
+    salaryMaxMinor: row.salaryMaxMinor === null ? undefined : toMinor(row.salaryMaxMinor),
+    description: row.description ?? undefined,
+    requirements: (row.requirements as string[]) ?? [],
+    skills: (row.skills as string[]) ?? [],
+    openings: row.openings,
+    filled: row.filled,
+    status: row.status,
+    isPublished: row.isPublished,
+    publishedAt: row.publishedAt?.toISOString(),
+    closesOn: row.closesOn ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toInterviewRecord(
+  row: typeof interviews.$inferSelect,
+  extra: { candidateName?: string; jobTitle?: string } = {}
+): InterviewRecord {
+  return {
+    id: row.id,
+    applicationId: row.applicationId,
+    candidateName: extra.candidateName,
+    jobTitle: extra.jobTitle,
+    round: row.round,
+    interviewType: row.interviewType,
+    scheduledAt: row.scheduledAt.toISOString(),
+    durationMinutes: row.durationMinutes,
+    meetingUrl: row.meetingUrl ?? undefined,
+    panelistIds: (row.panelistIds as string[]) ?? [],
+    status: row.status,
+    overallRating: row.overallRating ?? undefined,
+    recommendation: row.recommendation ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/** A URL-safe slug. Shared by the careers site, so it has to be readable. */
+function slugify(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+
+  // A title of only punctuation would otherwise produce an empty slug, and the
+  // unique index would then collide on "" for every such job.
+  return slug || "job";
+}
+
+/**
+ * `base`, `base-2`, `base-3`… within an organization.
+ *
+ * A counter rather than a random suffix because the slug is the careers-site
+ * URL: people share it, and `senior-engineer-2` reads as a second opening
+ * where `senior-engineer-x7f2q` reads as a mistake.
+ */
+function uniqueSlug(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${base}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  throw new RepositoryError("Too many jobs with this title", 409);
 }
 
 export class NeonAtsRepository {
@@ -993,6 +1123,307 @@ export class NeonAtsRepository {
         pageSize,
         hasMore: (page - 1) * pageSize + rows.length < total,
       };
+    });
+  }
+
+  // ─── Job postings ──────────────────────────────────────────
+  // `job_postings` was read by the pipeline queries but nothing could create
+  // one: the route that claimed to — `/api/recruitment` — returned
+  // "Job posted successfully" and wrote nothing.
+
+  async listJobs(
+    query: { status?: string; page?: number; pageSize?: number } = {}
+  ): Promise<{
+    items: JobPostingRecord[];
+    total: number;
+    page: number;
+    pageSize: number;
+    hasMore: boolean;
+  }> {
+    const page = Math.max(1, query.page ?? 1);
+    const pageSize = Math.min(200, Math.max(1, query.pageSize ?? 50));
+
+    return withTenant(this.ctx, async (tx) => {
+      const where =
+        query.status && query.status !== "all"
+          ? eq(jobPostings.status, query.status)
+          : undefined;
+
+      const rows = await tx
+        .select()
+        .from(jobPostings)
+        .where(where)
+        .orderBy(desc(jobPostings.createdAt), asc(jobPostings.id))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize);
+
+      const [{ value: total }] = await tx
+        .select({ value: count() })
+        .from(jobPostings)
+        .where(where);
+
+      return {
+        items: rows.map(toJobRecord),
+        total,
+        page,
+        pageSize,
+        hasMore: (page - 1) * pageSize + rows.length < total,
+      };
+    });
+  }
+
+  async getJob(id: string): Promise<JobPostingRecord | null> {
+    return withTenant(this.ctx, async (tx) => {
+      const rows = await tx.select().from(jobPostings).where(eq(jobPostings.id, id)).limit(1);
+      return rows[0] ? toJobRecord(rows[0]) : null;
+    });
+  }
+
+  /**
+   * Posts a job.
+   *
+   * The slug is derived from the title and made unique within the org, because
+   * `job_postings_org_slug_key` will otherwise reject the second "Senior
+   * Engineer" of the year — and a careers-site URL is a thing people share, so
+   * it cannot be a random string either.
+   */
+  async createJob(input: {
+    title: string;
+    departmentId?: string;
+    locationId?: string;
+    employmentType?: string;
+    experienceMinYears?: number;
+    experienceMaxYears?: number;
+    salaryMinMinor?: string;
+    salaryMaxMinor?: string;
+    description?: string;
+    requirements?: string[];
+    skills?: string[];
+    openings?: number;
+    hiringManagerId?: string;
+    recruiterId?: string;
+    closesOn?: string;
+  }): Promise<JobPostingRecord> {
+    const title = input.title.trim();
+    if (!title) throw new RepositoryError("A job needs a title", 400);
+
+    if (
+      input.experienceMinYears !== undefined &&
+      input.experienceMaxYears !== undefined &&
+      input.experienceMinYears > input.experienceMaxYears
+    ) {
+      throw new RepositoryError("Minimum experience is above the maximum", 400);
+    }
+
+    if (input.salaryMinMinor && input.salaryMaxMinor) {
+      if (BigInt(input.salaryMinMinor) > BigInt(input.salaryMaxMinor)) {
+        throw new RepositoryError("Minimum salary is above the maximum", 400);
+      }
+    }
+
+    if (input.openings !== undefined && input.openings < 1) {
+      throw new RepositoryError("A job needs at least one opening", 400);
+    }
+
+    return withTenant(this.ctx, async (tx) => {
+      const base = slugify(title);
+
+      // Read the taken slugs inside the transaction so two concurrent posts
+      // cannot pick the same suffix.
+      const taken = await tx
+        .select({ slug: jobPostings.slug })
+        .from(jobPostings)
+        .where(sql`${jobPostings.slug} = ${base} or ${jobPostings.slug} like ${`${base}-%`}`);
+
+      const inserted = await tx
+        .insert(jobPostings)
+        .values({
+          orgId: this.ctx.orgId,
+          title,
+          slug: uniqueSlug(base, new Set(taken.map((t) => t.slug))),
+          departmentId: input.departmentId ?? null,
+          locationId: input.locationId ?? null,
+          employmentType: (input.employmentType ?? "full_time") as never,
+          experienceMinYears: input.experienceMinYears ?? null,
+          experienceMaxYears: input.experienceMaxYears ?? null,
+          salaryMinMinor: input.salaryMinMinor ? BigInt(input.salaryMinMinor) : null,
+          salaryMaxMinor: input.salaryMaxMinor ? BigInt(input.salaryMaxMinor) : null,
+          description: input.description?.trim() || null,
+          requirements: input.requirements ?? [],
+          skills: input.skills ?? [],
+          openings: input.openings ?? 1,
+          hiringManagerId: input.hiringManagerId ?? null,
+          recruiterId: input.recruiterId ?? null,
+          closesOn: input.closesOn ?? null,
+          status: "draft",
+        })
+        .returning();
+
+      return toJobRecord(inserted[0]);
+    });
+  }
+
+  /**
+   * Publishes or closes a job.
+   *
+   * Publishing stamps `published_at` the first time only — republishing after
+   * a pause should not make the role look newly opened to anyone sorting by
+   * it.
+   */
+  async setJobStatus(id: string, status: "draft" | "open" | "paused" | "closed") {
+    return withTenant(this.ctx, async (tx) => {
+      const existing = await tx
+        .select()
+        .from(jobPostings)
+        .where(eq(jobPostings.id, id))
+        .limit(1);
+
+      if (!existing[0]) throw new NotFoundError("Job posting", id);
+
+      const published = status === "open";
+      const updated = await tx
+        .update(jobPostings)
+        .set({
+          status,
+          isPublished: published,
+          publishedAt: published ? (existing[0].publishedAt ?? new Date()) : existing[0].publishedAt,
+          updatedAt: new Date(),
+        })
+        .where(eq(jobPostings.id, id))
+        .returning();
+
+      return toJobRecord(updated[0]);
+    });
+  }
+
+  // ─── Interviews ────────────────────────────────────────────
+  // `hrms.interviews` had no repository at all: the table existed, the fake
+  // route reported "Interview scheduled", and nothing was ever written to it.
+
+  async listInterviews(
+    query: { applicationId?: string; from?: string; to?: string; status?: string } = {}
+  ): Promise<InterviewRecord[]> {
+    return withTenant(this.ctx, async (tx) => {
+      const conditions = [];
+      if (query.applicationId) {
+        conditions.push(eq(interviews.applicationId, query.applicationId));
+      }
+      if (query.status && query.status !== "all") {
+        conditions.push(eq(interviews.status, query.status));
+      }
+      if (query.from) conditions.push(sql`${interviews.scheduledAt} >= ${query.from}`);
+      if (query.to) conditions.push(sql`${interviews.scheduledAt} <= ${query.to}`);
+
+      const rows = await tx
+        .select({
+          interview: interviews,
+          candidateFirst: candidates.firstName,
+          candidateLast: candidates.lastName,
+          jobTitle: jobPostings.title,
+        })
+        .from(interviews)
+        .leftJoin(applications, eq(applications.id, interviews.applicationId))
+        .leftJoin(candidates, eq(candidates.id, applications.candidateId))
+        .leftJoin(jobPostings, eq(jobPostings.id, applications.jobId))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(asc(interviews.scheduledAt))
+        .limit(500);
+
+      return rows.map((r) =>
+        toInterviewRecord(r.interview, {
+          candidateName:
+            r.candidateFirst || r.candidateLast
+              ? `${r.candidateFirst ?? ""} ${r.candidateLast ?? ""}`.trim()
+              : undefined,
+          jobTitle: r.jobTitle ?? undefined,
+        })
+      );
+    });
+  }
+
+  /**
+   * Books an interview against a live application.
+   *
+   * The application is checked rather than assumed: an interview attached to a
+   * rejected or non-existent application is a calendar invitation nobody can
+   * act on, and it is exactly what the fake route allowed by writing nothing
+   * and validating nothing.
+   */
+  async scheduleInterview(input: {
+    applicationId: string;
+    scheduledAt: string;
+    round?: number;
+    interviewType?: string;
+    durationMinutes?: number;
+    meetingUrl?: string;
+    panelistIds?: string[];
+  }): Promise<InterviewRecord> {
+    const when = new Date(input.scheduledAt);
+    if (Number.isNaN(when.getTime())) {
+      throw new RepositoryError("Interview time is not a valid date", 400);
+    }
+    if (input.durationMinutes !== undefined && input.durationMinutes <= 0) {
+      throw new RepositoryError("An interview needs a positive duration", 400);
+    }
+
+    return withTenant(this.ctx, async (tx) => {
+      const application = await tx
+        .select({ id: applications.id, status: applications.status })
+        .from(applications)
+        .where(eq(applications.id, input.applicationId))
+        .limit(1);
+
+      if (!application[0]) throw new NotFoundError("Application", input.applicationId);
+      if (application[0].status === "rejected" || application[0].status === "withdrawn") {
+        throw new RepositoryError(
+          `Cannot schedule an interview on a ${application[0].status} application`,
+          409
+        );
+      }
+
+      const inserted = await tx
+        .insert(interviews)
+        .values({
+          orgId: this.ctx.orgId,
+          applicationId: input.applicationId,
+          round: input.round ?? 1,
+          interviewType: input.interviewType ?? "technical",
+          scheduledAt: when,
+          durationMinutes: input.durationMinutes ?? 60,
+          meetingUrl: input.meetingUrl ?? null,
+          panelistIds: input.panelistIds ?? [],
+          status: "scheduled",
+        })
+        .returning();
+
+      return toInterviewRecord(inserted[0]);
+    });
+  }
+
+  async recordInterviewOutcome(
+    id: string,
+    outcome: { status: string; overallRating?: number; recommendation?: string }
+  ): Promise<InterviewRecord> {
+    if (
+      outcome.overallRating !== undefined &&
+      (outcome.overallRating < 1 || outcome.overallRating > 5)
+    ) {
+      throw new RepositoryError("A rating must be between 1 and 5", 400);
+    }
+
+    return withTenant(this.ctx, async (tx) => {
+      const updated = await tx
+        .update(interviews)
+        .set({
+          status: outcome.status,
+          overallRating: outcome.overallRating ?? null,
+          recommendation: outcome.recommendation ?? null,
+        })
+        .where(eq(interviews.id, id))
+        .returning();
+
+      if (!updated[0]) throw new NotFoundError("Interview", id);
+      return toInterviewRecord(updated[0]);
     });
   }
 }

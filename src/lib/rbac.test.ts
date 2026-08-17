@@ -7,10 +7,13 @@ import {
   MODULE_PERMISSION_MAP,
   ROLE_PERMISSIONS,
   canAccessModule,
+  canViewOthersSalary,
   getRoleLabel,
   hasAnyPermission,
   hasPermission,
+  roleHasPermission,
   type Permission,
+  type PrivilegedRole,
   type Role,
 } from "@/lib/rbac";
 
@@ -154,6 +157,61 @@ describe("getRoleLabel", () => {
     for (const role of ROLES) {
       expect(getRoleLabel(role)).toBeTruthy();
       expect(getRoleLabel(role)).not.toBe(role);
+    }
+  });
+});
+
+// The API layer has an `owner` role that `ROLE_PERMISSIONS` does not, so
+// passing it to `hasPermission` silently denies the most privileged account in
+// the organization. `roleHasPermission` is the bridge, and these tests pin it.
+describe("roleHasPermission", () => {
+  it("treats owner as at least an admin", () => {
+    for (const permission of ROLE_PERMISSIONS.admin) {
+      expect(roleHasPermission("owner", permission), `owner should hold ${permission}`).toBe(true);
+    }
+  });
+
+  it("shows why the bridge is needed — the raw check denies owner", () => {
+    // `owner` is not a key of ROLE_PERMISSIONS, so the lookup falls through to
+    // the `?? false` and denies everything.
+    expect(roleHasPermission("owner", "payroll.view")).toBe(true);
+    expect(hasPermission("owner" as unknown as Role, "payroll.view")).toBe(false);
+  });
+
+  it("agrees with hasPermission for every non-owner role", () => {
+    const permissions: Permission[] = ["payroll.view", "employees.view", "audit.view"];
+    for (const role of ROLES) {
+      for (const permission of permissions) {
+        expect(roleHasPermission(role, permission)).toBe(hasPermission(role, permission));
+      }
+    }
+  });
+});
+
+// Salary is the most sensitive field in the product. A reporting line is not
+// authority to see someone's pay, and `/api/employees` once returned the whole
+// directory's compensation to any manager because the route re-derived the
+// rule as a role array instead of asking the permission model.
+describe("canViewOthersSalary", () => {
+  it("admits the roles that hold payroll.view", () => {
+    expect(canViewOthersSalary("owner")).toBe(true);
+    expect(canViewOthersSalary("admin")).toBe(true);
+    expect(canViewOthersSalary("hr")).toBe(true);
+  });
+
+  it("refuses managers — a reporting line is not authority over pay", () => {
+    expect(canViewOthersSalary("manager")).toBe(false);
+    expect(ROLE_PERMISSIONS.manager).not.toContain("payroll.view");
+  });
+
+  it("refuses ordinary employees", () => {
+    expect(canViewOthersSalary("employee")).toBe(false);
+  });
+
+  it("tracks the permission model rather than a hardcoded role list", () => {
+    const roles: PrivilegedRole[] = ["owner", "admin", "hr", "manager", "employee"];
+    for (const role of roles) {
+      expect(canViewOthersSalary(role)).toBe(roleHasPermission(role, "payroll.view"));
     }
   });
 });

@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { StyleSheet, View } from "react-native";
+import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
+import { Card } from "@/components/Card";
+import { EmptyState } from "@/components/EmptyState";
+import { Screen } from "@/components/Screen";
+import { SkeletonList } from "@/components/Skeleton";
+import { StatusPill } from "@/components/StatusPill";
 import { TextField } from "@/components/TextField";
+import { AppText } from "@/components/Typography";
 import { ApiError, OfflineError } from "@/lib/contracts";
 import { useSession } from "@/lib/session";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -33,7 +31,8 @@ function titleCase(value: string): string {
 }
 
 function shortDate(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, {
+    timeZone: "UTC",
     day: "numeric",
     month: "short",
   });
@@ -56,7 +55,7 @@ export default function ApprovalsScreen() {
   const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; description?: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -73,9 +72,15 @@ export default function ApprovalsScreen() {
       setRequests(page.items);
     } catch (caught) {
       if (caught instanceof OfflineError) {
-        setError("Offline. Approvals need a connection, so nothing is shown rather than something stale.");
+        setError({
+          title: "You are offline",
+          description:
+            "Approvals need a connection, so nothing is shown rather than something stale.",
+        });
       } else if (caught instanceof ApiError) {
-        setError(caught.message);
+        setError({ title: "The queue could not be loaded", description: caught.message });
+      } else {
+        setError({ title: "The queue could not be loaded" });
       }
     } finally {
       setLoading(false);
@@ -102,11 +107,14 @@ export default function ApprovalsScreen() {
         await load();
       } catch (caught) {
         if (caught instanceof OfflineError) {
-          setError("No connection. The decision was not recorded — try again when you are back online.");
+          setError({
+            title: "The decision was not recorded",
+            description: "There is no connection. Try again when you are back online.",
+          });
         } else if (caught instanceof ApiError) {
-          setError(caught.message);
+          setError({ title: "The decision was not recorded", description: caught.message });
         } else {
-          setError("Something went wrong. The decision was not recorded.");
+          setError({ title: "The decision was not recorded" });
         }
       } finally {
         setBusyId(null);
@@ -131,198 +139,130 @@ export default function ApprovalsScreen() {
   );
 
   return (
-    <SafeAreaView
-      style={[styles.safe, { backgroundColor: theme.colors.background }]}
-      edges={["bottom"]}
+    <Screen
+      keyboardAware
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load();
+      }}
     >
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={{ padding: theme.spacing.lg }}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                void load();
-              }}
-              tintColor={theme.colors.primary}
-            />
-          }
-        >
-          {error ? (
-            <View
-              accessibilityRole="alert"
-              style={{
-                backgroundColor: theme.colors.dangerSubtle,
-                borderRadius: theme.radius.md,
-                padding: theme.spacing.md,
-                marginBottom: theme.spacing.lg,
-              }}
-            >
-              <Text
-                style={{
-                  color: theme.colors.danger,
-                  fontSize: theme.fontSize.footnote,
-                  lineHeight: theme.lineHeight.footnote,
-                }}
-              >
-                {error}
-              </Text>
-            </View>
-          ) : null}
+      {error ? (
+        <Banner
+          tone="error"
+          title={error.title}
+          description={error.description}
+          style={{ marginBottom: theme.spacing.lg }}
+        />
+      ) : null}
 
-          {loading ? (
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.fontSize.body }}>
-              Loading…
-            </Text>
-          ) : requests.length === 0 ? (
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.fontSize.body,
-                lineHeight: theme.lineHeight.body,
-              }}
-            >
-              Nothing is waiting for you.
-            </Text>
-          ) : (
-            requests.map((request) => {
-              // The server refuses this outright. Saying so before the tap is
-              // better than a 403 that reads like a fault.
-              const isOwn = request.employeeId === user?.employeeId || request.employeeId === user?.id;
-              const busy = busyId === request.id;
+      {loading ? (
+        <SkeletonList rows={3} rowHeight={140} />
+      ) : requests.length === 0 ? (
+        <EmptyState
+          title="Nothing is waiting for you"
+          description="Leave requests needing your decision appear here as soon as they are submitted."
+        />
+      ) : (
+        requests.map((request) => {
+          // The server refuses this outright. Saying so before the tap is
+          // better than a 403 that reads like a fault.
+          const isOwn = request.employeeId === user?.employeeId || request.employeeId === user?.id;
+          const busy = busyId === request.id;
+          const who = request.employeeName ?? "An employee";
 
-              return (
-                <View
-                  key={request.id}
-                  style={{
-                    backgroundColor: theme.colors.surfaceElevated,
-                    borderColor: theme.colors.border,
-                    borderWidth: StyleSheet.hairlineWidth * 2,
-                    borderRadius: theme.radius.md,
-                    padding: theme.spacing.md,
-                    marginBottom: theme.spacing.md,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: theme.colors.text,
-                      fontSize: theme.fontSize.body,
-                      lineHeight: theme.lineHeight.body,
-                      fontWeight: theme.fontWeight.semibold,
-                    }}
-                  >
-                    {request.employeeName ?? "An employee"}
-                  </Text>
-                  <Text
-                    style={{
-                      color: theme.colors.textMuted,
-                      fontSize: theme.fontSize.footnote,
-                      lineHeight: theme.lineHeight.footnote,
-                      marginTop: 2,
-                    }}
-                  >
-                    {titleCase(request.leaveType)} · {shortDate(request.startDate)} –{" "}
-                    {shortDate(request.endDate)} · {request.totalDays}{" "}
-                    {request.totalDays === 1 ? "day" : "days"}
-                    {request.isHalfDay ? " (half day)" : ""}
-                  </Text>
-                  <Text
-                    style={{
-                      color: theme.colors.text,
-                      fontSize: theme.fontSize.footnote,
-                      lineHeight: theme.lineHeight.footnote,
-                      marginTop: theme.spacing.sm,
-                    }}
-                  >
-                    {request.reason}
-                  </Text>
+          return (
+            <Card key={request.id} style={{ marginBottom: theme.spacing.md }}>
+              <View style={styles.between}>
+                <AppText variant="body" weight="semibold" numberOfLines={1} style={{ flex: 1 }}>
+                  {who}
+                </AppText>
+                {isOwn ? <StatusPill label="Yours" tone="info" /> : null}
+              </View>
 
-                  {isOwn ? (
-                    <Text
-                      style={{
-                        color: theme.colors.textMuted,
-                        fontSize: theme.fontSize.caption,
-                        lineHeight: theme.lineHeight.caption,
-                        marginTop: theme.spacing.md,
+              <AppText variant="footnote" tone="muted" tabular style={{ marginTop: 2 }}>
+                {titleCase(request.leaveType)} · {shortDate(request.startDate)} –{" "}
+                {shortDate(request.endDate)} ·{" "}
+                {request.isHalfDay
+                  ? "half day"
+                  : `${request.totalDays} ${request.totalDays === 1 ? "day" : "days"}`}
+              </AppText>
+
+              <AppText variant="footnote" style={{ marginTop: theme.spacing.sm }}>
+                {request.reason}
+              </AppText>
+
+              {isOwn ? (
+                <AppText variant="caption" tone="muted" style={{ marginTop: theme.spacing.md }}>
+                  This is your own request. Someone else has to decide it.
+                </AppText>
+              ) : rejecting === request.id ? (
+                <View style={{ marginTop: theme.spacing.md }}>
+                  <TextField
+                    label="Reason for rejection"
+                    value={rejectReason}
+                    onChangeText={setRejectReason}
+                    error={reasonError ?? undefined}
+                    multiline
+                    numberOfLines={2}
+                    maxLength={1000}
+                    autoFocus
+                    editable={!busy}
+                  />
+                  <View style={styles.actions}>
+                    <Button
+                      label="Confirm rejection"
+                      variant="danger"
+                      fullWidth={false}
+                      busy={busy}
+                      onPress={() => submitRejection(request.id)}
+                    />
+                    <Button
+                      label="Back"
+                      variant="ghost"
+                      fullWidth={false}
+                      onPress={() => {
+                        setRejecting(null);
+                        setReasonError(null);
+                        setRejectReason("");
                       }}
-                    >
-                      This is your own request. Someone else has to decide it.
-                    </Text>
-                  ) : rejecting === request.id ? (
-                    <View style={{ marginTop: theme.spacing.md }}>
-                      <TextField
-                        label="Reason for rejection"
-                        value={rejectReason}
-                        onChangeText={setRejectReason}
-                        error={reasonError ?? undefined}
-                        multiline
-                        numberOfLines={2}
-                        maxLength={1000}
-                        autoFocus
-                        editable={!busy}
-                      />
-                      <View style={styles.actions}>
-                        <Button
-                          label="Confirm rejection"
-                          variant="danger"
-                          fullWidth={false}
-                          busy={busy}
-                          onPress={() => submitRejection(request.id)}
-                        />
-                        <Button
-                          label="Back"
-                          variant="ghost"
-                          fullWidth={false}
-                          onPress={() => {
-                            setRejecting(null);
-                            setReasonError(null);
-                            setRejectReason("");
-                          }}
-                          style={{ marginLeft: theme.spacing.sm }}
-                        />
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={[styles.actions, { marginTop: theme.spacing.md }]}>
-                      <Button
-                        label="Approve"
-                        fullWidth={false}
-                        busy={busy}
-                        onPress={() => void decide(request.id, "approve")}
-                        accessibilityLabel={`Approve ${request.employeeName ?? "this"} ${titleCase(request.leaveType)} leave`}
-                      />
-                      <Button
-                        label="Reject"
-                        variant="secondary"
-                        fullWidth={false}
-                        disabled={busy}
-                        onPress={() => {
-                          setRejecting(request.id);
-                          setRejectReason("");
-                          setReasonError(null);
-                        }}
-                        accessibilityLabel={`Reject ${request.employeeName ?? "this"} ${titleCase(request.leaveType)} leave`}
-                        style={{ marginLeft: theme.spacing.sm }}
-                      />
-                    </View>
-                  )}
+                      style={{ marginLeft: theme.spacing.sm }}
+                    />
+                  </View>
                 </View>
-              );
-            })
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+              ) : (
+                <View style={[styles.actions, { marginTop: theme.spacing.md }]}>
+                  <Button
+                    label="Approve"
+                    fullWidth={false}
+                    busy={busy}
+                    onPress={() => void decide(request.id, "approve")}
+                    accessibilityLabel={`Approve ${who}'s ${titleCase(request.leaveType)} leave`}
+                  />
+                  <Button
+                    label="Reject"
+                    variant="secondary"
+                    fullWidth={false}
+                    disabled={busy}
+                    onPress={() => {
+                      setRejecting(request.id);
+                      setRejectReason("");
+                      setReasonError(null);
+                    }}
+                    accessibilityLabel={`Reject ${who}'s ${titleCase(request.leaveType)} leave`}
+                    style={{ marginLeft: theme.spacing.sm }}
+                  />
+                </View>
+              )}
+            </Card>
+          );
+        })
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  flex: { flex: 1 },
   actions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
+  between: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
 });

@@ -23,7 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useEmployeeStore, startSync, type EmployeeDoc } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton } from "@/components/data-empty-state";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -43,20 +43,80 @@ const CLEARANCE_STEPS = [
   { key: "documentation", label: "Documentation", icon: FileText, description: "Experience letter, relieving letter issued" },
 ];
 
-interface ClearanceStatus { [employeeId: string]: { [step: string]: boolean } }
+/**
+ * Which clearances block an exit being certified complete.
+ *
+ * Returning company hardware and cutting access are the two anyone has to
+ * answer for afterwards. A farewell lunch is not that.
+ */
+const MANDATORY_STEPS = new Set(["it_assets", "access_revoke", "settlement"]);
+
+interface LifecycleTask {
+  id: string;
+  taskKey: string;
+  title: string;
+  completed: boolean;
+  completedAt?: string;
+  mandatory: boolean;
+}
+
+interface LifecycleJourney {
+  id: string;
+  employeeId: string;
+  status: string;
+  progress: { total: number; completed: number; percent: number };
+  blocking: { taskKey: string; title: string }[];
+  tasks: LifecycleTask[];
+}
 
 export default function OffboardingPage() {
   const store = useEmployeeStore();
   const { items: employees, loading, initialized } = store;
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("active");
-  const [clearances, setClearances] = useState<ClearanceStatus>({});
+  /**
+   * Exit checklists, keyed by employee.
+   *
+   * This was `useState<ClearanceStatus>({})` with a `toast.success("Clearance
+   * updated")` and no request — an HR admin ticked "Access revoked", was told
+   * it saved, and lost it on refresh. Exit clearance is the record that proves
+   * company property came back and access was cut, so it is the one thing on
+   * this page that most needed to be written down.
+   */
+  const [journeys, setJourneys] = useState<Record<string, LifecycleJourney>>({});
+  const [saving, setSaving] = useState<string | null>(null);
   const [selectedEmp, setSelectedEmp] = useState<EmployeeDoc | null>(null);
   const [exitNotes, setExitNotes] = useState("");
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesEmp, setNotesEmp] = useState<EmployeeDoc | null>(null);
 
   useEffect(() => { if (!initialized) startSync(COLLECTIONS.employees, store); }, [initialized, store]);
+
+  // Load the saved checklists. Without this the page would still render ticks
+  // from nowhere — which is what it did before.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/lifecycle?kind=offboarding&limit=200", {
+          credentials: "include",
+        });
+        if (!response.ok) return;
+        const body = (await response.json()) as { data: LifecycleJourney[] };
+        if (cancelled) return;
+
+        const byEmployee: Record<string, LifecycleJourney> = {};
+        for (const journey of body.data ?? []) byEmployee[journey.employeeId] = journey;
+        setJourneys(byEmployee);
+      } catch {
+        // The list still renders; ticks simply show as unsaved-and-absent,
+        // which is honest, rather than as ticked-and-lost.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const exitEmployees = useMemo(() =>
     employees.filter(e => e.status === "notice_period" || e.status === "terminated"),
@@ -71,29 +131,103 @@ export default function OffboardingPage() {
     return result;
   }, [exitEmployees, search]);
 
-  // Memoised so the React Compiler can see that the memos below depend on
-  // `clearances` through it. As a plain function it was recreated every render,
-  // and the compiler bailed out of optimising the whole component.
-  const getClearanceCount = useCallback((empId: string) => {
-    const c = clearances[empId] || {};
-    return CLEARANCE_STEPS.filter(s => c[s.key]).length;
-  }, [clearances]);
+  const getClearanceCount = useCallback(
+    (empId: string) => journeys[empId]?.progress.completed ?? 0,
+    [journeys]
+  );
 
-  const getClearancePercent = (empId: string) => {
-    return Math.round((getClearanceCount(empId) / CLEARANCE_STEPS.length) * 100);
-  };
+  const getClearancePercent = (empId: string) => journeys[empId]?.progress.percent ?? 0;
 
-  const toggleClearance = (empId: string, step: string) => {
-    setClearances(prev => ({
-      ...prev,
-      [empId]: { ...(prev[empId] || {}), [step]: !(prev[empId]?.[step]) },
-    }));
-    toast.success("Clearance updated");
+  const isStepDone = useCallback(
+    (empId: string, stepKey: string) =>
+      journeys[empId]?.tasks.find((t) => t.taskKey === stepKey)?.completed ?? false,
+    [journeys]
+  );
+
+  /**
+   * Starts an exit checklist for someone who does not have one yet.
+   *
+   * Created on first tick rather than up front, so a page listing every leaver
+   * does not write a row for each of them before anyone has done anything.
+   */
+  const ensureJourney = useCallback(
+    async (emp: EmployeeDoc): Promise<LifecycleJourney | null> => {
+      const existing = journeys[emp.id];
+      if (existing) return existing;
+
+      const response = await fetch("/api/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          employeeId: emp.id,
+          kind: "offboarding",
+          anchorDate: emp.lastWorkingDay ?? new Date().toISOString().slice(0, 10),
+          tasks: CLEARANCE_STEPS.map((step, index) => ({
+            taskKey: step.key,
+            title: step.label,
+            phase: "clearance",
+            phaseOrder: index,
+            mandatory: MANDATORY_STEPS.has(step.key),
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        toast.error(body.error ?? "Could not start the exit checklist");
+        return null;
+      }
+
+      const body = (await response.json()) as { data: LifecycleJourney };
+      setJourneys((prev) => ({ ...prev, [emp.id]: body.data }));
+      return body.data;
+    },
+    [journeys]
+  );
+
+  const toggleClearance = async (emp: EmployeeDoc, stepKey: string) => {
+    setSaving(`${emp.id}:${stepKey}`);
+    try {
+      const journey = await ensureJourney(emp);
+      if (!journey) return;
+
+      const task = journey.tasks.find((t) => t.taskKey === stepKey);
+      if (!task) {
+        toast.error("That clearance step is not on this checklist");
+        return;
+      }
+
+      const response = await fetch(`/api/lifecycle/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ completed: !task.completed }),
+      });
+
+      const body = (await response.json().catch(() => ({}))) as {
+        data?: LifecycleJourney;
+        error?: string;
+      };
+
+      if (!response.ok || !body.data) {
+        // Said plainly. The old version reported success unconditionally.
+        toast.error(body.error ?? "That clearance could not be saved");
+        return;
+      }
+
+      setJourneys((prev) => ({ ...prev, [emp.id]: body.data! }));
+      toast.success(task.completed ? "Clearance reopened" : "Clearance recorded");
+    } catch {
+      toast.error("That clearance could not be saved");
+    } finally {
+      setSaving(null);
+    }
   };
 
   const completedExits = useMemo(() =>
     exitEmployees.filter(e => getClearanceCount(e.id) === CLEARANCE_STEPS.length).length,
-  [exitEmployees, clearances]);
+  [exitEmployees, getClearanceCount]);
 
   const pendingClearance = exitEmployees.length - completedExits;
   const noticeCount = exitEmployees.filter(e => e.status === "notice_period").length;
@@ -108,10 +242,10 @@ export default function OffboardingPage() {
   const clearanceChart = useMemo(() =>
     CLEARANCE_STEPS.map(s => ({
       name: s.label.substring(0, 12),
-      completed: exitEmployees.filter(e => clearances[e.id]?.[s.key]).length,
-      pending: exitEmployees.length - exitEmployees.filter(e => clearances[e.id]?.[s.key]).length,
+      completed: exitEmployees.filter(e => isStepDone(e.id, s.key)).length,
+      pending: exitEmployees.length - exitEmployees.filter(e => isStepDone(e.id, s.key)).length,
     })),
-  [exitEmployees, clearances]);
+  [exitEmployees, isStepDone]);
 
   const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899"];
 
@@ -179,7 +313,7 @@ export default function OffboardingPage() {
             <div className="space-y-4 stagger-children">
               {filtered.map(emp => {
                 const pct = getClearancePercent(emp.id);
-                const empClearance = clearances[emp.id] || {};
+                const journey = journeys[emp.id];
                 return (
                   <Card key={emp.id} className="animate-slide-up">
                     <CardContent className="p-4">
@@ -215,24 +349,44 @@ export default function OffboardingPage() {
                       </Button>
                       {selectedEmp?.id === emp.id && (
                         <div className="space-y-2 mt-2">
-                          {CLEARANCE_STEPS.map((step, i) => (
+                          {/* Named what is outstanding rather than only
+                              refusing to finish. "You cannot close this" is
+                              not useful without "because these are open". */}
+                          {journey && journey.blocking.length > 0 && (
+                            <p className="text-xs text-amber-600 px-1">
+                              Cannot be certified complete until:{" "}
+                              {journey.blocking.map(b => b.title).join(", ")}
+                            </p>
+                          )}
+                          {CLEARANCE_STEPS.map((step) => {
+                            const done = isStepDone(emp.id, step.key);
+                            const busy = saving === `${emp.id}:${step.key}`;
+                            return (
                             <div key={step.key} className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors">
                               <Checkbox
-                                checked={!!empClearance[step.key]}
-                                onCheckedChange={() => toggleClearance(emp.id, step.key)}
+                                checked={done}
+                                disabled={busy}
+                                onCheckedChange={() => void toggleClearance(emp, step.key)}
+                                aria-label={step.label}
                               />
-                              <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center", empClearance[step.key] ? "bg-green-100 dark:bg-green-900/30" : "bg-muted")}>
-                                <step.icon className={cn("h-4 w-4", empClearance[step.key] ? "text-green-600" : "text-muted-foreground")} />
+                              <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center", done ? "bg-green-100 dark:bg-green-900/30" : "bg-muted")}>
+                                <step.icon className={cn("h-4 w-4", done ? "text-green-600" : "text-muted-foreground")} />
                               </div>
                               <div className="flex-1">
-                                <p className={cn("text-sm font-medium", empClearance[step.key] && "line-through text-muted-foreground")}>{step.label}</p>
+                                <p className={cn("text-sm font-medium", done && "line-through text-muted-foreground")}>
+                                  {step.label}
+                                  {MANDATORY_STEPS.has(step.key) && (
+                                    <span className="ml-1 text-xs text-muted-foreground">(required)</span>
+                                  )}
+                                </p>
                                 <p className="text-xs text-muted-foreground">{step.description}</p>
                               </div>
-                              <Badge variant="outline" className={cn("text-xs", empClearance[step.key] ? "border-green-500 text-green-600" : "border-amber-500 text-amber-600")}>
-                                {empClearance[step.key] ? "Done" : "Pending"}
+                              <Badge variant="outline" className={cn("text-xs", done ? "border-green-500 text-green-600" : "border-amber-500 text-amber-600")}>
+                                {busy ? "Saving…" : done ? "Done" : "Pending"}
                               </Badge>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </CardContent>
@@ -246,7 +400,7 @@ export default function OffboardingPage() {
         <TabsContent value="workflow" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {CLEARANCE_STEPS.map((step, i) => {
-              const completed = exitEmployees.filter(e => clearances[e.id]?.[step.key]).length;
+              const completed = exitEmployees.filter(e => isStepDone(e.id, step.key)).length;
               const pct = exitEmployees.length ? Math.round((completed / exitEmployees.length) * 100) : 0;
               return (
                 <Card key={step.key}>
@@ -285,7 +439,7 @@ export default function OffboardingPage() {
                     const leaveEncashment = Math.round(salary * 0.15);
                     const gratuity = Math.round(salary * 0.5);
                     const total = noticePay + leaveEncashment + gratuity;
-                    const settled = clearances[emp.id]?.settlement;
+                    const settled = isStepDone(emp.id, "settlement");
                     return (
                       <div key={emp.id} className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50">
                         <div className="flex items-center gap-3">
@@ -396,7 +550,7 @@ export default function OffboardingPage() {
           {/* Stats Grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {CLEARANCE_STEPS.map(step => {
-              const completed = exitEmployees.filter(e => clearances[e.id]?.[step.key]).length;
+              const completed = exitEmployees.filter(e => isStepDone(e.id, step.key)).length;
               const pct = exitEmployees.length ? Math.round((completed / exitEmployees.length) * 100) : 0;
               return (
                 <Card key={step.key}>

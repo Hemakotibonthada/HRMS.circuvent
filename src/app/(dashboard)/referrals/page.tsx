@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { dateKeyInZone } from "@/lib/date-keys";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useReferralStore, startSync } from "@/stores/unified-store";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 
 const STATUS_COLORS: Record<string, string> = {
   submitted: "status-pending",
@@ -74,7 +75,7 @@ export default function ReferralsPage() {
       position: fd.get("position") as string,
       status: "submitted",
       bonus: 0,
-      referredDate: new Date().toISOString().split("T")[0],
+      referredDate: dateKeyInZone(new Date()),
     };
     try {
       await genericService(COLLECTIONS.referrals).create(data);

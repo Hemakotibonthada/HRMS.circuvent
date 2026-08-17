@@ -1,18 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, StyleSheet, Switch, View } from "react-native";
 import { useRouter } from "expo-router";
+import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
+import { Screen } from "@/components/Screen";
 import { TextField } from "@/components/TextField";
+import { AppText } from "@/components/Typography";
 import { ApiError } from "@/lib/contracts";
 import {
   daysBetween,
@@ -52,10 +45,12 @@ export default function ApplyLeaveScreen() {
   const [isHalfDay, setIsHalfDay] = useState(false);
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<Partial<Record<LeaveField, string>>>({});
-  const [banner, setBanner] = useState<string | null>(null);
+  const [banner, setBanner] = useState<{
+    tone: "info" | "warning" | "error";
+    title: string;
+    description?: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const draft = { leaveType, startDate, endDate, isHalfDay, reason };
 
   const totalDays = useMemo(() => {
     if (!isRealDate(startDate) || !isRealDate(endDate) || endDate < startDate) return null;
@@ -66,7 +61,13 @@ export default function ApplyLeaveScreen() {
   const apply = useCallback(async () => {
     setBanner(null);
 
-    const found = validateLeave(draft, today);
+    // Built here rather than in the component body. A fresh object on every
+    // render changes this callback's identity every render, which defeats the
+    // memoisation and re-creates the handler under the finger mid-tap.
+    const found = validateLeave(
+      { leaveType, startDate, endDate, isHalfDay, reason },
+      today
+    );
     setErrors(found);
     if (Object.keys(found).length > 0) return;
 
@@ -92,223 +93,180 @@ export default function ApplyLeaveScreen() {
       if (outcome === "sent") {
         router.back();
       } else if (outcome === "queued") {
-        setBanner("Saved on this device. It will be submitted when you have a connection.");
+        setBanner({
+          tone: "info",
+          title: "Saved on this device",
+          description: "It will be submitted when you have a connection.",
+        });
       } else {
         // Permanently refused. Going back to the list would show no new
         // request and no explanation for why.
-        setBanner(
-          "This request could not be submitted and will not be retried. Check the dates and your balance, or speak to HR."
-        );
+        setBanner({
+          tone: "error",
+          title: "This request was not submitted",
+          description:
+            "It will not be retried. Check the dates and your balance, or speak to HR.",
+        });
       }
     } catch (error) {
-      setBanner(
-        error instanceof ApiError ? error.message : "Something went wrong. Please try again."
-      );
+      setBanner({
+        tone: "error",
+        title: "That did not work",
+        description:
+          error instanceof ApiError ? error.message : "Something went wrong. Please try again.",
+      });
     } finally {
       setBusy(false);
     }
-  }, [draft, today, submit, leaveType, startDate, endDate, isHalfDay, reason, router]);
+  }, [today, submit, leaveType, startDate, endDate, isHalfDay, reason, router]);
 
   return (
-    <SafeAreaView
-      style={[styles.safe, { backgroundColor: theme.colors.background }]}
-      edges={["bottom"]}
-    >
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={{ padding: theme.spacing.lg }}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
-          {banner ? (
-            <View
-              accessibilityRole="alert"
+    <Screen keyboardAware>
+      {banner ? (
+        <Banner
+          tone={banner.tone}
+          title={banner.title}
+          description={banner.description}
+          style={{ marginBottom: theme.spacing.lg }}
+        />
+      ) : null}
+
+      <AppText variant="footnote" weight="medium" style={{ marginBottom: theme.spacing.sm }}>
+        Leave type
+      </AppText>
+
+      {/* A row of buttons rather than a picker. Seven options fit, and a
+          native picker on Android is a modal that hides the rest of the form
+          — including the error the person is trying to fix. */}
+      <View accessibilityRole="radiogroup" style={[styles.chips, { marginBottom: theme.spacing.lg }]}>
+        {LEAVE_TYPES.map((type) => {
+          const selected = leaveType === type;
+
+          return (
+            <Pressable
+              key={type}
+              accessibilityRole="radio"
+              accessibilityState={{ selected, checked: selected }}
+              accessibilityLabel={`${titleCase(type)} leave`}
+              onPress={() => setLeaveType(type)}
+              hitSlop={4}
               style={{
-                backgroundColor: theme.colors.warningSubtle,
-                borderRadius: theme.radius.md,
-                padding: theme.spacing.md,
-                marginBottom: theme.spacing.lg,
+                minHeight: MIN_TOUCH_TARGET,
+                justifyContent: "center",
+                paddingHorizontal: theme.spacing.lg,
+                marginRight: theme.spacing.sm,
+                marginBottom: theme.spacing.sm,
+                borderRadius: theme.radius.pill,
+                backgroundColor: selected ? theme.colors.primary : theme.colors.surfaceElevated,
+                borderWidth: StyleSheet.hairlineWidth * 2,
+                borderColor: selected ? theme.colors.primary : theme.colors.border,
               }}
             >
-              <Text
-                style={{
-                  color: theme.colors.warning,
-                  fontSize: theme.fontSize.footnote,
-                  lineHeight: theme.lineHeight.footnote,
-                }}
+              <AppText
+                variant="footnote"
+                tone={selected ? "onPrimary" : "default"}
+                weight={selected ? "semibold" : "regular"}
               >
-                {banner}
-              </Text>
-            </View>
-          ) : null}
+                {titleCase(type)}
+              </AppText>
+            </Pressable>
+          );
+        })}
+      </View>
 
-          <Text
-            style={{
-              color: theme.colors.text,
-              fontSize: theme.fontSize.footnote,
-              lineHeight: theme.lineHeight.footnote,
-              fontWeight: theme.fontWeight.medium,
-              marginBottom: theme.spacing.sm,
-            }}
-          >
-            Leave type
-          </Text>
+      {errors.leaveType ? (
+        <AppText
+          variant="footnote"
+          tone="danger"
+          accessibilityRole="alert"
+          style={{ marginBottom: theme.spacing.md }}
+        >
+          {errors.leaveType}
+        </AppText>
+      ) : null}
 
-          {/* A row of buttons rather than a picker. Seven options fit, and a
-              native picker on Android is a modal that hides the rest of the
-              form — including the error the person is trying to fix. */}
-          <View
-            accessibilityRole="radiogroup"
-            style={[styles.chips, { marginBottom: theme.spacing.lg }]}
-          >
-            {LEAVE_TYPES.map((type) => {
-              const selected = leaveType === type;
-              return (
-                <Pressable
-                  key={type}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected, checked: selected }}
-                  accessibilityLabel={`${titleCase(type)} leave`}
-                  onPress={() => setLeaveType(type)}
-                  hitSlop={4}
-                  style={{
-                    minHeight: MIN_TOUCH_TARGET,
-                    justifyContent: "center",
-                    paddingHorizontal: theme.spacing.lg,
-                    marginRight: theme.spacing.sm,
-                    marginBottom: theme.spacing.sm,
-                    borderRadius: theme.radius.pill,
-                    backgroundColor: selected ? theme.colors.primary : theme.colors.surfaceElevated,
-                    borderWidth: StyleSheet.hairlineWidth * 2,
-                    borderColor: selected ? theme.colors.primary : theme.colors.border,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: selected ? theme.colors.onPrimary : theme.colors.text,
-                      fontSize: theme.fontSize.footnote,
-                      fontWeight: selected ? theme.fontWeight.semibold : theme.fontWeight.regular,
-                    }}
-                  >
-                    {titleCase(type)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+      <TextField
+        label="Start date"
+        hint="YYYY-MM-DD"
+        value={startDate}
+        onChangeText={(next) => {
+          setStartDate(next);
+          // A half day is one day, so the end follows the start rather than
+          // being left behind at a stale value the user cannot see.
+          if (isHalfDay) setEndDate(next);
+        }}
+        error={errors.startDate}
+        keyboardType="numbers-and-punctuation"
+        autoCapitalize="none"
+        autoCorrect={false}
+        maxLength={10}
+        editable={!busy}
+      />
 
-          {errors.leaveType ? (
-            <Text
-              accessibilityRole="alert"
-              style={{
-                color: theme.colors.danger,
-                fontSize: theme.fontSize.footnote,
-                marginBottom: theme.spacing.md,
-              }}
-            >
-              {errors.leaveType}
-            </Text>
-          ) : null}
+      <TextField
+        label="End date"
+        hint={isHalfDay ? "Same as the start date for a half day" : "YYYY-MM-DD"}
+        value={endDate}
+        onChangeText={setEndDate}
+        error={errors.endDate}
+        keyboardType="numbers-and-punctuation"
+        autoCapitalize="none"
+        autoCorrect={false}
+        maxLength={10}
+        editable={!busy && !isHalfDay}
+      />
 
-          <TextField
-            label="Start date"
-            hint="YYYY-MM-DD"
-            value={startDate}
-            onChangeText={(next) => {
-              setStartDate(next);
-              // A half day is one day, so the end follows the start rather
-              // than being left behind at a stale value the user cannot see.
-              if (isHalfDay) setEndDate(next);
-            }}
-            error={errors.startDate}
-            keyboardType="numbers-and-punctuation"
-            autoCapitalize="none"
-            autoCorrect={false}
-            maxLength={10}
-            editable={!busy}
-          />
+      <View style={[styles.between, { marginBottom: theme.spacing.lg }]}>
+        <AppText variant="body">Half day</AppText>
+        <Switch
+          value={isHalfDay}
+          onValueChange={(next) => {
+            setIsHalfDay(next);
+            if (next) setEndDate(startDate);
+          }}
+          accessibilityLabel="Half day"
+          accessibilityHint="Applies for half of a single day"
+          disabled={busy}
+        />
+      </View>
 
-          <TextField
-            label="End date"
-            hint={isHalfDay ? "Same as the start date for a half day" : "YYYY-MM-DD"}
-            value={endDate}
-            onChangeText={setEndDate}
-            error={errors.endDate}
-            keyboardType="numbers-and-punctuation"
-            autoCapitalize="none"
-            autoCorrect={false}
-            maxLength={10}
-            editable={!busy && !isHalfDay}
-          />
+      {totalDays !== null ? (
+        // Shown before submitting, because the number of days is the thing
+        // that comes off the balance and the one people get wrong.
+        <AppText
+          variant="footnote"
+          tone="muted"
+          accessibilityLiveRegion="polite"
+          style={{ marginBottom: theme.spacing.lg }}
+        >
+          This will use {totalDays} {totalDays === 1 ? "day" : "days"} of your balance.
+        </AppText>
+      ) : null}
 
-          <View style={[styles.between, { marginBottom: theme.spacing.lg }]}>
-            <Text
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.fontSize.body,
-                lineHeight: theme.lineHeight.body,
-              }}
-            >
-              Half day
-            </Text>
-            <Switch
-              value={isHalfDay}
-              onValueChange={(next) => {
-                setIsHalfDay(next);
-                if (next) setEndDate(startDate);
-              }}
-              accessibilityLabel="Half day"
-              accessibilityHint="Applies for half of a single day"
-              disabled={busy}
-            />
-          </View>
+      <TextField
+        label="Reason"
+        value={reason}
+        onChangeText={setReason}
+        error={errors.reason}
+        multiline
+        numberOfLines={3}
+        maxLength={1000}
+        editable={!busy}
+      />
 
-          {totalDays !== null ? (
-            // Shown before submitting, because the number of days is the thing
-            // that comes off the balance and the one people get wrong.
-            <Text
-              accessibilityLiveRegion="polite"
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.fontSize.footnote,
-                lineHeight: theme.lineHeight.footnote,
-                marginBottom: theme.spacing.lg,
-              }}
-            >
-              This will use {totalDays} {totalDays === 1 ? "day" : "days"} of your balance.
-            </Text>
-          ) : null}
-
-          <TextField
-            label="Reason"
-            value={reason}
-            onChangeText={setReason}
-            error={errors.reason}
-            multiline
-            numberOfLines={3}
-            maxLength={1000}
-            editable={!busy}
-          />
-
-          <Button label="Submit request" onPress={apply} busy={busy} />
-          <Button
-            label="Cancel"
-            variant="ghost"
-            onPress={() => router.back()}
-            style={{ marginTop: theme.spacing.sm }}
-          />
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      <Button label="Submit request" onPress={apply} busy={busy} />
+      <Button
+        label="Cancel"
+        variant="ghost"
+        onPress={() => router.back()}
+        disabled={busy}
+        style={{ marginTop: theme.spacing.sm }}
+      />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  flex: { flex: 1 },
   chips: { flexDirection: "row", flexWrap: "wrap" },
   between: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
 });

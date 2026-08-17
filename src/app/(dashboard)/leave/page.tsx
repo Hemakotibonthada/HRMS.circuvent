@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { dateKeyInZone } from "@/lib/date-keys";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +29,7 @@ import {
   Tooltip as RTooltip,
 } from "recharts";
 import { useLeaveStore, startSync, type LeaveDoc } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════
@@ -148,7 +149,7 @@ export default function LeavePage() {
         ...form,
         days,
         status: "pending",
-        appliedOn: new Date().toISOString().split("T")[0],
+        appliedOn: dateKeyInZone(new Date()),
       });
       toast.success("Leave request submitted successfully!");
       setCreateOpen(false);

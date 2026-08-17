@@ -2,16 +2,26 @@
   "expo": {
     "name": "Circuvent HR",
     "slug": "circuvent-hrms",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "circuvent",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "primaryColor": "#783FF5",
     "splash": {
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#F4F4F7"
+      "backgroundColor": "#F4F4F7",
+      "dark": {
+        "image": "./assets/splash-dark.png",
+        "backgroundColor": "#0B0B10"
+      }
     },
     "assetBundlePatterns": ["**/*"],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.circuvent.hrms",
@@ -23,8 +33,10 @@
     },
     "android": {
       "package": "com.circuvent.hrms",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#F4F4F7"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#783FF5"
       },
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -36,6 +48,10 @@
       ],
       "allowBackup": false
     },
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#783FF5"
+    },
     "plugins": [
       "expo-router",
       "expo-secure-store",
@@ -46,6 +62,9 @@
         }
       ]
     ],
+    "extra": {
+      "apiBaseUrl": "https://hrms.circuvent.com"
+    },
     "experiments": {
       "typedRoutes": true
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useToday } from "@/hooks/use-now";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ import {
   useExpenseStore, useJobStore, useCourseStore,
   startSync,
 } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataLoadingSkeleton } from "@/components/data-empty-state";
 
 const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ec4899","#ef4444","#6366f1","#14b8a6"];
@@ -91,7 +92,7 @@ export default function DashboardPage() {
   }).length;
 
   const pendingLeaves = leaveStore.items.filter(l => l.status === "pending").length;
-  const todayDate = new Date().toISOString().split("T")[0];
+  const todayDate = useToday() ?? "";
   const todayAttendance = attStore.items.filter(a => a.date === todayDate);
   const presentToday = todayAttendance.filter(a => a.status === "present" || a.status === "late").length;
   const wfhToday = todayAttendance.filter(a => a.status === "wfh").length;

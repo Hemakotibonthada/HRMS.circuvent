@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useToday } from "@/hooks/use-now";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +24,7 @@ import {
   Tooltip as RTooltip,
 } from "recharts";
 import { useVisitorStore, startSync, type VisitorDoc } from "@/stores/unified-store";
-import { COLLECTIONS, genericService } from "@/lib/firestore-service";
+import { COLLECTIONS, genericService } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════
@@ -51,7 +52,7 @@ export default function VisitorsPage() {
 
   useEffect(() => { if (!initialized) startSync(COLLECTIONS.visitors, store); }, [initialized, store]);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = useToday() ?? "";
 
   // Filter today/pre-registered/history
   const todayVisitors = useMemo(() => items.filter(v => v.date === today || v.date?.startsWith(today)), [items, today]);

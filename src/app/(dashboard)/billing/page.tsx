@@ -15,12 +15,20 @@ import { cn } from "@/lib/utils";
 import { SUBSCRIPTION_PLANS } from "@/lib/constants";
 import { clickable } from "@/lib/a11y/clickable";
 
-const INVOICES = [
-  { id: "INV-2026-003", date: "Mar 1, 2026", amount: "$1,200", status: "paid" as const, plan: "Professional" },
-  { id: "INV-2026-002", date: "Feb 1, 2026", amount: "$1,200", status: "paid" as const, plan: "Professional" },
-  { id: "INV-2026-001", date: "Jan 1, 2026", amount: "$1,200", status: "paid" as const, plan: "Professional" },
-  { id: "INV-2025-012", date: "Dec 1, 2025", amount: "$750", status: "paid" as const, plan: "Starter" },
-];
+/**
+ * Billing history.
+ *
+ * Empty, because nothing stores invoices. There is a `subscriptions` table in
+ * the identity schema, but no invoice table anywhere, and the four rows that
+ * used to sit here — "$1,200 · Professional · paid" for three consecutive
+ * months — were typed in. They were also denominated in dollars, on a product
+ * whose every other amount is rupees, which is a fair sign of where they came
+ * from.
+ *
+ * An empty list under a heading is honest. Four invoices somebody never
+ * received, marked paid, are not.
+ */
+const INVOICES: { id: string; date: string; amount: string; status: "paid" | "due"; plan: string }[] = [];
 
 export default function BillingPage() {
   const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);

@@ -22,7 +22,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip,
 } from "recharts";
-import { COLLECTIONS, genericService } from "@/lib/firestore-service";
+import { COLLECTIONS, genericService } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { useNowMs } from "@/hooks/use-now";
 

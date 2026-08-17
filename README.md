@@ -10,18 +10,21 @@ for people data; ATS, CV-365, Mail and the Office portal consume it.
 
 ## Status
 
-Mid-migration from Firebase to Neon Postgres on Vercel. See
-[`docs/ROADMAP.md`](./docs/ROADMAP.md) for what is done and what is next.
+Runs on Neon Postgres, deployed to Vercel. See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for what is
+done and what is next.
 
-| | Current | Target |
-|---|---|---|
-| Database | Firestore `hrms-circuvent` | Neon Postgres, schema-per-app, row-level security |
-| Auth | Firebase Auth | Circuvent identity service (JWT + Argon2id + TOTP) |
-| Hosting | Firebase Hosting | Vercel |
-| Files | Firebase Storage | Vercel Blob |
+| | Stack |
+|---|---|
+| Database | Neon Postgres, schema-per-app, row-level security |
+| Auth | Circuvent identity service (JWT + Argon2id + TOTP) |
+| Hosting | Vercel |
+| Files | Vercel Blob |
 
-Both data backends run side by side behind `DATA_BACKEND`, so the cutover — and rollback — is an
-environment variable rather than a deploy.
+The migration off Firebase is **finished**. Firestore, Firebase Auth, Firebase Storage, the
+`DATA_BACKEND` switch and the `firebase-admin` dependency have all been removed — Postgres is the
+only backend, and there is no runtime path to anything else. `src/lib/collection-service.ts` (once
+`firestore-service.ts`) is a plain HTTP client for this app's own API routes, which is why the name
+changed: it kept suggesting a dependency that no longer exists.
 
 ---
 
@@ -43,10 +46,9 @@ Every variable is documented in [`.env.example`](./.env.example). The ones that 
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | Neon connection string. **Connect as `hrms_app`, not the Neon owner role** — RLS is bypassed by the table owner, so using the owner silently disables tenant isolation. |
-| `DATA_BACKEND` | `firestore` \| `neon` \| `dual`. Selects which store serves reads and writes. |
 | `AUTH_JWT_SECRET` | Signs the access token. Must be ≥ 32 characters; signing refuses to run otherwise. Generate with `openssl rand -hex 32`. |
+| `ENCRYPTION_KEY` | Encrypts TOTP secrets, SSO client secrets, Aadhaar and PAN at rest. 32 bytes of base64 — `openssl rand -base64 32`. Encryption refuses to run without it rather than storing plaintext; reads are unaffected, so turning it on locks nobody out. |
 | `AUTH_COOKIE_DOMAIN` | `.circuvent.com` in production so one sign-in covers every app subdomain. Leave unset locally. |
-| `NEXT_PUBLIC_FIREBASE_*` | Required while `DATA_BACKEND` is `firestore` or `dual`. There are no hardcoded fallbacks; a missing value throws. |
 
 ---
 
@@ -65,7 +67,13 @@ Every variable is documented in [`.env.example`](./.env.example). The ones that 
 | `npm run db:generate` | Generate a migration from the Drizzle schema |
 | `npm run db:migrate` | Apply migrations to `DATABASE_URL` |
 | `npm run db:verify` | Apply every migration to an in-memory Postgres and assert tenant isolation. **Needs no database.** |
-| `npm run db:migrate:data` | Copy Firestore data into Neon. Supports `--dry-run` and `--verify`. |
+| `npm run db:verify:encryption` | Prove the encryption backfill and key rotation against a real Postgres engine. **Needs no database.** |
+| `npm run db:verify:modules` | Prove expense claims and recruitment persist, stay tenant-isolated, and enforce their constraints. **Needs no database.** |
+| `npm run db:verify:plans` | Prove the list-query indexes are actually chosen by the planner, with a counterfactual. **Needs no database.** |
+| `npm run audit:data-paths` | Assert every dashboard page reads a collection something actually serves. |
+| `npm run audit:fabricated` | Assert no invented metrics, fake statutory identifiers or placeholder people ship in the UI. |
+| `npm run db:encrypt-fields` | Encrypt sensitive columns that are still plaintext, and re-wrap anything under a retired key. Idempotent; supports `--dry-run`. |
+| `npm run db:seed:templates` | Install the eight document templates into every org that lacks them. Never overwrites. |
 
 ---
 
@@ -79,13 +87,13 @@ src/
 │   └── api/             route handlers
 ├── db/
 │   ├── schema/          Drizzle — identity (shared) + hrms
-│   ├── repositories/    the Firestore ↔ Neon seam
+│   ├── repositories/    Postgres data access, one module per aggregate
 │   └── client.ts        Neon clients + withTenant()
 ├── lib/
 │   ├── auth/            password, tokens, MFA, sessions
 │   ├── payroll-engine.ts
 │   ├── rbac.ts          4 roles, ~150 permissions, 92 module gates
-│   ├── tenant.ts        Firestore-era org scoping
+│   ├── tenant.ts        application-level org scoping (RLS is the real control)
 │   └── ecosystem.ts     cross-app URLs — same file in every Circuvent app
 ├── stores/              Zustand, backed by repositories
 └── middleware.ts        edge auth gate
@@ -100,8 +108,9 @@ Two layers, and the order matters.
 transaction so a pooled connection cannot leak one tenant's context into the next request. A query
 with no `WHERE` clause still cannot read another tenant.
 
-**Application scoping** (`src/lib/tenant.ts`) is what the Firestore path relies on, where the filter
-had to be remembered on every query. That is why the migration matters.
+**Application scoping** (`src/lib/tenant.ts`) adds a filter in application code. It is defence in
+depth only: it has to be remembered on every query, which is exactly why RLS is the layer that
+decides.
 
 `npm run db:verify` proves the first layer against a real Postgres engine, including that an
 unfiltered `SELECT` returns nothing from another organization.
@@ -118,12 +127,12 @@ Enforced in three places, deliberately redundant:
 
 ### Data access
 
-Never call Firestore or Drizzle from a component. Go through a repository:
+Never call Drizzle from a component. Go through a repository:
 
 ```ts
 import { employeeRepository } from "@/db/repositories";
 
-const repo = employeeRepository();          // client-side; honours DATA_BACKEND
+const repo = employeeRepository();          // client-side; talks to this app's API routes
 const page = await repo.list({ search: "asha", pageSize: 25 });
 ```
 
@@ -182,21 +191,6 @@ CI reports all of this but does not gate on it; `lint:strict` holds new code to 
 
 CI (`.github/workflows/verify.yml`) runs typecheck, lint, migrations, tenant-isolation checks,
 tests, build, and gitleaks secret scanning.
-
-### Migrating data to Neon
-
-```bash
-npm run db:migrate:data -- --dry-run    # report only
-npm run db:migrate:data                 # copy, then reconcile counts
-npm run db:migrate:data -- --verify     # compare both stores
-```
-
-The script is idempotent — every write is an upsert on a natural key, so an interrupted run can be
-repeated. Imported users arrive with `must_reset_password` set, because Firebase Auth password
-hashes cannot be verified outside Firebase.
-
-Set `DATA_BACKEND=dual` and let the nightly reconciliation run clean for seven days before moving
-reads to `neon`.
 
 ---
 

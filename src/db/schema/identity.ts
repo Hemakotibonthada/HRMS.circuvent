@@ -132,8 +132,16 @@ export const users = identity.table(
      * then create a second account rather than updating the first.
      */
     externalId: text("external_id"),
-    /** TOTP secret, encrypted at rest. Null until MFA is enrolled. */
+    /**
+     * TOTP secret, encrypted at rest with `lib/crypto/field-encryption`.
+     * Null until MFA is enrolled.
+     */
     mfaSecret: text("mfa_secret"),
+    /**
+     * When enrolment was confirmed. Null while a secret exists but has never
+     * been proved with a live code — sign-in does not enforce MFA in that
+     * state, or abandoning enrolment would lock the account out.
+     */
     mfaEnabledAt: timestamp("mfa_enabled_at", { withTimezone: true }),
     /** Argon2id hashes of single-use MFA recovery codes. */
     mfaBackupCodes: jsonb("mfa_backup_codes").notNull().default(sql`'[]'::jsonb`),

@@ -1,0 +1,14 @@
+First release.
+
+Clock in and out, with your work location checked before the punch is sent, and
+the punch saved on your phone if you have no signal.
+
+Book leave and see your balance. Track a request through to the decision.
+
+Your published shifts for the next four weeks.
+
+Every released payslip.
+
+Raise a helpdesk ticket and follow it.
+
+Optional biometric unlock. Light and dark themes.

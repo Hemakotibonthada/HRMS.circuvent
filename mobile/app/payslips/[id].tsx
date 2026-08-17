@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+import { Banner } from "@/components/Banner";
+import { Card } from "@/components/Card";
+import { EmptyState } from "@/components/EmptyState";
+import { Screen } from "@/components/Screen";
+import { Skeleton } from "@/components/Skeleton";
+import { AppText } from "@/components/Typography";
 import { ApiError, OfflineError } from "@/lib/contracts";
 import { formatMoney, formatPeriod } from "@shared/money/format";
 import { useSession } from "@/lib/session";
@@ -17,6 +22,10 @@ interface Payslip {
   gross: number;
   totalDeductions: number;
   netPay: number;
+  /** Exact whole paise, for any arithmetic. See payslips/index.tsx. */
+  grossMinor: string;
+  totalDeductionsMinor: string;
+  netPayMinor: string;
   status: string;
   anomalies: string[];
 }
@@ -38,7 +47,7 @@ export default function PayslipDetailScreen() {
 
   const [payslip, setPayslip] = useState<Payslip | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; description?: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -50,9 +59,14 @@ export default function PayslipDetailScreen() {
       setPayslip(response.payslips.find((p) => p.id === id) ?? null);
     } catch (caught) {
       if (caught instanceof OfflineError) {
-        setError("Offline. Payslips are not stored on this device.");
+        setError({
+          title: "You are offline",
+          description: "Payslips are not stored on this device.",
+        });
       } else if (caught instanceof ApiError) {
-        setError(caught.message);
+        setError({ title: "This payslip could not be loaded", description: caught.message });
+      } else {
+        setError({ title: "This payslip could not be loaded" });
       }
     } finally {
       setLoading(false);
@@ -63,131 +77,104 @@ export default function PayslipDetailScreen() {
     void load();
   }, [load]);
 
+  if (loading) {
+    return (
+      <Screen>
+        <Skeleton height={theme.lineHeight.body} width="40%" />
+        <Skeleton
+          height={theme.lineHeight.display}
+          width="65%"
+          style={{ marginTop: theme.spacing.sm }}
+        />
+        <Skeleton height={160} radius={theme.radius.md} style={{ marginTop: theme.spacing.xl }} />
+      </Screen>
+    );
+  }
+
+  if (error) {
+    return (
+      <Screen>
+        <Banner tone="error" title={error.title} description={error.description} />
+      </Screen>
+    );
+  }
+
+  if (!payslip) {
+    return (
+      <Screen>
+        <EmptyState
+          title="This payslip could not be found"
+          description="It may belong to a run that was withdrawn for correction."
+        />
+      </Screen>
+    );
+  }
+
   return (
-    <SafeAreaView
-      style={[styles.safe, { backgroundColor: theme.colors.background }]}
-      edges={["bottom"]}
-    >
-      <ScrollView contentContainerStyle={{ padding: theme.spacing.lg }}>
-        {error ? (
-          <Text
-            accessibilityRole="alert"
-            style={{ color: theme.colors.danger, fontSize: theme.fontSize.body }}
-          >
-            {error}
-          </Text>
-        ) : loading ? (
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.fontSize.body }}>
-            Loading…
-          </Text>
-        ) : !payslip ? (
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.fontSize.body }}>
-            This payslip could not be found.
-          </Text>
-        ) : (
-          <View>
-            <Text
-              accessibilityRole="header"
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.fontSize.body,
-                lineHeight: theme.lineHeight.body,
-              }}
-            >
-              {formatPeriod(payslip.periodMonth, payslip.periodYear)}
-            </Text>
+    <Screen>
+      <AppText variant="body" tone="muted" heading>
+        {formatPeriod(payslip.periodMonth, payslip.periodYear)}
+      </AppText>
 
-            <Text
-              accessibilityLabel={`Net pay ${formatMoney(payslip.netPay)}`}
-              style={{
-                color: theme.colors.text,
-                fontSize: theme.fontSize.display,
-                lineHeight: theme.lineHeight.display,
-                fontWeight: theme.fontWeight.bold,
-                fontVariant: ["tabular-nums"],
-                marginTop: theme.spacing.xs,
-              }}
-            >
-              {formatMoney(payslip.netPay)}
-            </Text>
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.fontSize.footnote,
-                lineHeight: theme.lineHeight.footnote,
-              }}
-            >
-              Net pay
-            </Text>
+      <AppText
+        variant="display"
+        weight="bold"
+        tabular
+        accessibilityLabel={`Net pay ${formatMoney(payslip.netPay)}`}
+        style={{ marginTop: theme.spacing.xs }}
+      >
+        {formatMoney(payslip.netPay)}
+      </AppText>
+      <AppText variant="footnote" tone="muted">
+        Net pay
+      </AppText>
 
-            <View style={{ marginTop: theme.spacing.xl }}>
-              <Line label="Gross" value={formatMoney(payslip.gross)} />
-              <Line label="Total deductions" value={formatMoney(payslip.totalDeductions)} />
-              <Line label="Net pay" value={formatMoney(payslip.netPay)} emphasis />
-            </View>
+      <Card
+        padded={false}
+        style={{ marginTop: theme.spacing.xl, paddingHorizontal: theme.spacing.md }}
+      >
+        <Line label="Gross" value={formatMoney(payslip.gross)} first />
+        <Line label="Total deductions" value={formatMoney(payslip.totalDeductions)} />
+        <Line label="Net pay" value={formatMoney(payslip.netPay)} emphasis />
+      </Card>
 
-            <View style={{ marginTop: theme.spacing.xl }}>
-              <Line label="Working days" value={String(payslip.workingDays)} />
-              <Line label="Days present" value={String(payslip.presentDays)} />
-              {payslip.lopDays > 0 ? (
-                <Line label="Loss of pay" value={`${payslip.lopDays} days`} />
-              ) : null}
-            </View>
+      <Card
+        padded={false}
+        style={{ marginTop: theme.spacing.lg, paddingHorizontal: theme.spacing.md }}
+      >
+        <Line label="Working days" value={String(payslip.workingDays)} first />
+        <Line label="Days present" value={String(payslip.presentDays)} />
+        {payslip.lopDays > 0 ? (
+          <Line
+            label="Loss of pay"
+            value={`${payslip.lopDays} ${payslip.lopDays === 1 ? "day" : "days"}`}
+          />
+        ) : null}
+      </Card>
 
-            {payslip.anomalies.length > 0 ? (
-              // Surfaced rather than hidden. These are the payroll engine's own
-              // doubts about the figure, and the person it belongs to has more
-              // context than anyone to say whether they are right.
-              <View
-                style={{
-                  backgroundColor: theme.colors.warningSubtle,
-                  borderRadius: theme.radius.md,
-                  padding: theme.spacing.md,
-                  marginTop: theme.spacing.xl,
-                }}
-              >
-                <Text
-                  style={{
-                    color: theme.colors.warning,
-                    fontSize: theme.fontSize.footnote,
-                    lineHeight: theme.lineHeight.footnote,
-                    fontWeight: theme.fontWeight.semibold,
-                  }}
-                >
-                  Flagged for review
-                </Text>
-                {payslip.anomalies.map((anomaly) => (
-                  <Text
-                    key={anomaly}
-                    style={{
-                      color: theme.colors.warning,
-                      fontSize: theme.fontSize.footnote,
-                      lineHeight: theme.lineHeight.footnote,
-                      marginTop: theme.spacing.xs,
-                    }}
-                  >
-                    {anomaly}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
+      {payslip.anomalies.length > 0 ? (
+        // Surfaced rather than hidden. These are the payroll engine's own
+        // doubts about the figure, and the person it belongs to has more
+        // context than anyone to say whether they are right.
+        <Banner
+          tone="warning"
+          title="Flagged for review"
+          style={{ marginTop: theme.spacing.lg }}
+        >
+          {payslip.anomalies.map((anomaly) => (
+            <AppText key={anomaly} variant="footnote" tone="warning" style={{ marginTop: 2 }}>
+              {anomaly}
+            </AppText>
+          ))}
+        </Banner>
+      ) : null}
 
-            <Text
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.fontSize.caption,
-                lineHeight: theme.lineHeight.caption,
-                marginTop: theme.spacing.xl,
-              }}
-            >
-              If any figure here looks wrong, raise it with HR rather than
-              recalculating it yourself — the amounts come from the payroll run
-              and this screen does no arithmetic of its own.
-            </Text>
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+      <AppText variant="caption" tone="muted" style={{ marginTop: theme.spacing.xl }}>
+        If any figure here looks wrong, raise it with HR rather than
+        recalculating it yourself — the amounts come from the payroll run and
+        this screen does no arithmetic of its own.
+      </AppText>
+    </Screen>
   );
 }
 
@@ -195,12 +182,15 @@ function Line({
   label,
   value,
   emphasis = false,
+  first = false,
 }: {
   label: string;
   value: string;
   emphasis?: boolean;
+  first?: boolean;
 }) {
   const theme = useTheme();
+
   return (
     <View
       accessible
@@ -210,35 +200,20 @@ function Line({
         justifyContent: "space-between",
         alignItems: "center",
         borderTopColor: theme.colors.borderSubtle,
-        borderTopWidth: StyleSheet.hairlineWidth * 2,
+        borderTopWidth: first ? 0 : StyleSheet.hairlineWidth * 2,
         paddingVertical: theme.spacing.md,
       }}
     >
-      <Text
-        style={{
-          color: emphasis ? theme.colors.text : theme.colors.textMuted,
-          fontSize: theme.fontSize.body,
-          lineHeight: theme.lineHeight.body,
-          fontWeight: emphasis ? theme.fontWeight.semibold : theme.fontWeight.regular,
-        }}
+      <AppText
+        variant="body"
+        tone={emphasis ? "default" : "muted"}
+        weight={emphasis ? "semibold" : "regular"}
       >
         {label}
-      </Text>
-      <Text
-        style={{
-          color: theme.colors.text,
-          fontSize: theme.fontSize.body,
-          lineHeight: theme.lineHeight.body,
-          fontWeight: emphasis ? theme.fontWeight.bold : theme.fontWeight.medium,
-          fontVariant: ["tabular-nums"],
-        }}
-      >
+      </AppText>
+      <AppText variant="body" weight={emphasis ? "bold" : "medium"} tabular>
         {value}
-      </Text>
+      </AppText>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1 },
-});

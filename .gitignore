@@ -28,6 +28,13 @@ yarn-error.log*
 # env files
 .env
 .env*.local
+# ...and any copy of one. `.env*.local` anchors on the name ending in `.local`,
+# so `.env.local.bak-preSSO` — a backup holding DATABASE_URL and
+# AUTH_JWT_SECRET — was not ignored and would have been committed to a public
+# repository by any `git add -A`. Backups are made under time pressure, which
+# is exactly when nobody reads the staged file list.
+.env*
+!.env.example
 
 # vercel
 .vercel
@@ -53,3 +60,12 @@ emulator-data/
 mobile/node_modules/
 mobile/.expo/
 mobile/expo-env.d.ts
+
+# Android native build output
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.kotlin/
+android/*.jks
+android/*.keystore

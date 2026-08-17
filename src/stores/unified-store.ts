@@ -3,7 +3,7 @@ import {
   employeeService, leaveService, attendanceService, expenseService,
   payrollService, recruitmentService, helpdeskService, announcementService,
   genericService, COLLECTIONS,
-} from "@/lib/firestore-service";
+} from "@/lib/collection-service";
 import { employeeRepository } from "@/db/repositories";
 import type { EmployeeRecord } from "@/db/repositories/types";
 

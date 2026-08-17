@@ -22,7 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useEmployeeStore, startSync, type EmployeeDoc } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -41,8 +41,38 @@ const PHASES = [
   { key: "month2_3", label: "Month 2-3", color: "from-amber-500 to-orange-500", tasks: ["60-day performance review", "Cross-team collaboration", "Advanced tool training", "Goals setting", "90-day completion review"] },
 ];
 
-interface TaskCompletion {
-  [employeeId: string]: { [taskKey: string]: boolean };
+/**
+ * Task keys are derived from the phase and the task text, so the same task
+ * always maps to the same row. Slugified rather than used raw because the key
+ * is a stable identifier — re-wording "First 1-on-1 with manager" should not
+ * orphan everyone's tick.
+ */
+function taskKeyFor(phase: string, task: string): string {
+  return `${phase}__${task.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")}`;
+}
+
+/** Which onboarding steps block completion. */
+const MANDATORY_TASKS = new Set([
+  "Offer letter signed",
+  "Background check",
+  "System access setup",
+  "Policy acknowledgement",
+]);
+
+interface LifecycleTask {
+  id: string;
+  taskKey: string;
+  title: string;
+  completed: boolean;
+}
+
+interface LifecycleJourney {
+  id: string;
+  employeeId: string;
+  status: string;
+  progress: { total: number; completed: number; percent: number };
+  blocking: { taskKey: string; title: string }[];
+  tasks: LifecycleTask[];
 }
 
 export default function OnboardingPage() {
@@ -53,10 +83,42 @@ export default function OnboardingPage() {
   const [tab, setTab] = useState("onboarding");
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedJoiner, setSelectedJoiner] = useState<EmployeeDoc | null>(null);
-  const [taskCompletions, setTaskCompletions] = useState<TaskCompletion>({});
+  /**
+   * Onboarding checklists, keyed by employee.
+   *
+   * Was `useState<TaskCompletion>({})` with no request anywhere — a new
+   * joiner's whole first-90-days checklist lived in one browser tab and
+   * disappeared with it. Onboarding does not even toast, so the tick simply
+   * vanished on refresh with nothing said.
+   */
+  const [journeys, setJourneys] = useState<Record<string, LifecycleJourney>>({});
+  const [saving, setSaving] = useState<string | null>(null);
   const [taskForm, setTaskForm] = useState({ phase: "pre", taskName: "", description: "" });
 
   useEffect(() => { if (!initialized) startSync(COLLECTIONS.employees, store); }, [initialized, store]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/lifecycle?kind=onboarding&limit=200", {
+          credentials: "include",
+        });
+        if (!response.ok) return;
+        const body = (await response.json()) as { data: LifecycleJourney[] };
+        if (cancelled) return;
+
+        const byEmployee: Record<string, LifecycleJourney> = {};
+        for (const journey of body.data ?? []) byEmployee[journey.employeeId] = journey;
+        setJourneys(byEmployee);
+      } catch {
+        // Renders unticked rather than showing ticks from nowhere.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const newJoiners = useMemo(() => {
     const ninetyDaysAgo = new Date();
@@ -87,27 +149,104 @@ export default function OnboardingPage() {
     return "month2_3";
   };
 
-  // Memoised so the compiler can trace the memos below to `taskCompletions`
-  // through it, rather than bailing out of optimising the component.
-  const getCompletionRate = useCallback((empId: string) => {
-    const completions = taskCompletions[empId] || {};
-    const allTasks = PHASES.flatMap(p => p.tasks);
-    const done = allTasks.filter(t => completions[t]).length;
-    return allTasks.length ? Math.round((done / allTasks.length) * 100) : 0;
-  }, [taskCompletions]);
+  const getCompletionRate = useCallback(
+    (empId: string) => journeys[empId]?.progress.percent ?? 0,
+    [journeys]
+  );
 
-  const toggleTask = (empId: string, task: string) => {
-    setTaskCompletions(prev => ({
-      ...prev,
-      [empId]: { ...(prev[empId] || {}), [task]: !(prev[empId]?.[task]) },
-    }));
+  const isTaskDone = useCallback(
+    (empId: string, phase: string, task: string) =>
+      journeys[empId]?.tasks.find((t) => t.taskKey === taskKeyFor(phase, task))?.completed ?? false,
+    [journeys]
+  );
+
+  /**
+   * Starts a checklist on first tick rather than up front, so listing every
+   * new joiner does not write a row for each of them before anyone has done
+   * anything.
+   */
+  const ensureJourney = useCallback(
+    async (emp: EmployeeDoc): Promise<LifecycleJourney | null> => {
+      const existing = journeys[emp.id];
+      if (existing) return existing;
+
+      const response = await fetch("/api/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          employeeId: emp.id,
+          kind: "onboarding",
+          anchorDate: emp.joiningDate ?? new Date().toISOString().slice(0, 10),
+          tasks: PHASES.flatMap((phase, phaseIndex) =>
+            phase.tasks.map((task) => ({
+              taskKey: taskKeyFor(phase.key, task),
+              title: task,
+              phase: phase.key,
+              phaseOrder: phaseIndex,
+              mandatory: MANDATORY_TASKS.has(task),
+            }))
+          ),
+        }),
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        toast.error(body.error ?? "Could not start the onboarding checklist");
+        return null;
+      }
+
+      const body = (await response.json()) as { data: LifecycleJourney };
+      setJourneys((prev) => ({ ...prev, [emp.id]: body.data }));
+      return body.data;
+    },
+    [journeys]
+  );
+
+  const toggleTask = async (emp: EmployeeDoc, phase: string, task: string) => {
+    const key = taskKeyFor(phase, task);
+    setSaving(`${emp.id}:${key}`);
+    try {
+      const journey = await ensureJourney(emp);
+      if (!journey) return;
+
+      const existing = journey.tasks.find((t) => t.taskKey === key);
+      if (!existing) {
+        toast.error("That task is not on this checklist");
+        return;
+      }
+
+      const response = await fetch(`/api/lifecycle/tasks/${existing.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ completed: !existing.completed }),
+      });
+
+      const body = (await response.json().catch(() => ({}))) as {
+        data?: LifecycleJourney;
+        error?: string;
+      };
+
+      if (!response.ok || !body.data) {
+        // The old version said nothing at all when a tick was lost.
+        toast.error(body.error ?? "That task could not be saved");
+        return;
+      }
+
+      setJourneys((prev) => ({ ...prev, [emp.id]: body.data! }));
+    } catch {
+      toast.error("That task could not be saved");
+    } finally {
+      setSaving(null);
+    }
   };
 
   const avgCompletion = useMemo(() => {
     if (newJoiners.length === 0) return 0;
     const total = newJoiners.reduce((s, j) => s + getCompletionRate(j.id), 0);
     return Math.round(total / newJoiners.length);
-  }, [newJoiners, taskCompletions]);
+  }, [newJoiners, getCompletionRate]);
 
   const avgDays = useMemo(() => {
     if (newJoiners.length === 0) return 0;
@@ -200,7 +339,7 @@ export default function OnboardingPage() {
                 const phase = getJoinerPhase(joiner.joiningDate);
                 const phaseInfo = PHASES.find(p => p.key === phase);
                 const completion = getCompletionRate(joiner.id);
-                const empTasks = taskCompletions[joiner.id] || {};
+
                 return (
                   <Card key={joiner.id} className="animate-slide-up">
                     <CardContent className="p-4">
@@ -244,10 +383,12 @@ export default function OnboardingPage() {
                                 {p.tasks.map(task => (
                                   <div key={task} className="flex items-center gap-2 py-1">
                                     <Checkbox
-                                      checked={!!empTasks[task]}
-                                      onCheckedChange={() => toggleTask(joiner.id, task)}
+                                      checked={isTaskDone(joiner.id, p.key, task)}
+                                      disabled={saving === `${joiner.id}:${taskKeyFor(p.key, task)}`}
+                                      onCheckedChange={() => void toggleTask(joiner, p.key, task)}
+                                      aria-label={task}
                                     />
-                                    <span className={cn("text-sm", empTasks[task] && "line-through text-muted-foreground")}>{task}</span>
+                                    <span className={cn("text-sm", isTaskDone(joiner.id, p.key, task) && "line-through text-muted-foreground")}>{task}</span>
                                   </div>
                                 ))}
                               </div>
@@ -388,8 +529,7 @@ export default function OnboardingPage() {
                 {PHASES.map(phase => {
                   const totalTasks = phase.tasks.length * newJoiners.length;
                   const completedTasks = newJoiners.reduce((s, j) => {
-                    const empTasks = taskCompletions[j.id] || {};
-                    return s + phase.tasks.filter(t => empTasks[t]).length;
+                    return s + phase.tasks.filter(t => isTaskDone(j.id, phase.key, t)).length;
                   }, 0);
                   const phasePct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
                   return (
@@ -400,7 +540,7 @@ export default function OnboardingPage() {
                       </div>
                       <div className="space-y-2">
                         {phase.tasks.map(task => {
-                          const taskDone = newJoiners.filter(j => taskCompletions[j.id]?.[task]).length;
+                          const taskDone = newJoiners.filter(j => isTaskDone(j.id, phase.key, task)).length;
                           return (
                             <div key={task} className="flex items-center justify-between text-xs">
                               <span className="text-muted-foreground truncate max-w-[60%]">{task}</span>

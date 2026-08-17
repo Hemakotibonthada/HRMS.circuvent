@@ -11,10 +11,13 @@
 // CHECK constraint in drizzle/0001, so it cannot be bypassed by any code path
 // that forgets to ask.
 //
-// Amounts are bigint minor units throughout. The float arithmetic the
-// Firestore version used loses precision at scale — 0.1 + 0.2 is not 0.3 — and
-// on a payroll of a few thousand people those errors accumulate into a
+// Amounts are bigint minor units throughout. The float arithmetic an earlier
+// version used loses precision at scale — 0.1 + 0.2 is not 0.3 — and on a
+// payroll of a few thousand people those errors accumulate into a
 // reconciliation the finance team cannot close.
+//
+// The DTOs carry both: a float for printing a single value, and the exact
+// paise as a string for anything that adds, compares or reconciles.
 
 import { and, asc, count, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
@@ -26,6 +29,7 @@ import {
   salaryStructures,
 } from "@/db/schema/hrms";
 import { calculateProfessionalTax, calculateNewRegimeIncomeTax } from "@/lib/payroll-engine";
+import { minorToMajor, toMinor } from "@/lib/money/minor";
 import {
   NotFoundError,
   RepositoryError,
@@ -40,8 +44,15 @@ import {
 const PF_EMPLOYEE_MONTHLY_CAP = 180_000n; // ₹1,800
 const ESI_WAGE_CEILING_MONTHLY = 2_100_000n; // ₹21,000
 
+/**
+ * Minor units to a display float.
+ *
+ * Goes through the exact decimal string rather than `Number(minor) / 100`, so
+ * the division itself cannot introduce an error before the value is rounded
+ * for display.
+ */
 function toMajor(minor: bigint | null): number {
-  return minor === null ? 0 : Number(minor) / 100;
+  return minor === null ? 0 : minorToMajor(minor);
 }
 
 function toRunRecord(row: typeof payrollRuns.$inferSelect): PayrollRunRecord {
@@ -55,6 +66,9 @@ function toRunRecord(row: typeof payrollRuns.$inferSelect): PayrollRunRecord {
     totalGross: toMajor(row.totalGrossMinor),
     totalDeductions: toMajor(row.totalDeductionsMinor),
     totalNet: toMajor(row.totalNetMinor),
+    totalGrossMinor: toMinor(row.totalGrossMinor),
+    totalDeductionsMinor: toMinor(row.totalDeductionsMinor),
+    totalNetMinor: toMinor(row.totalNetMinor),
     processedById: row.processedById ?? undefined,
     processedAt: row.processedAt?.toISOString(),
     approvedById: row.approvedById ?? undefined,
@@ -78,6 +92,9 @@ function toPayrollRecord(row: RecordRow): PayrollRecordDto {
     gross: toMajor(row.grossMinor),
     totalDeductions: toMajor(row.totalDeductionsMinor),
     netPay: toMajor(row.netPayMinor),
+    grossMinor: toMinor(row.grossMinor),
+    totalDeductionsMinor: toMinor(row.totalDeductionsMinor),
+    netPayMinor: toMinor(row.netPayMinor),
     status: row.status,
     anomalies: (row.anomalies as string[]) ?? [],
     payslipUrl: row.payslipUrl ?? undefined,
@@ -278,10 +295,15 @@ export class NeonPayrollRepository implements PayrollRepository {
         const esiEmployee = gross <= ESI_WAGE_CEILING_MONTHLY ? (gross * 75n) / 10_000n : 0n;
         const esiEmployer = gross <= ESI_WAGE_CEILING_MONTHLY ? (gross * 325n) / 10_000n : 0n;
 
+        // The statutory tax functions take major units as floats. Converting
+        // through the exact decimal string rather than `Number(x) / 100`
+        // means the value handed to a slab lookup is the nearest double to
+        // the real amount, not the result of a float division that may
+        // already have drifted across a slab boundary.
         const professionalTax = BigInt(
-          Math.round(calculateProfessionalTax(Number(gross) / 100) * 100)
+          Math.round(calculateProfessionalTax(minorToMajor(gross)) * 100)
         );
-        const annualTax = calculateNewRegimeIncomeTax(Number(structure.ctcMinor) / 100);
+        const annualTax = calculateNewRegimeIncomeTax(minorToMajor(structure.ctcMinor));
         const incomeTax = BigInt(Math.round((annualTax / 12) * 100));
 
         const lopDeduction = prorate(

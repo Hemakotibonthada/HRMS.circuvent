@@ -368,10 +368,13 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-export function generateEmployeeId(): string {
-  const num = Math.floor(Math.random() * 9000) + 1000;
-  return `EMP${num}`;
-}
+// `generateEmployeeId` was removed here. It returned `EMP` plus a random
+// four-digit number, which is 9,000 possible codes assigned with no check that
+// the code was free — a collision becomes more likely than not at 112
+// employees, and an employee code is the join key half this system uses to
+// find a person. It had no callers, so nothing needed replacing; anything that
+// does need one should take it from a per-tenant sequence in the database,
+// where uniqueness can actually be enforced.
 
 export function calculateLeaveDays(startDate: string, endDate: string, halfDay = false): number {
   const start = new Date(startDate);

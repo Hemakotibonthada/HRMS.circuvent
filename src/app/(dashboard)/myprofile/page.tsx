@@ -26,8 +26,9 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useRBAC } from "@/hooks/use-rbac";
 import { useEmployeeStore, useGoalStore, useLeaveStore, useAttendanceStore, useExpenseStore, startSync, type EmployeeDoc } from "@/stores/unified-store";
-import { COLLECTIONS, genericService } from "@/lib/firestore-service";
+import { COLLECTIONS, genericService } from "@/lib/collection-service";
 import { DataLoadingSkeleton } from "@/components/data-empty-state";
+import { GetTheApp } from "@/components/get-the-app";
 
 const GRADIENTS = ["from-violet-500 to-purple-600","from-blue-500 to-cyan-500","from-emerald-500 to-green-600","from-amber-500 to-orange-500","from-pink-500 to-rose-600"];
 const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ec4899","#ef4444","#6366f1","#14b8a6"];
@@ -124,6 +125,11 @@ export default function MyProfilePage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Renders nothing until the Play listing is live — see
+          src/lib/mobile-app.ts. This is the right place for it: the person
+          reading their own profile is the person who wants the app. */}
+      <GetTheApp variant="card" className="animate-slide-up" />
+
       {/* Profile Header */}
       <div className="animate-slide-up">
         <div className="rounded-2xl bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-600 p-6 text-white shadow-xl">

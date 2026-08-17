@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { dateKeyInZone } from "@/lib/date-keys";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useGoalStore, startSync } from "@/stores/unified-store";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 
 const REVIEW_STATUSES = ["Draft", "Self-Assessment", "Manager Review", "Calibration", "Completed"];
 const RATINGS = [
@@ -81,7 +82,7 @@ export default function ReviewsPage() {
       weight: 100,
       progress: avgScore,
       status: "completed",
-      dueDate: new Date().toISOString().split("T")[0],
+      dueDate: dateKeyInZone(new Date()),
     };
     try {
       await genericService(COLLECTIONS.goals).create(data);

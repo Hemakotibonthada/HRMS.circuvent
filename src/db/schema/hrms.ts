@@ -236,13 +236,27 @@ export const employees = hrms.table(
     ctcMinor: bigint("ctc_minor", { mode: "bigint" }),
     currency: text("currency").notNull().default("INR"),
 
-    /** Encrypted at rest — account number and IFSC are sensitive. */
+    /**
+     * Not yet encrypted, despite holding an account number and IFSC.
+     *
+     * `jsonb` cannot hold a ciphertext string without a type change, so this
+     * needs a migration rather than the backfill the text columns use. Nothing
+     * writes to it today. Tracked in docs/ROADMAP.md.
+     */
     bankDetails: jsonb("bank_details"),
     emergencyContact: jsonb("emergency_contact"),
     skills: jsonb("skills").notNull().default(sql`'[]'::jsonb`),
     qualifications: jsonb("qualifications").notNull().default(sql`'[]'::jsonb`),
 
-    /** Indian statutory identifiers, encrypted at rest. */
+    /**
+     * Indian statutory identifiers.
+     *
+     * PAN and Aadhaar are national identifiers and are encrypted at rest by
+     * `lib/crypto/field-encryption`. UAN, PF and ESI are scheme membership
+     * numbers, are quoted on statutory filings, and are left in the clear —
+     * stated explicitly because this comment previously claimed the whole
+     * group was encrypted when none of it was.
+     */
     panNumber: text("pan_number"),
     aadhaarNumber: text("aadhaar_number"),
     uanNumber: text("uan_number"),
@@ -1044,6 +1058,93 @@ export const workflowInstances = hrms.table(
 
 // ─── Inferred types ──────────────────────────────────────────
 
+// ─── Employee lifecycle ──────────────────────────────────────
+// Onboarding and offboarding checklists.
+//
+// The templates in `src/lib/employee-lifecycle.ts` have existed since early
+// on, and so has the progress arithmetic. What did not exist was anywhere to
+// put the answer: both dashboard pages held tick state in `useState`, so an HR
+// admin ticking "Laptop returned" and "Access revoked" watched it all vanish on
+// refresh — while offboarding showed a "Clearance updated" toast that promised
+// otherwise.
+//
+// For offboarding that is not merely lost work. Exit clearance is the record
+// that proves company property came back and access was cut, which is the
+// first thing anyone asks for after an incident involving a leaver.
+
+export const lifecycleKindEnum = hrms.enum("lifecycle_kind", ["onboarding", "offboarding"]);
+
+export const lifecycleJourneys = hrms.table(
+  "lifecycle_journeys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    kind: lifecycleKindEnum("kind").notNull(),
+    /** Joining date for onboarding, last working day for offboarding. */
+    anchorDate: date("anchor_date").notNull(),
+    status: text("status").notNull().default("in_progress"),
+    /** Free text on why someone is leaving; null for onboarding. */
+    exitReason: text("exit_reason"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One live journey of each kind per person. Somebody can be onboarded once
+    // and offboarded once; a second concurrent checklist means two people
+    // ticking different copies of the same list.
+    uniqueIndex("lifecycle_journeys_employee_kind_key").on(t.employeeId, t.kind),
+    index("lifecycle_journeys_org_status_idx").on(t.orgId, t.status),
+    index("lifecycle_journeys_org_created_idx").on(t.orgId, t.createdAt),
+  ]
+);
+
+export const lifecycleTasks = hrms.table(
+  "lifecycle_tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    journeyId: uuid("journey_id")
+      .notNull()
+      .references(() => lifecycleJourneys.id, { onDelete: "cascade" }),
+    /** Stable key from the template, e.g. `off_14`. Survives re-wording. */
+    taskKey: text("task_key").notNull(),
+    title: text("title").notNull(),
+    phase: text("phase").notNull(),
+    phaseOrder: integer("phase_order").notNull().default(0),
+    /** Which function owns it: hr, it, manager, finance, self… */
+    assignee: text("assignee").notNull().default("hr"),
+    /**
+     * A journey cannot be completed while a mandatory task is outstanding.
+     * "Access revoked" is mandatory; "Farewell lunch booked" is not.
+     */
+    mandatory: boolean("mandatory").notNull().default(false),
+    /** Days from the anchor date. Negative means before it — pre-boarding. */
+    dueOffsetDays: integer("due_offset_days").notNull().default(0),
+    completed: boolean("completed").notNull().default(false),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completedById: uuid("completed_by_id"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // A template task appears once per journey. Without this a retried request
+    // silently duplicates the checklist and the progress percentage drops.
+    uniqueIndex("lifecycle_tasks_journey_key_key").on(t.journeyId, t.taskKey),
+    index("lifecycle_tasks_journey_idx").on(t.journeyId),
+    index("lifecycle_tasks_org_completed_idx").on(t.orgId, t.completed),
+  ]
+);
+
+// ─── Inferred types ──────────────────────────────────────────
+
 export type Employee = typeof employees.$inferSelect;
 export type NewEmployee = typeof employees.$inferInsert;
 export type Department = typeof departments.$inferSelect;
@@ -1063,3 +1164,5 @@ export type PerformanceGoal = typeof performanceGoals.$inferSelect;
 export type PerformanceReview = typeof performanceReviews.$inferSelect;
 export type ExpenseClaim = typeof expenseClaims.$inferSelect;
 export type WorkflowInstance = typeof workflowInstances.$inferSelect;
+export type LifecycleJourney = typeof lifecycleJourneys.$inferSelect;
+export type LifecycleTask = typeof lifecycleTasks.$inferSelect;

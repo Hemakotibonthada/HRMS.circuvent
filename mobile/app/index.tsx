@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { Linking, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Linking, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
+import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
+import { Card } from "@/components/Card";
+import { Screen } from "@/components/Screen";
+import { Skeleton } from "@/components/Skeleton";
+import { AppText } from "@/components/Typography";
 import { ApiError, OfflineError, evaluateClockIn, type Geofence } from "@/lib/contracts";
 import { readPosition } from "@/lib/location";
 import { useSession } from "@/lib/session";
 import { useSync } from "@/lib/sync";
+import { formatDuration } from "@/lib/shift-rules";
 import { useTheme } from "@/theme/ThemeProvider";
 
 interface TodayResponse {
@@ -23,23 +28,21 @@ interface TodayResponse {
   fence: Geofence | null;
 }
 
+/** Roles the server will actually let approve. */
+const APPROVER_ROLES = ["owner", "admin", "hr", "manager"];
+
 function formatTime(iso?: string): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatDuration(minutes?: number): string {
-  if (minutes === undefined || minutes === null) return "—";
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
 /**
  * Today.
  *
  * The clock-in button is the reason this app exists, so it is the only thing
- * above the fold and it is the largest target on the screen.
+ * above the fold and it is the largest target on the screen. Navigation moved
+ * to the tab bar for the same reason: it used to be a column of buttons below
+ * this card, which meant scrolling past the punch to reach anything else.
  *
  * Location is checked on the device before the request is sent — not as
  * security, since a phone is an untrusted client and the server checks again,
@@ -49,16 +52,18 @@ function formatDuration(minutes?: number): string {
 export default function TodayScreen() {
   const theme = useTheme();
   const { api, user } = useSession();
-  const { submit, pending, quarantined, retry, discard } = useSync();
+  const { submit, pending, quarantined, retry, discard, syncing } = useSync();
   const router = useRouter();
 
   const [today, setToday] = useState<TodayResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ tone: "info" | "error" | "success"; text: string } | null>(
-    null
-  );
+  const [message, setMessage] = useState<{
+    tone: "info" | "error" | "success";
+    title: string;
+    description?: string;
+  } | null>(null);
   const [settingsPrompt, setSettingsPrompt] = useState(false);
 
   const load = useCallback(async () => {
@@ -70,9 +75,13 @@ export default function TodayScreen() {
         // Not an error banner. Being offline is the normal state in a lift or
         // a basement, and the queue exists precisely so that it does not
         // block the action.
-        setMessage({ tone: "info", text: "Offline. Your clock-in will be sent when you reconnect." });
+        setMessage({
+          tone: "info",
+          title: "You are offline",
+          description: "Your clock-in will be sent when you reconnect.",
+        });
       } else if (error instanceof ApiError) {
-        setMessage({ tone: "error", text: error.message });
+        setMessage({ tone: "error", title: "Today could not be loaded", description: error.message });
       }
     } finally {
       setLoading(false);
@@ -94,7 +103,7 @@ export default function TodayScreen() {
         const located = await readPosition();
 
         if (!located.ok) {
-          setMessage({ tone: "error", text: located.message });
+          setMessage({ tone: "error", title: "Location unavailable", description: located.message });
           setSettingsPrompt(located.reason === "denied_forever" || located.reason === "disabled");
           return;
         }
@@ -106,7 +115,7 @@ export default function TodayScreen() {
         if (fences.length > 0) {
           const verdict = evaluateClockIn(located.position, fences);
           if (!verdict.allowed) {
-            setMessage({ tone: "error", text: verdict.message });
+            setMessage({ tone: "error", title: "You are not at work", description: verdict.message });
             return;
           }
         }
@@ -139,13 +148,14 @@ export default function TodayScreen() {
         if (outcome === "sent") {
           setMessage({
             tone: "success",
-            text: direction === "in" ? "Clocked in" : "Clocked out",
+            title: direction === "in" ? "Clocked in" : "Clocked out",
           });
           await load();
         } else if (outcome === "queued") {
           setMessage({
             tone: "info",
-            text: "Saved on this device. It will be sent when you have a connection.",
+            title: "Saved on this device",
+            description: "It will be sent when you have a connection.",
           });
         } else {
           // Quarantined: the server refused it outright and retrying will not
@@ -153,14 +163,15 @@ export default function TodayScreen() {
           // because the person stops thinking about it.
           setMessage({
             tone: "error",
-            text: "This could not be recorded. Please speak to your manager or HR.",
+            title: "This could not be recorded",
+            description: "Please speak to your manager or HR.",
           });
         }
       } catch (error) {
         if (error instanceof ApiError) {
-          setMessage({ tone: "error", text: error.message });
+          setMessage({ tone: "error", title: "That did not work", description: error.message });
         } else {
-          setMessage({ tone: "error", text: "Something went wrong. Please try again." });
+          setMessage({ tone: "error", title: "Something went wrong", description: "Please try again." });
         }
       } finally {
         setBusy(false);
@@ -172,283 +183,195 @@ export default function TodayScreen() {
   const record = today?.record;
   const clockedIn = Boolean(record?.clockInAt && !record?.clockOutAt);
   const finished = Boolean(record?.clockOutAt);
-
-  const toneColour = {
-    info: theme.colors.textMuted,
-    error: theme.colors.danger,
-    success: theme.colors.success,
-  };
-  const toneBackground = {
-    info: theme.colors.surface,
-    error: theme.colors.dangerSubtle,
-    success: theme.colors.successSubtle,
-  };
+  const canApprove = user ? APPROVER_ROLES.includes(user.role) : false;
 
   return (
-    <SafeAreaView
-      style={[styles.safe, { backgroundColor: theme.colors.background }]}
-      edges={["bottom"]}
+    <Screen
+      tabBarInset
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load();
+      }}
     >
-      <ScrollView
-        contentContainerStyle={{ padding: theme.spacing.lg }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              void load();
-            }}
-            tintColor={theme.colors.primary}
-          />
-        }
-      >
-        <Text
-          style={{
-            color: theme.colors.textMuted,
-            fontSize: theme.fontSize.body,
-            lineHeight: theme.lineHeight.body,
-          }}
-        >
-          {user ? `Hello, ${user.firstName}` : ""}
-        </Text>
+      <AppText variant="body" tone="muted">
+        {user ? `Hello, ${user.firstName}` : ""}
+      </AppText>
 
-        <View
-          style={{
-            backgroundColor: theme.colors.surfaceElevated,
-            borderColor: theme.colors.border,
-            borderWidth: StyleSheet.hairlineWidth * 2,
-            borderRadius: theme.radius.lg,
-            padding: theme.spacing.xl,
-            marginTop: theme.spacing.lg,
-            ...theme.elevation.card,
-          }}
-        >
-          <Text
-            accessibilityRole="header"
-            style={{
-              color: theme.colors.text,
-              fontSize: theme.fontSize.title2,
-              lineHeight: theme.lineHeight.title2,
-              fontWeight: theme.fontWeight.bold,
-            }}
-          >
+      <Card padded={false} style={{ marginTop: theme.spacing.lg, padding: theme.spacing.xl }}>
+        {loading ? (
+          // A placeholder the size of the heading it replaces, so the button
+          // below does not jump once the state is known — and so the screen
+          // never claims "Not clocked in" before it has asked.
+          <Skeleton height={theme.lineHeight.title2} width="70%" />
+        ) : (
+          <AppText variant="title2" weight="bold" heading>
             {finished ? "Day complete" : clockedIn ? "You are clocked in" : "Not clocked in"}
-          </Text>
+          </AppText>
+        )}
 
-          <View style={[styles.row, { marginTop: theme.spacing.lg }]}>
-            <Field label="In" value={formatTime(record?.clockInAt)} />
-            <Field label="Out" value={formatTime(record?.clockOutAt)} />
-            <Field label="Worked" value={formatDuration(record?.workedMinutes)} />
-          </View>
-
-          {record?.requiresLocationReview ? (
-            <Text
-              style={{
-                color: theme.colors.warning,
-                fontSize: theme.fontSize.footnote,
-                lineHeight: theme.lineHeight.footnote,
-                marginTop: theme.spacing.md,
-              }}
-            >
-              Your manager will check today&apos;s location. Nothing is needed from you.
-            </Text>
-          ) : null}
-
-          {pending.length > 0 ? (
-            // Shown rather than hidden. Someone whose punch is sitting on the
-            // device needs to know it has not reached the server yet — that is
-            // the difference between "I clocked in" and "I can prove it".
-            <Text
-              accessibilityLiveRegion="polite"
-              style={{
-                color: theme.colors.textMuted,
-                fontSize: theme.fontSize.footnote,
-                lineHeight: theme.lineHeight.footnote,
-                marginTop: theme.spacing.md,
-              }}
-            >
-              {pending.length === 1
-                ? "1 action waiting to be sent"
-                : `${pending.length} actions waiting to be sent`}
-            </Text>
-          ) : null}
-
-          {!loading ? (
-            <Button
-              label={clockedIn ? "Clock out" : "Clock in"}
-              variant={clockedIn ? "secondary" : "primary"}
-              onPress={() => punch(clockedIn ? "out" : "in")}
-              busy={busy}
-              disabled={finished}
-              accessibilityHint={
-                clockedIn
-                  ? "Records the end of your working day using your current location"
-                  : "Records the start of your working day using your current location"
-              }
-              style={{ marginTop: theme.spacing.xl }}
-            />
-          ) : null}
+        <View style={[styles.row, { marginTop: theme.spacing.lg }]}>
+          <Field label="In" value={formatTime(record?.clockInAt)} />
+          <Field label="Out" value={formatTime(record?.clockOutAt)} />
+          <Field
+            label="Worked"
+            value={
+              record?.workedMinutes === undefined ? "—" : formatDuration(record.workedMinutes)
+            }
+          />
         </View>
 
-        {message ? (
-          <View
-            accessibilityRole={message.tone === "error" ? "alert" : undefined}
-            accessibilityLiveRegion={message.tone === "error" ? "assertive" : "polite"}
-            style={{
-              backgroundColor: toneBackground[message.tone],
-              borderRadius: theme.radius.md,
-              padding: theme.spacing.md,
-              marginTop: theme.spacing.lg,
-            }}
-          >
-            <Text
-              style={{
-                color: toneColour[message.tone],
-                fontSize: theme.fontSize.footnote,
-                lineHeight: theme.lineHeight.footnote,
-              }}
-            >
-              {message.text}
-            </Text>
+        {record?.requiresLocationReview ? (
+          <AppText variant="footnote" tone="warning" style={{ marginTop: theme.spacing.md }}>
+            Your manager will check today&apos;s location. Nothing is needed from you.
+          </AppText>
+        ) : null}
 
-            {settingsPrompt ? (
+        {pending.length > 0 ? (
+          // Shown rather than hidden. Someone whose punch is sitting on the
+          // device needs to know it has not reached the server yet — that is
+          // the difference between "I clocked in" and "I can prove it".
+          <AppText
+            variant="footnote"
+            tone="muted"
+            accessibilityLiveRegion="polite"
+            style={{ marginTop: theme.spacing.md }}
+          >
+            {pending.length === 1
+              ? "1 action waiting to be sent"
+              : `${pending.length} actions waiting to be sent`}
+            {syncing ? " · sending now" : ""}
+          </AppText>
+        ) : null}
+
+        {!loading ? (
+          <Button
+            label={clockedIn ? "Clock out" : "Clock in"}
+            variant={clockedIn ? "secondary" : "primary"}
+            onPress={() => punch(clockedIn ? "out" : "in")}
+            busy={busy}
+            disabled={finished}
+            accessibilityHint={
+              clockedIn
+                ? "Records the end of your working day using your current location"
+                : "Records the start of your working day using your current location"
+            }
+            style={{ marginTop: theme.spacing.xl }}
+          />
+        ) : null}
+      </Card>
+
+      {message ? (
+        <Banner
+          tone={message.tone === "success" ? "success" : message.tone}
+          title={message.title}
+          description={message.description}
+          style={{ marginTop: theme.spacing.lg }}
+          action={
+            settingsPrompt ? (
               <Button
                 label="Open Settings"
                 variant="ghost"
                 fullWidth={false}
                 onPress={() => void Linking.openSettings()}
-                style={{ marginTop: theme.spacing.sm }}
               />
-            ) : null}
-          </View>
-        ) : null}
+            ) : undefined
+          }
+        />
+      ) : null}
 
-        {quarantined.length > 0 ? (
-          // Refused work has to be visible and actionable. The alternative is
-          // that it sits in a database on the phone for ever while the person
-          // believes they clocked in — the failure mode this whole queue
-          // exists to avoid.
-          <View
-            accessibilityRole="alert"
-            style={{
-              backgroundColor: theme.colors.dangerSubtle,
-              borderRadius: theme.radius.md,
-              padding: theme.spacing.md,
-              marginTop: theme.spacing.lg,
-            }}
-          >
-            <Text
-              style={{
-                color: theme.colors.danger,
-                fontSize: theme.fontSize.footnote,
-                lineHeight: theme.lineHeight.footnote,
-                fontWeight: theme.fontWeight.semibold,
-              }}
-            >
-              {quarantined.length === 1
-                ? "1 action was refused and will not be retried"
-                : `${quarantined.length} actions were refused and will not be retried`}
-            </Text>
-
-            {quarantined.map((operation) => (
-              <View key={operation.id} style={{ marginTop: theme.spacing.sm }}>
-                <Text
-                  style={{
-                    color: theme.colors.danger,
-                    fontSize: theme.fontSize.caption,
-                    lineHeight: theme.lineHeight.caption,
-                  }}
-                >
-                  {operation.kind.replace(/[._]/g, " ")} —{" "}
-                  {operation.lastError ?? "no reason given"}
-                </Text>
+      {quarantined.length > 0 ? (
+        // Refused work has to be visible and actionable. The alternative is
+        // that it sits in a database on the phone for ever while the person
+        // believes they clocked in — the failure mode this whole queue exists
+        // to avoid.
+        <Banner
+          tone="error"
+          title={
+            quarantined.length === 1
+              ? "1 action was refused and will not be retried"
+              : `${quarantined.length} actions were refused and will not be retried`
+          }
+          style={{ marginTop: theme.spacing.lg }}
+        >
+          {quarantined.map((operation) => {
+            const name = operation.kind.replace(/[._]/g, " ");
+            return (
+              <View key={operation.id} style={{ marginBottom: theme.spacing.sm }}>
+                <AppText variant="caption" tone="danger">
+                  {name} — {operation.lastError ?? "no reason given"}
+                </AppText>
                 <View style={styles.actions}>
                   <Button
                     label="Try again"
                     variant="ghost"
                     fullWidth={false}
                     onPress={() => void retry(operation.id)}
-                    accessibilityLabel={`Try ${operation.kind.replace(/[._]/g, " ")} again`}
+                    accessibilityLabel={`Try ${name} again`}
                   />
                   <Button
                     label="Discard"
                     variant="ghost"
                     fullWidth={false}
                     onPress={() => void discard(operation.id)}
-                    accessibilityLabel={`Discard ${operation.kind.replace(/[._]/g, " ")}`}
+                    accessibilityLabel={`Discard ${name}`}
                     accessibilityHint="Removes this action permanently"
                     style={{ marginLeft: theme.spacing.md }}
                   />
                 </View>
               </View>
-            ))}
-          </View>
-        ) : null}
+            );
+          })}
+        </Banner>
+      ) : null}
 
+      {/* Approvals stays on this screen as well as on Profile: for a manager
+          it is a daily action, and daily actions belong next to the other one.
+          Shown only to roles the server will accept — a button that always
+          returns 403 reads as a broken app rather than as a boundary. */}
+      {canApprove ? (
         <Button
-          label="Leave"
+          label="Approvals"
           variant="secondary"
-          onPress={() => router.push("/leave")}
-          accessibilityHint="Shows your leave balance and requests"
+          onPress={() => router.push("/approvals")}
+          accessibilityHint="Leave requests waiting for your decision"
           style={{ marginTop: theme.spacing.lg }}
         />
+      ) : null}
 
-        {/* Only for roles the server will actually let approve. A button that
-            always returns 403 reads as a broken app rather than a boundary. */}
-        {user && ["owner", "admin", "hr", "manager"].includes(user.role) ? (
-          <Button
-            label="Approvals"
-            variant="secondary"
-            onPress={() => router.push("/approvals")}
-            accessibilityHint="Leave requests waiting for your decision"
-            style={{ marginTop: theme.spacing.sm }}
-          />
-        ) : null}
-
-        <Button
-          label="Settings"
-          variant="ghost"
-          onPress={() => router.push("/settings")}
-          accessibilityHint="Account settings and biometric unlock"
-          style={{ marginTop: theme.spacing.xl }}
-        />
-      </ScrollView>
-    </SafeAreaView>
+      <Button
+        label="Attendance history"
+        variant="ghost"
+        onPress={() => router.push("/attendance")}
+        accessibilityHint="Your punches, month by month"
+        style={{ marginTop: theme.spacing.sm }}
+      />
+    </Screen>
   );
 }
 
 function Field({ label, value }: { label: string; value: string }) {
-  const theme = useTheme();
   return (
-    <View style={styles.field}>
-      <Text
-        style={{
-          color: theme.colors.textMuted,
-          fontSize: theme.fontSize.caption,
-          lineHeight: theme.lineHeight.caption,
-        }}
-      >
+    <View
+      // One stop per figure. Announced separately, "In" and "09:02" arrive as
+      // two unrelated fragments.
+      accessible
+      accessibilityLabel={`${label}: ${value}`}
+      style={styles.field}
+    >
+      <AppText variant="caption" tone="muted">
         {label}
-      </Text>
-      <Text
-        style={{
-          color: theme.colors.text,
-          fontSize: theme.fontSize.callout,
-          lineHeight: theme.lineHeight.callout,
-          fontWeight: theme.fontWeight.semibold,
-          // Times and durations line up in a row only if the digits are the
-          // same width; proportional digits make the columns jitter.
-          fontVariant: ["tabular-nums"],
-        }}
-      >
+      </AppText>
+      {/* Times and durations line up in a row only if the digits are the same
+          width; proportional figures make the columns jitter. */}
+      <AppText variant="callout" weight="semibold" tabular style={{ marginTop: 2 }}>
         {value}
-      </Text>
+      </AppText>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
   row: { flexDirection: "row", justifyContent: "space-between" },
   actions: { flexDirection: "row", alignItems: "center" },
   field: { flex: 1 },

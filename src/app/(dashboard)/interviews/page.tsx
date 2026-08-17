@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { create } from "zustand";
 import { useJobStore, startSync, type BaseRecord } from "@/stores/unified-store";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 
 // ─── Inline Interview Store ──────────────────────────────────
 interface InterviewDoc extends BaseRecord {

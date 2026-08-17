@@ -9,7 +9,9 @@
 // subtle mistake is silently catastrophic. These tests pin the properties that
 // make them safe rather than merely working.
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, afterEach, describe, expect, it } from "vitest";
+import * as OTPAuth from "otpauth";
+import { decryptField, encryptField } from "@/lib/crypto/field-encryption";
 import {
   DUMMY_HASH,
   fakeVerify,
@@ -232,6 +234,66 @@ describe("TOTP", () => {
   it("rejects a code against a malformed secret", () => {
     expect(verifyTotp("not-base32!", "123456")).toBe(false);
     expect(verifyTotp("", "123456")).toBe(false);
+  });
+});
+
+// The seam between enrolment and sign-in. The secret is written encrypted and
+// read back through `decryptField` before `verifyTotp` sees it, so a mistake
+// anywhere along that path means nobody with MFA enabled can sign in — and
+// the failure looks identical to a wrong code, which is the worst possible
+// way to discover it.
+describe("a TOTP secret survives encryption at rest", () => {
+  const KEY = Buffer.alloc(32, 7).toString("base64");
+  const previousKey = process.env.ENCRYPTION_KEY;
+
+  beforeEach(() => {
+    process.env.ENCRYPTION_KEY = KEY;
+  });
+
+  afterEach(() => {
+    if (previousKey === undefined) delete process.env.ENCRYPTION_KEY;
+    else process.env.ENCRYPTION_KEY = previousKey;
+  });
+
+  /** The code an authenticator app would be showing right now. */
+  function currentCode(secretBase32: string): string {
+    return new OTPAuth.TOTP({
+      issuer: "Circuvent HRMS",
+      algorithm: "SHA1",
+      digits: 6,
+      period: 30,
+      secret: OTPAuth.Secret.fromBase32(secretBase32),
+    }).generate();
+  }
+
+  it("validates a live code after a store-and-load round trip", () => {
+    const { secret } = createTotpEnrolment("asha@circuvent.com");
+
+    const stored = encryptField(secret);
+    expect(stored).not.toContain(secret);
+
+    expect(verifyTotp(decryptField(stored), currentCode(secret))).toBe(true);
+  });
+
+  it("still validates for a secret stored before encryption existed", () => {
+    // Plaintext rows pass through `decryptField` untouched. Without that,
+    // turning encryption on locks out everyone already enrolled.
+    const { secret } = createTotpEnrolment("asha@circuvent.com");
+    expect(verifyTotp(decryptField(secret), currentCode(secret))).toBe(true);
+  });
+
+  it("rejects a wrong code just as firmly after the round trip", () => {
+    const { secret } = createTotpEnrolment("asha@circuvent.com");
+    const stored = encryptField(secret);
+    expect(verifyTotp(decryptField(stored), "000000")).toBe(false);
+  });
+
+  it("does not validate a code from a different secret", () => {
+    const mine = createTotpEnrolment("asha@circuvent.com");
+    const theirs = createTotpEnrolment("ravi@circuvent.com");
+
+    const stored = encryptField(mine.secret);
+    expect(verifyTotp(decryptField(stored), currentCode(theirs.secret))).toBe(false);
   });
 });
 

@@ -27,8 +27,16 @@ import {
   PieChart, Pie, Cell, Legend, AreaChart, Area,
   Tooltip as RTooltip,
 } from "recharts";
-import { usePayrollStore, useEmployeeStore, startSync, type PayrollDoc } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { useEmployeeStore, startSync, type PayrollDoc } from "@/stores/unified-store";
+import { COLLECTIONS } from "@/lib/collection-service";
+import {
+  actOnRun,
+  generatePayroll,
+  getRun,
+  listRuns,
+  monthNumberFrom,
+  periodLabel,
+} from "@/lib/payroll-client";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════
@@ -51,22 +59,90 @@ const COMPLIANCE_ITEMS = [
   { name: "Professional Tax", dueDate: "End of month", icon: Receipt },
 ];
 
+/**
+ * A payslip row, carrying the run it belongs to.
+ *
+ * The lifecycle acts on the *run*, not the individual payslip: processing,
+ * approval and payment are decisions about a whole period. The table renders
+ * one row per person, so each row has to know which run it came from — passing
+ * the payslip id to `/api/payroll/runs/[id]` finds no run.
+ */
+type PayslipRow = PayrollDoc & { runId: string };
+
 export default function PayrollPage() {
   const rbac = useRBAC();
-  const store = usePayrollStore();
   const empStore = useEmployeeStore();
-  const { items, loading, initialized } = store;
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [monthFilter, setMonthFilter] = useState("all");
   const [tab, setTab] = useState("paysheet");
   const [createOpen, setCreateOpen] = useState(false);
-  const [selectedPayslip, setSelectedPayslip] = useState<PayrollDoc | null>(null);
+  const [selectedPayslip, setSelectedPayslip] = useState<PayslipRow | null>(null);
   const [runPayrollOpen, setRunPayrollOpen] = useState(false);
+  const [running, setRunning] = useState(false);
   const [runMonth, setRunMonth] = useState(MONTHS[new Date().getMonth()]);
   const [runYear, setRunYear] = useState(String(new Date().getFullYear()));
 
-  useEffect(() => { if (!initialized) startSync(COLLECTIONS.payroll, store); }, [initialized, store]);
+  /**
+   * Payroll comes from `/api/payroll/*`, not the document store.
+   *
+   * This page used `genericService(COLLECTIONS.payroll)`, which resolves to
+   * `/api/collections/payroll` for anything without an entity route — and the
+   * document store deliberately refuses `payroll`, because it has a real table.
+   * Every read and write returned 404, so the KPIs showed ₹0.0L and Run Payroll
+   * failed. See `src/lib/payroll-client.ts`.
+   */
+  const [items, setItems] = useState<PayslipRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    try {
+      const allRuns = await listRuns();
+
+      // The table below renders one row per payslip, so the records for each
+      // run are flattened into the shape it already expects.
+      const detailed = await Promise.all(allRuns.map((run) => getRun(run.id).catch(() => null)));
+
+      const rows: PayslipRow[] = [];
+      for (const detail of detailed) {
+        if (!detail) continue;
+        for (const record of detail.records) {
+          rows.push({
+            id: record.id,
+            // The run, not the payslip, is what the lifecycle acts on. Carried
+            // on every row because the table's buttons act per row.
+            runId: detail.run.id,
+            employeeId: record.employeeId,
+            employeeName: record.employeeName ?? "—",
+            department: "",
+            month: MONTHS[detail.run.periodMonth - 1] ?? "",
+            year: detail.run.periodYear,
+            basicPay: 0,
+            hra: 0,
+            specialAllowance: 0,
+            grossEarnings: record.gross,
+            totalDeductions: record.totalDeductions,
+            netPay: record.netPay,
+            status: detail.run.status,
+          } as PayslipRow);
+        }
+      }
+
+      setItems(rows);
+      setLoadError(null);
+    } catch (error) {
+      // Said out loud. The previous version swallowed this and left the page
+      // looking merely empty, which is why a total failure read as "no data".
+      setLoadError(error instanceof Error ? error.message : "Payroll could not be loaded");
+    } finally {
+      setLoading(false);
+      setInitialized(true);
+    }
+  }, []);
+
+  useEffect(() => { void reload(); }, [reload]);
   useEffect(() => { if (!empStore.initialized) startSync(COLLECTIONS.employees, empStore); }, [empStore.initialized, empStore]);
 
   const filtered = useMemo(() => {
@@ -113,46 +189,66 @@ export default function PayrollPage() {
   const formatCurrency = (val: number) => `₹${(val / 100000).toFixed(1)}L`;
 
   const handleRunPayroll = async () => {
-    if (empStore.items.length === 0) {
-      toast.error("No employees found to run payroll"); return;
+    const periodMonth = monthNumberFrom(runMonth);
+    if (periodMonth === null) {
+      toast.error(`"${runMonth}" is not a month`);
+      return;
     }
+
+    const periodYear = Number(runYear);
+    if (!Number.isInteger(periodYear) || periodYear < 2000 || periodYear > 2100) {
+      toast.error("Enter a four-digit year");
+      return;
+    }
+
+    setRunning(true);
     try {
-      for (const emp of empStore.items.filter(e => e.status === "active")) {
-        const basic = emp.salary || 50000;
-        const hra = Math.round(basic * 0.4);
-        const special = Math.round(basic * 0.2);
-        const gross = basic + hra + special;
-        const pf = Math.round(basic * 0.12);
-        const tax = Math.round(gross * 0.1);
-        const deductions = pf + tax;
-        await genericService(COLLECTIONS.payroll).create({
-          employeeId: emp.id,
-          employeeName: `${emp.firstName} ${emp.lastName}`,
-          department: emp.department,
-          month: runMonth,
-          year: Number(runYear),
-          basicPay: basic,
-          hra,
-          specialAllowance: special,
-          grossEarnings: gross,
-          totalDeductions: deductions,
-          netPay: gross - deductions,
-          status: "draft",
-        });
-      }
-      toast.success(`Payroll generated for ${empStore.items.filter(e => e.status === "active").length} employees!`);
+      // Creates the run and processes it. Processing is what reads attendance
+      // and applies PF, ESI, professional tax and TDS — the page used to do
+      // `basic * 0.4` for HRA and call it payroll.
+      const run = await generatePayroll(periodMonth, periodYear);
+      await reload();
+      toast.success(
+        `${periodLabel(run)} payroll processed for ${run.employeeCount} employee${
+          run.employeeCount === 1 ? "" : "s"
+        }.`
+      );
       setRunPayrollOpen(false);
-    } catch {
-      toast.error("Failed to generate payroll");
+    } catch (error) {
+      // The server's own message. "Failed to generate payroll" told the person
+      // nothing — the real reason was a 404 from a route that does not serve
+      // payroll, and nobody could have guessed that from the toast.
+      toast.error(error instanceof Error ? error.message : "Failed to generate payroll");
+    } finally {
+      setRunning(false);
     }
   };
 
-  const handleStatusUpdate = async (id: string, status: string) => {
+  const handleStatusUpdate = async (runId: string, status: string) => {
+    // Mapped explicitly, with no default. The lifecycle is
+    // processed → approved → paid, and "pay" releases money — a fallback that
+    // reached it for any unrecognised status would be the worst possible
+    // default in this file.
+    const action =
+      status === "processing" || status === "processed"
+        ? "process"
+        : status === "approved"
+          ? "approve"
+          : status === "paid"
+            ? "pay"
+            : null;
+
+    if (!action) {
+      toast.error(`Cannot move payroll to "${status}"`);
+      return;
+    }
+
     try {
-      await genericService(COLLECTIONS.payroll).update(id, { status });
-      toast.success(`Payroll status updated to ${STATUS_CONF[status]?.label || status}`);
-    } catch {
-      toast.error("Failed to update status");
+      await actOnRun(runId, action);
+      await reload();
+      toast.success(`Payroll ${action === "pay" ? "released for payment" : `${action}d`}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update status");
     }
   };
 
@@ -171,7 +267,18 @@ export default function PayrollPage() {
             </Button>
           )}
         </div>
-        <DataEmptyState {...EMPTY_STATES.payroll} onAction={() => setRunPayrollOpen(true)} />
+        {/* A failed load is not an empty payroll. Conflating the two is what
+            let a 404 on every request look like "no data yet" — the page
+            showed ₹0.0L and an invitation to run payroll, with no hint that
+            nothing had been read at all. */}
+        {loadError ? (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+            <p className="text-sm font-medium text-destructive">Payroll could not be loaded</p>
+            <p className="text-sm text-muted-foreground mt-1">{loadError}</p>
+          </div>
+        ) : (
+          <DataEmptyState {...EMPTY_STATES.payroll} onAction={() => setRunPayrollOpen(true)} />
+        )}
         {/* Run Payroll Dialog for empty state */}
         <Dialog open={runPayrollOpen} onOpenChange={setRunPayrollOpen}>
           <DialogContent>
@@ -191,7 +298,7 @@ export default function PayrollPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setRunPayrollOpen(false)}>Cancel</Button>
-              <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleRunPayroll}>Generate Payroll</Button>
+              <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" disabled={running} onClick={handleRunPayroll}>{running ? "Processing…" : "Generate Payroll"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -323,7 +430,7 @@ export default function PayrollPage() {
                                   <Eye className="h-3.5 w-3.5" />
                                 </Button>
                                 {p.status === "draft" && (
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(p.id, "processing"); }}>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleStatusUpdate(p.runId, "processing"); }}>
                                     <ArrowUpRight className="h-3.5 w-3.5" />
                                   </Button>
                                 )}
@@ -488,12 +595,12 @@ export default function PayrollPage() {
               </div>
               <DialogFooter className="gap-2">
                 {selectedPayslip.status === "draft" && (
-                  <Button variant="outline" onClick={() => { handleStatusUpdate(selectedPayslip.id, "processing"); setSelectedPayslip(null); }}>
+                  <Button variant="outline" onClick={() => { handleStatusUpdate(selectedPayslip.runId, "processing"); setSelectedPayslip(null); }}>
                     Process
                   </Button>
                 )}
                 {selectedPayslip.status === "processed" && (
-                  <Button variant="outline" onClick={() => { handleStatusUpdate(selectedPayslip.id, "paid"); setSelectedPayslip(null); }}>
+                  <Button variant="outline" onClick={() => { handleStatusUpdate(selectedPayslip.runId, "paid"); setSelectedPayslip(null); }}>
                     Mark Paid
                   </Button>
                 )}
@@ -529,8 +636,8 @@ export default function PayrollPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRunPayrollOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleRunPayroll}>
-              <Banknote className="h-4 w-4 mr-2" /> Generate Payroll
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" disabled={running} onClick={handleRunPayroll}>
+              <Banknote className="h-4 w-4 mr-2" /> {running ? "Processing…" : "Generate Payroll"}
             </Button>
           </DialogFooter>
         </DialogContent>

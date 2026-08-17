@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { dateKeyInZone } from "@/lib/date-keys";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,7 @@ import {
   useExpenseStore, useJobStore, useCourseStore, useAuditStore,
   startSync,
 } from "@/stores/unified-store";
-import { COLLECTIONS } from "@/lib/firestore-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataLoadingSkeleton } from "@/components/data-empty-state";
 import { useToday } from "@/hooks/use-now";
 
@@ -198,7 +199,7 @@ export default function AdminPage() {
     const byDate: Record<string, { info: number; warning: number; critical: number }> = {};
     auditStore.items.forEach(a => {
       if (!a.timestamp) return;
-      const d = new Date(a.timestamp).toISOString().split("T")[0].substring(5);
+      const d = dateKeyInZone(new Date(a.timestamp)).substring(5);
       if (!byDate[d]) byDate[d] = { info: 0, warning: 0, critical: 0 };
       const sev = (a.severity || "info") as "info" | "warning" | "critical";
       if (sev in byDate[d]) byDate[d][sev]++;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,7 @@ import {
   Tooltip as RTooltip,
 } from "recharts";
 import { useEmployeeStore, startSync } from "@/stores/unified-store";
-import { COLLECTIONS, genericService } from "@/lib/firestore-service";
+import { COLLECTIONS, genericService } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { useNowMs } from "@/hooks/use-now";
 
@@ -86,7 +86,12 @@ export default function OnboardingHubPage() {
     return 10;
   };
 
-  const getCurrentPhase = (joiningDate: string) => {
+  // Memoised so the memo below can depend on this function rather than
+  // re-declaring `nowMs` as its own dependency. Listing the state a plain
+  // helper closes over duplicates that knowledge in two places, and the copy
+  // in the dependency array is the one that silently goes stale when the
+  // helper later starts reading something else.
+  const getCurrentPhase = useCallback((joiningDate: string) => {
     if (nowMs === null) return "preboarding";
     const daysSinceJoin = Math.floor((nowMs - new Date(joiningDate).getTime()) / (1000 * 60 * 60 * 24));
     if (daysSinceJoin >= 90) return "month3";
@@ -94,7 +99,7 @@ export default function OnboardingHubPage() {
     if (daysSinceJoin >= 7) return "week1";
     if (daysSinceJoin >= 1) return "day1";
     return "preboarding";
-  };
+  }, [nowMs]);
 
   const getBuddyName = (emp: typeof items[0]) => {
     const deptPeers = items.filter(e =>
@@ -108,7 +113,7 @@ export default function OnboardingHubPage() {
       name: p.label,
       count: newJoiners.filter(e => getCurrentPhase(e.joiningDate) === p.key).length,
     })),
-  [newJoiners, nowMs]);
+  [newJoiners, getCurrentPhase]);
 
   if (loading && !initialized) return <DataLoadingSkeleton />;
   if (!loading && initialized && newJoiners.length === 0) {

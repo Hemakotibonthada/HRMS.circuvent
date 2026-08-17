@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DEFAULT_TIMEZONE, dateKeyInZone } from "@/lib/date-keys";
 
 // ═══════════════════════════════════════════════════════════════
 // HYDRATION-SAFE CLOCK
@@ -66,10 +67,12 @@ export function useNowMs(refreshMs?: number): number | null {
  * Timezone-aware because "today" differs by up to a day between the server's
  * UTC and a user in Asia/Kolkata, which is exactly the class of bug that makes
  * an attendance page show the wrong day.
+ *
+ * Delegates to `dateKeyInZone` so the hook and the plain function that
+ * non-component code uses cannot drift apart.
  */
-export function useToday(timeZone = "Asia/Kolkata"): string | null {
+export function useToday(timeZone = DEFAULT_TIMEZONE): string | null {
   const now = useNow();
   if (!now) return null;
-  // en-CA formats as YYYY-MM-DD.
-  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(now);
+  return dateKeyInZone(now, timeZone);
 }

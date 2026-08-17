@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nothing leaves the device in a backup.
+
+  The app stores session tokens and a queue of actions that have not reached
+  the server yet. Restoring either onto a different device would either hand
+  somebody a live session or replay another person's clock-in. `allowBackup` is
+  already false in the manifest; this file is the belt to that pair of braces,
+  because cloud backup rules and the legacy flag are honoured by different
+  Android versions.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="file" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="file" />
+    </device-transfer>
+</data-extraction-rules>

@@ -27,6 +27,8 @@ import {
   verifyPassword,
 } from "./password";
 import { consumeBackupCode, verifyTotp } from "./mfa";
+import { mfaRequiredAtSignIn } from "./mfa-enrolment";
+import { decryptField } from "@/lib/crypto/field-encryption";
 import {
   hashRefreshToken,
   refreshTokenExpiry,
@@ -81,6 +83,16 @@ interface LoginRow {
   password_hash: string | null;
   status: string;
   mfa_secret: string | null;
+  /**
+   * Null while an enrolment is still pending.
+   *
+   * A secret exists from the moment someone scans the QR code, but it must be
+   * proved with a live code before it is enforced. Keying enforcement off
+   * `mfa_secret` alone would demand a second factor from anyone who started
+   * enrolment and stopped — and the recovery path for that is an administrator
+   * disabling MFA out of band, which is itself an attack path.
+   */
+  mfa_enabled_at: Date | null;
   failed_login_attempts: number;
   locked_until: Date | null;
   must_reset_password: boolean;
@@ -96,7 +108,7 @@ interface LoginRow {
 async function findLoginRow(email: string): Promise<LoginRow | null> {
   return withTenant({ orgId: "", superuser: true }, async (tx) => {
     const result = await tx.execute(
-      sql`SELECT id, org_id, email, password_hash, status, mfa_secret,
+      sql`SELECT id, org_id, email, password_hash, status, mfa_secret, mfa_enabled_at,
                  failed_login_attempts, locked_until, must_reset_password, display_name
           FROM identity.login_lookup
           WHERE lower(email) = lower(${email})
@@ -184,11 +196,14 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
     return { ok: false, reason: "password_reset_required" };
   }
 
-  let mfaSatisfied = !row.mfa_secret;
+  const mfaActive = mfaRequiredAtSignIn(row.mfa_secret, row.mfa_enabled_at);
+  let mfaSatisfied = !mfaActive;
 
-  if (row.mfa_secret) {
+  if (mfaActive) {
     if (request.totpCode) {
-      mfaSatisfied = verifyTotp(row.mfa_secret, request.totpCode);
+      // Stored encrypted; `decryptField` passes through rows written before
+      // encryption existed, so this works either side of the backfill.
+      mfaSatisfied = verifyTotp(decryptField(row.mfa_secret!), request.totpCode);
     } else if (request.backupCode) {
       mfaSatisfied = await consumeStoredBackupCode(row.id, row.org_id, request.backupCode);
     } else {
@@ -215,7 +230,80 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
     email: row.email,
     role,
     app,
-    mfaVerified: !!row.mfa_secret,
+    mfaVerified: mfaActive,
+    ipAddress: request.ipAddress,
+    userAgent: request.userAgent,
+    deviceName: request.deviceName,
+  });
+
+  return {
+    ok: true,
+    accessToken,
+    refreshToken,
+    user: {
+      id: row.id,
+      orgId: row.org_id,
+      email: row.email,
+      displayName: row.display_name,
+      role,
+    },
+  };
+}
+
+/**
+ * Signs in an identity that auth.circuvent.com has already authenticated.
+ *
+ * Two policies are deliberate here.
+ *
+ * It does not provision. HRMS is the system of record for who works here, so
+ * an address the directory has never seen is refused rather than quietly given
+ * an employee record -- joining is an HR action, not a side effect of clicking
+ * a sign-in button.
+ *
+ * It refuses accounts that have enabled multi-factor authentication. The
+ * identity provider does not yet assert a second factor, so accepting the
+ * handshake for those accounts would turn the SSO button into a way around the
+ * very control the person opted into. Once the provider asserts `amr`, this
+ * check becomes a comparison rather than a refusal.
+ */
+export async function signInWithSso(request: {
+  email: string;
+  app?: AppId;
+  ipAddress?: string;
+  userAgent?: string;
+  deviceName?: string;
+}): Promise<SignInResult> {
+  const app: AppId = request.app ?? "hrms";
+  const row = await findLoginRow(request.email);
+
+  if (!row) return { ok: false, reason: "invalid_credentials" };
+  if (row.status !== "active") return { ok: false, reason: "account_inactive" };
+  if (row.must_reset_password) return { ok: false, reason: "password_reset_required" };
+  // A pending enrolment is not an enabled second factor, so it must not block
+  // SSO — otherwise abandoning enrolment halfway locks the account out of the
+  // one sign-in path that never needed a code.
+  if (mfaRequiredAtSignIn(row.mfa_secret, row.mfa_enabled_at)) {
+    return { ok: false, reason: "mfa_required" };
+  }
+
+  if (row.locked_until && row.locked_until.getTime() > Date.now()) {
+    return {
+      ok: false,
+      reason: "account_locked",
+      retryAfterSeconds: Math.ceil((row.locked_until.getTime() - Date.now()) / 1000),
+    };
+  }
+
+  await clearFailures(row.id, row.org_id);
+
+  const role = await roleFor(row.id, row.org_id, app);
+  const { accessToken, refreshToken } = await issueSession({
+    userId: row.id,
+    orgId: row.org_id,
+    email: row.email,
+    role,
+    app,
+    mfaVerified: false,
     ipAddress: request.ipAddress,
     userAgent: request.userAgent,
     deviceName: request.deviceName,

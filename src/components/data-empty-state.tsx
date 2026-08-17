@@ -135,7 +135,7 @@ export const EMPTY_STATES = {
 // ─── Store Connection Hook ───────────────────────────────────
 
 import { startSync } from "@/stores/unified-store";
-import type { COLLECTIONS } from "@/lib/firestore-service";
+import type { COLLECTIONS } from "@/lib/collection-service";
 
 export function useFirestoreSync(
   collectionName: string,

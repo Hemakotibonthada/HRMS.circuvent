@@ -17,6 +17,7 @@ import { NeonEmployeeRepository } from "@/db/repositories/employee.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
+import { canViewOthersSalary } from "@/lib/rbac";
 
 const listQuerySchema = z.object({
   search: z.string().trim().max(200).optional(),
@@ -102,6 +103,20 @@ export async function GET(request: NextRequest) {
   try {
     const repo = new NeonEmployeeRepository(ctx);
     const page = await repo.list({ ...parsed.data, filters: readFilters(searchParams) });
+
+    // The directory is open to managers; the salary column is not. Without
+    // this a manager could page through `?pageSize=500` and harvest every
+    // colleague's compensation, which is precisely what withholding
+    // `payroll.view` from the manager role is meant to prevent.
+    if (!canViewOthersSalary(ctx.role)) {
+      const withoutOthersPay = page.items.map((employee) => {
+        if (employee.id === ctx.userId) return employee;
+        const { salary: _salary, ...rest } = employee;
+        return rest;
+      });
+      return NextResponse.json({ ...page, items: withoutOthersPay });
+    }
+
     return NextResponse.json(page);
   } catch (error) {
     return errorResponse(error);

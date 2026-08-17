@@ -100,8 +100,14 @@ export class MobileApiClient {
     return this.request<T>("PATCH", path, body);
   }
 
-  async delete(path: string): Promise<void> {
-    await this.request<void>("DELETE", path);
+  /**
+   * A body is unusual on DELETE but legal, and it is what lets "turn off MFA"
+   * carry the password and code that authorise it. Sending those as query
+   * parameters would put a password in every access log between here and the
+   * server.
+   */
+  async delete(path: string, body?: unknown): Promise<void> {
+    await this.request<void>("DELETE", path, body);
   }
 
   private async request<T>(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { dateKeyInZone } from "@/lib/date-keys";
 import { create } from "zustand";
 import { type BaseRecord, useEmployeeStore, startSync } from "@/stores/unified-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useRBAC } from "@/hooks/use-rbac";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -141,7 +142,7 @@ export default function AwardsPage() {
       category,
       description: fd.get("description") as string,
       givenBy: user?.displayName || user?.email || "",
-      date: new Date().toISOString().split("T")[0],
+      date: dateKeyInZone(new Date()),
       points: catConfig?.points || 50,
     };
     try {

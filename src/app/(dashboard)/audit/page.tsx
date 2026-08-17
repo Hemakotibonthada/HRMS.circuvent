@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { dateKeyInZone } from "@/lib/date-keys";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuditStore, startSync, type AuditDoc } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/firestore-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -107,7 +108,7 @@ export default function AuditPage() {
     items.forEach(a => {
       if (!a.timestamp) return;
       const d = new Date(a.timestamp);
-      const key = d.toISOString().split("T")[0];
+      const key = dateKeyInZone(d);
       map[key] = (map[key] || 0) + 1;
     });
     return Object.entries(map).sort().slice(-14).map(([date, count]) => ({
@@ -127,7 +128,7 @@ export default function AuditPage() {
     const byDate: Record<string, { info: number; warning: number; critical: number }> = {};
     items.forEach(a => {
       if (!a.timestamp) return;
-      const d = new Date(a.timestamp).toISOString().split("T")[0].substring(5);
+      const d = dateKeyInZone(new Date(a.timestamp)).substring(5);
       if (!byDate[d]) byDate[d] = { info: 0, warning: 0, critical: 0 };
       const sev = (a.severity || "info") as "info" | "warning" | "critical";
       if (sev in byDate[d]) byDate[d][sev]++;
@@ -174,7 +175,7 @@ export default function AuditPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `audit-log-${new Date().toISOString().split("T")[0]}.csv`;
+    link.download = `audit-log-${dateKeyInZone(new Date())}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     toast.success("Audit log exported!");

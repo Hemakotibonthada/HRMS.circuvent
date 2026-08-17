@@ -9,6 +9,7 @@ import {
   Briefcase, Award, ChevronRight, Menu, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { GetTheApp } from "@/components/get-the-app";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { SUBSCRIPTION_PLANS } from "@/lib/constants";
@@ -92,18 +93,39 @@ const FEATURES = [
   { icon: BarChart3, title: "HR Analytics", desc: "Workforce insights, attrition reports, and trend analysis", color: "from-purple-500 to-violet-600" },
 ];
 
+/**
+ * Claims the product can substantiate.
+ *
+ * Two of these said "500+ Companies Trust Us" and "50K+ Employees Managed" on
+ * a deployment whose payroll had never successfully run. Those are not sample
+ * data in the sense the rest of this cleanup dealt with — they are advertising
+ * claims about the business, and publishing a customer count you do not have
+ * is actionable in a way that a placeholder leave balance is not.
+ *
+ * Every figure below is checkable against this repository: the module count
+ * from the dashboard routes, the isolation guarantee from the row-level
+ * security policies and the 75 checks that assert them, the statutory coverage
+ * from `statutory-india.ts`. The uptime figure is a commitment the product
+ * offers rather than a measurement, which is a claim it is entitled to make.
+ */
 const STATS = [
-  { value: 15, suffix: "+", label: "HR Modules" },
+  { value: 89, suffix: "", label: "HR Modules" },
   { value: 99.9, suffix: "%", label: "Uptime SLA" },
-  { value: 500, suffix: "+", label: "Companies Trust Us" },
-  { value: 50, suffix: "K+", label: "Employees Managed" },
+  { value: 100, suffix: "%", label: "Tenant Data Isolation" },
+  { value: 9, suffix: "", label: "States: Professional Tax" },
 ];
 
-const TESTIMONIALS = [
-  { name: "Priya Sharma", role: "HR Director, TechCorp", text: "Circuvent HRMS transformed our HR operations. The automated payroll alone saved us 40 hours every month.", gradient: "from-violet-500 to-purple-600" },
-  { name: "Rahul Mehta", role: "CEO, StartupHub", text: "The onboarding module is excellent. New hires are productive from day one. The subscription pricing fits our growing team perfectly.", gradient: "from-blue-500 to-cyan-500" },
-  { name: "Sarah Chen", role: "People Ops, GlobalTech", text: "Best HRMS we've used. The analytics dashboards give us real-time workforce insights. Support team is incredibly responsive.", gradient: "from-emerald-500 to-green-600" },
-];
+// The `TESTIMONIALS` array was removed from here. It held three invented
+// customers — "Priya Sharma, HR Director, TechCorp" and two others — with
+// quoted praise, job titles, named employers and five-star ratings, rendered
+// as real endorsements. Inventing sample rows inside the product misleads the
+// tenant who bought it; inventing an endorsement and attributing it to a named
+// person at a named company is a false endorsement, which the ASCI code and
+// the FTC's endorsement guidelines both treat as deceptive advertising.
+//
+// There is no honest placeholder for a testimonial, because the whole content
+// of a testimonial is that somebody actually said it. The section is gone
+// until there are real customers willing to be quoted.
 
 export default function LandingPage() {
   const { user } = useAuth();
@@ -154,9 +176,6 @@ export default function LandingPage() {
             <a href="#pricing" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
               Pricing
             </a>
-            <a href="#testimonials" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              Testimonials
-            </a>
           </div>
 
           <div className="hidden items-center gap-3 md:flex">
@@ -188,7 +207,6 @@ export default function LandingPage() {
             <div className="flex flex-col gap-3">
               <a href="#features" className="px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted" onClick={() => setMobileMenuOpen(false)}>Features</a>
               <a href="#pricing" className="px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
-              <a href="#testimonials" className="px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted" onClick={() => setMobileMenuOpen(false)}>Testimonials</a>
               <div className="flex gap-2 pt-2">
                 <Button variant="outline" asChild className="flex-1">
                   <Link href="/login">Sign In</Link>
@@ -473,45 +491,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section id="testimonials" className="py-24 bg-muted/20 border-y border-border/30">
-        <div className="mx-auto max-w-7xl px-6">
-          <ScrollReveal className="mx-auto max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              Loved by HR teams{" "}
-              <span className="bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
-                everywhere
-              </span>
-            </h2>
-          </ScrollReveal>
-
-          <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {TESTIMONIALS.map((t, i) => (
-              <ScrollReveal key={i} delay={i * 120}>
-                <div className="card-glass rounded-2xl p-6">
-                  <div className="flex gap-1 mb-4">
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <Star key={s} className="h-4 w-4 fill-amber-400 text-amber-400" />
-                    ))}
-                  </div>
-                  <p className="text-sm text-foreground/80 leading-relaxed italic">
-                    &ldquo;{t.text}&rdquo;
-                  </p>
-                  <div className="mt-6 flex items-center gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${t.gradient} text-white text-sm font-semibold`}>
-                      {t.name.split(" ").map((n) => n[0]).join("")}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold">{t.name}</p>
-                      <p className="text-xs text-muted-foreground">{t.role}</p>
-                    </div>
-                  </div>
-                </div>
-              </ScrollReveal>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* CTA Section */}
       <section className="py-24">
@@ -553,6 +532,10 @@ export default function LandingPage() {
               <p className="mt-3 text-sm text-muted-foreground">
                 Modern HR management for modern teams. Built by Circuvent Technologies.
               </p>
+              {/* Renders nothing until NEXT_PUBLIC_PLAY_STORE_URL is set — see
+                  src/lib/mobile-app.ts. A store button that 404s reads as an
+                  app that was withdrawn. */}
+              <GetTheApp className="mt-5" />
             </div>
             <div>
               <h4 className="text-sm font-semibold mb-3">Product</h4>
