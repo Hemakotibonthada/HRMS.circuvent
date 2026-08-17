@@ -34,6 +34,7 @@
     "db:verify:live": "tsx scripts/verify-live-isolation.ts",
     "db:verify:reach": "tsx scripts/verify-credential-reach.ts",
     "db:smoke": "tsx scripts/smoke-live.ts",
+    "db:backfill:employees": "tsx scripts/backfill-owner-employees.ts",
     "db:apply": "tsx scripts/apply-migration.ts",
     "test:routes": "tsx scripts/sweep-routes.ts",
     "test:e2e": "tsx scripts/test-e2e.ts"

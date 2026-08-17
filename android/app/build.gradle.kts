@@ -107,6 +107,17 @@ dependencies {
 
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.biometric)
+    // Forces a modern androidx.fragment over the 1.2.5 that biometric 1.1.0
+    // drags in. Fragment 1.2.5's FragmentActivity.startActivityForResult
+    // rejects any request code that does not fit in 16 bits, while
+    // androidx.activity 1.9's ActivityResultRegistry allocates codes across
+    // the full int range — so the first permission request from a
+    // FragmentActivity threw "Can only use lower 16 bits for requestCode".
+    //
+    // MainActivity has to be a FragmentActivity because BiometricPrompt hosts
+    // an invisible fragment, so the two cannot simply be kept apart: tapping
+    // "Clock in" asked for location, and the app reported that it did not work.
+    implementation(libs.androidx.fragment)
     implementation(libs.play.services.location)
 
     implementation(libs.okhttp)

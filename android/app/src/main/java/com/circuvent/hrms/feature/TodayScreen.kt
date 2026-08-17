@@ -182,10 +182,28 @@ fun TodayScreen(container: AppContainer, viewModel: AppViewModel, user: SessionU
             .padding(screenPadding(bottomExtra = TabBarHeight)),
         verticalArrangement = Arrangement.spacedBy(Theme.spacing.md),
     ) {
-        AppText(
-            if (user != null) "Hello, ${user.firstName}" else "",
-            tone = TextTone.MUTED,
-        )
+        // `/api/auth/me` reads the access token and makes no database call, by
+        // design, so it returns an id, an org, a role and an email — and no
+        // name. Interpolating `firstName` therefore rendered "Hello," followed
+        // by nothing, which reads as a half-loaded screen rather than a
+        // greeting.
+        //
+        // The email's local part is real information the session already
+        // carries, so it is used when there is no name; and when there is
+        // neither, the line is dropped rather than shown empty.
+        val greeting = remember(user) {
+            val name = user?.firstName?.trim().orEmpty()
+            val fallback = user?.email?.substringBefore('@')?.trim().orEmpty()
+            when {
+                name.isNotEmpty() -> "Hello, $name"
+                fallback.isNotEmpty() -> "Hello, $fallback"
+                else -> ""
+            }
+        }
+
+        if (greeting.isNotEmpty()) {
+            AppText(greeting, tone = TextTone.MUTED)
+        }
 
         AppCard {
             if (loading) {
