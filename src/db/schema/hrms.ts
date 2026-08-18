@@ -277,6 +277,32 @@ export const employees = hrms.table(
   ]
 );
 
+export const paystubEmployeeSyncOutbox = hrms.table(
+  "paystub_employee_sync_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+    lastCreated: boolean("last_created"),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    syncedAt: timestamp("synced_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("paystub_employee_sync_outbox_employee_key").on(t.orgId, t.employeeId),
+    index("paystub_employee_sync_outbox_retry_idx").on(t.status, t.nextAttemptAt),
+  ]
+);
+
 export const employeeDocuments = hrms.table(
   "employee_documents",
   {

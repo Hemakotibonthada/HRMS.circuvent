@@ -19,6 +19,10 @@ import {
   type LeavePolicy,
 } from "@/lib/leave-provisioning";
 import {
+  queueAndAttemptPaystubEmployeeSync,
+  queuePaystubEmployeeSync,
+} from "@/lib/paystub-sync-outbox";
+import {
   NotFoundError,
   RepositoryError,
   type EmployeeCreate,
@@ -174,7 +178,7 @@ export class NeonEmployeeRepository implements EmployeeRepository {
   }
 
   async create(data: EmployeeCreate): Promise<EmployeeRecord> {
-    return withTenant(this.ctx, async (tx) => {
+    const row = await withTenant(this.ctx, async (tx) => {
       // Employee codes are unique per organization. Generating one inside the
       // transaction keeps two concurrent hires from colliding.
       const code =
@@ -218,8 +222,20 @@ export class NeonEmployeeRepository implements EmployeeRepository {
       // without balances is exactly the broken state being repaired.
       await this.provisionLeave(tx, row.id, data.joinDate);
 
-      return toRecord(row);
+      await queuePaystubEmployeeSync(tx, this.ctx.orgId, row.id);
+
+      return row;
     });
+
+    void queueAndAttemptPaystubEmployeeSync(this.ctx, row.id).catch((error: unknown) => {
+      console.warn("[paystub-sync] Could not run the immediate employee push attempt.", {
+        orgId: this.ctx.orgId,
+        employeeId: row.id,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
+    });
+
+    return toRecord(row);
   }
 
   /**
@@ -290,7 +306,7 @@ export class NeonEmployeeRepository implements EmployeeRepository {
   }
 
   async update(id: string, data: EmployeeUpdate): Promise<EmployeeRecord> {
-    return withTenant(this.ctx, async (tx) => {
+    const row = await withTenant(this.ctx, async (tx) => {
       const [row] = await tx
         .update(employees)
         .set({
@@ -314,8 +330,19 @@ export class NeonEmployeeRepository implements EmployeeRepository {
         .returning();
 
       if (!row) throw new NotFoundError("Employee", id);
-      return toRecord(row);
+      await queuePaystubEmployeeSync(tx, this.ctx.orgId, row.id);
+      return row;
     });
+
+    void queueAndAttemptPaystubEmployeeSync(this.ctx, row.id).catch((error: unknown) => {
+      console.warn("[paystub-sync] Could not run the immediate employee push attempt.", {
+        orgId: this.ctx.orgId,
+        employeeId: row.id,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
+    });
+
+    return toRecord(row);
   }
 
   /**
