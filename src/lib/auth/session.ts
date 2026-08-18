@@ -36,6 +36,7 @@ import {
   type AppId,
 } from "./tokens";
 import { strongestRole } from "./role-rank";
+import { startWorkLogOnSignIn } from "@/lib/attendance/work-log";
 
 /** Failed attempts before the account is temporarily locked. */
 const MAX_FAILED_ATTEMPTS = 5;
@@ -231,6 +232,26 @@ async function provisionFromDirectory(input: {
  * moment somebody is married, promoted or corrects a typo. Refreshed only when
  * it has actually changed, so an ordinary sign-in stays a read.
  */
+/**
+ * Opens the attendance day, without letting it affect the sign-in.
+ *
+ * Deliberately awaited rather than fired and forgotten: on a serverless
+ * function the response ends the invocation, and a promise still in flight is
+ * killed silently -- which is how "we call it on login" becomes "we call it on
+ * login when the machine happens to still be warm". It is one insert against a
+ * connection the request already holds.
+ *
+ * `startWorkLogOnSignIn` never throws; the catch is the second lock, so a
+ * future change there cannot turn a bookkeeping failure into a refused login.
+ */
+async function openWorkLog(userId: string, orgId: string, email: string): Promise<void> {
+  try {
+    await startWorkLogOnSignIn({ orgId, userId, email });
+  } catch {
+    // Nothing here may fail a sign-in.
+  }
+}
+
 async function refreshDirectoryFacts(row: LoginRow, displayName: string | null): Promise<void> {
   const wanted = (displayName ?? "").trim();
   if (!wanted || wanted === row.display_name) return;
@@ -361,6 +382,8 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
     deviceName: request.deviceName,
   });
 
+  await openWorkLog(row.id, row.org_id, row.email);
+
   return {
     ok: true,
     accessToken,
@@ -479,6 +502,8 @@ export async function signInWithSso(request: {
     userAgent: request.userAgent,
     deviceName: request.deviceName,
   });
+
+  await openWorkLog(row.id, row.org_id, row.email);
 
   return {
     ok: true,

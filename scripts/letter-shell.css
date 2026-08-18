@@ -1,0 +1,66 @@
+
+      :root { color-scheme: light; }
+      @page { size: A4; margin: 20mm; }
+      body {
+        margin: 0;
+        font-family: 'Calibri', 'Segoe UI', Arial, sans-serif;
+        background: #ffffff;
+        color: #1f2937;
+        line-height: 1.6;
+      }
+      .wrapper { max-width: 760px; margin: 0 auto; background: #ffffff; }
+      .wrapper-inner { padding: 32px 36px 40px; }
+      .letterhead {
+        display: flex; justify-content: space-between; gap: 32px;
+        border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 28px;
+      }
+      .brand-name {
+        font-size: 18px; letter-spacing: 0.16em; text-transform: uppercase;
+        font-weight: 700; color: #0f172a; margin: 0;
+      }
+      .brand-info { font-size: 13px; color: #475569; margin: 2px 0 0; letter-spacing: 0.04em; }
+      .meta { min-width: 200px; text-align: right; font-size: 13px; color: #475569; }
+      .meta-label {
+        display: block; font-size: 11px; text-transform: uppercase;
+        letter-spacing: 0.22em; color: #1e3a8a; margin-top: 10px;
+      }
+      .meta-value { display: block; font-weight: 600; color: #0f172a; margin-top: 4px; }
+      p { margin: 16px 0; font-size: 16px; orphans: 3; widows: 3; }
+      strong { color: #0f172a; }
+      h1 { margin: 10px 0 22px; font-size: 28px; color: #1d4ed8; letter-spacing: -0.01em; }
+      h1, h2, h3 { page-break-after: avoid; }
+      .section { margin: 36px 0; page-break-inside: avoid; }
+      .section-title {
+        margin: 0 0 14px; font-size: 12px; text-transform: uppercase;
+        letter-spacing: 0.24em; color: #1e3a8a; font-weight: 700; page-break-after: avoid;
+      }
+      .section-body {
+        padding: 24px 28px; border: 1px solid #e2e8f0; border-radius: 18px; background: #ffffff;
+      }
+      .section-body p { margin: 12px 0; }
+      ul.bullet { margin: 12px 0 0 18px; padding: 0; }
+      ul.bullet li { margin: 10px 0; font-size: 15px; orphans: 2; widows: 2; }
+      table.data { width: 100%; border-collapse: collapse; margin-top: 16px; }
+      table.data th, table.data td {
+        text-align: left; padding: 11px 14px; font-size: 15px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+      }
+      table.data th {
+        font-size: 12px; text-transform: uppercase; letter-spacing: 0.2em;
+        color: #475569; background: rgba(226, 232, 240, 0.45);
+      }
+      td.amount { text-align: right; font-weight: 600; color: #0f172a; }
+      tr.total td { font-weight: 700; background: rgba(37, 99, 235, 0.08); }
+      .note {
+        margin: 28px 0; padding: 18px 22px; border-left: 4px solid #2563eb;
+        background: rgba(59, 130, 246, 0.1); border-radius: 16px; font-size: 15px;
+        page-break-inside: avoid;
+      }
+      .signature { margin-top: 48px; page-break-inside: avoid; }
+      .signature strong { display: block; margin-bottom: 4px; }
+      .footer {
+        margin-top: 44px; border-top: 1px solid #e2e8f0; padding-top: 18px;
+        font-size: 13px; color: #64748b; page-break-inside: avoid;
+      }
+      a { color: #2563eb; text-decoration: none; }
+    
