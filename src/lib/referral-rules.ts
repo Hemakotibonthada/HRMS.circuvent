@@ -213,3 +213,63 @@ export function stillQualifies(employeeStatus: string, isDeleted: boolean): bool
   // resignation is already in defeats the purpose.
   return ["active", "probation", "on_leave"].includes(employeeStatus);
 }
+
+// ─── Default policy set ──────────────────────────────────────
+
+/**
+ * What a newly registered organisation starts with.
+ *
+ * The referral module shipped complete — a tested state machine, instalment
+ * scheduling, duplicate detection, payout eligibility — and no organisation
+ * had a single policy row, so there was no bonus amount for any of it to work
+ * from. The screens rendered, referrals could be submitted, and nothing could
+ * ever be paid. Same shape as the leave module before its policies were
+ * seeded: the logic was never the missing part.
+ *
+ * These are a starting point the tenant is expected to edit, not a claim about
+ * what anyone owes. The two-instalment split is the common Indian pattern:
+ * part on joining, the rest once the hire has stayed long enough to show the
+ * referral was a good one.
+ */
+export interface DefaultReferralPolicy {
+  name: string;
+  seniority: string | null;
+  bonusAmountMinor: bigint;
+  qualifyingPeriodDays: number;
+  instalments: { label: string; percentage: number; afterDays: number }[];
+}
+
+export const DEFAULT_REFERRAL_POLICIES: readonly DefaultReferralPolicy[] = [
+  {
+    name: "Standard referral",
+    seniority: null,
+    // ₹25,000, in paise, because money is held in minor units everywhere in
+    // this product and a float here would be the one place it is not.
+    bonusAmountMinor: 2_500_000n,
+    qualifyingPeriodDays: 90,
+    instalments: [
+      { label: "On joining", percentage: 50, afterDays: 0 },
+      { label: "After probation", percentage: 50, afterDays: 90 },
+    ],
+  },
+  {
+    name: "Senior referral",
+    seniority: "senior",
+    bonusAmountMinor: 5_000_000n,
+    qualifyingPeriodDays: 180,
+    instalments: [
+      { label: "On joining", percentage: 40, afterDays: 0 },
+      { label: "After six months", percentage: 60, afterDays: 180 },
+    ],
+  },
+  {
+    name: "Leadership referral",
+    seniority: "lead",
+    bonusAmountMinor: 10_000_000n,
+    qualifyingPeriodDays: 180,
+    instalments: [
+      { label: "On joining", percentage: 30, afterDays: 0 },
+      { label: "After six months", percentage: 70, afterDays: 180 },
+    ],
+  },
+] as const;

@@ -371,7 +371,15 @@ private suspend fun submitPunch(
         put("latitude", position.latitude)
         put("longitude", position.longitude)
         position.accuracyMetres?.let { put("accuracyMetres", it) }
-        position.capturedAt?.let { put("capturedAt", java.time.Instant.ofEpochMilli(it).toString()) }
+        // Epoch milliseconds, not an ISO string.
+        //
+        // The server takes `capturedAt: z.number().int()` — the moment the
+        // fix was taken, so a punch queued in a basement is recorded at the
+        // time it happened rather than the time it synced. Sending
+        // `Instant.toString()` produced "Expected number, received string" and
+        // the queue marked the punch refused, so clocking in failed outright
+        // while every other field was correct.
+        position.capturedAt?.let { put("capturedAt", it) }
         put("isMocked", position.isMocked)
     }.toString()
 

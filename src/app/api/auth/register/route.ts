@@ -16,8 +16,9 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { organizations, userRoles, users } from "@/db/schema/identity";
 import { employees, leavePolicies } from "@/db/schema/hrms";
-import { documentTemplates } from "@/db/schema/talent";
+import { documentTemplates, referralPolicies } from "@/db/schema/talent";
 import { DEFAULT_LEAVE_POLICIES } from "@/lib/leave-provisioning";
+import { DEFAULT_REFERRAL_POLICIES } from "@/lib/referral-rules";
 import { TEMPLATE_CATALOG } from "@/lib/document-templates/catalog";
 import { extractTokens } from "@/lib/document-rules";
 import { hashPassword } from "@/lib/auth/password";
@@ -160,8 +161,7 @@ export async function POST(request: NextRequest) {
         }))
       );
 
-      await tx.insert(documentTemplates).values(
-        TEMPLATE_CATALOG.map((template) => ({
+      await tx.insert(documentTemplates).values(        TEMPLATE_CATALOG.map((template) => ({
           orgId: org.id,
           name: template.name,
           category: template.category,
@@ -169,6 +169,20 @@ export async function POST(request: NextRequest) {
           requiredTokens: extractTokens(template.body),
           requiresSignature: template.requiresSignature,
           signatoryRoles: template.signatoryRoles,
+        }))
+      );
+
+      // Referral bonuses. Without a policy the referral module has no amount
+      // to work from: referrals can be submitted and none can ever be paid,
+      // which is how a complete, tested feature ships doing nothing.
+      await tx.insert(referralPolicies).values(
+        DEFAULT_REFERRAL_POLICIES.map((policy) => ({
+          orgId: org.id,
+          name: policy.name,
+          seniority: policy.seniority,
+          bonusAmountMinor: policy.bonusAmountMinor,
+          qualifyingPeriodDays: policy.qualifyingPeriodDays,
+          instalments: policy.instalments,
         }))
       );
 

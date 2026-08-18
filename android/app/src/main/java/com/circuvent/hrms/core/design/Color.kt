@@ -60,14 +60,23 @@ data class AppColors(
 val LightColors = AppColors(
     // Not #FFFFFF. A white page cannot show a white card, and every grouped
     // surface in this app is a card.
-    background = Color(0xFFF4F4F7),
-    surface = Color(0xFFFAFAFC),
+    //
+    // Tinted towards the brand hue rather than a neutral grey. A flat
+    // #F4F4F7 page under a violet button reads as an unfinished wireframe:
+    // there is one colour in the design and everything else is the absence of
+    // one. A few points of violet in the background costs nothing, keeps every
+    // contrast ratio below intact, and makes the surfaces above it look
+    // deliberate instead of default.
+    background = Color(0xFFF3F1FA),
+    surface = Color(0xFFFAF9FE),
     surfaceElevated = Color(0xFFFFFFFF),
-    text = Color(0xFF10111A),
-    textMuted = Color(0xFF535461),
-    primary = Color(0xFF783FF5),
+    // Warmed very slightly off pure near-black, which reads softer on an OLED
+    // panel without giving up any contrast.
+    text = Color(0xFF14121F),
+    textMuted = Color(0xFF56546A),
+    primary = Color(0xFF6D33E8),
     onPrimary = Color(0xFFFFFFFF),
-    primarySubtle = Color(0xFFEFEAFE),
+    primarySubtle = Color(0xFFEDE7FE),
     // Darkened from the web original, which sat at 4.11:1 against white — on
     // the delete button, the one you least want misread.
     danger = Color(0xFFC2101C),
@@ -81,9 +90,9 @@ val LightColors = AppColors(
     // Heavier than the current fashion, deliberately. At 1.27:1 the original
     // was an input outline nobody could see.
     border = Color(0xFF8A8A99),
-    borderSubtle = Color(0xFFE3E4EB),
+    borderSubtle = Color(0xFFE1DEF0),
     focus = Color(0xFF7E55F0),
-    scrim = Color(0x7310111A),
+    scrim = Color(0x7314121F),
     isDark = false,
 )
 
