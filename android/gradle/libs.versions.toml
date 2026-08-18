@@ -11,6 +11,8 @@ serialization = "1.7.3"
 securityCrypto = "1.1.0-alpha06"
 biometric = "1.1.0"
 fragment = "1.8.5"
+credentials = "1.3.0"
+browser = "1.8.0"
 playServicesLocation = "21.3.0"
 coroutines = "1.9.0"
 junit = "4.13.2"
@@ -33,6 +35,9 @@ androidx-navigation-compose = { group = "androidx.navigation", name = "navigatio
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 androidx-fragment = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragment" }
+androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
+androidx-credentials-play-services = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
+androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }

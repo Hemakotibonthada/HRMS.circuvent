@@ -172,8 +172,44 @@ class AppRepository(private val api: ApiClient) {
         return access to refresh
     }
 
-    suspend fun signOut() {
-        // Best effort. The local session is cleared whatever this does — a
+    /**
+     * Fetches the options a passkey ceremony needs.
+     *
+     * Passed to Credential Manager unmodified. The server speaks WebAuthn JSON
+     * to this app, to the iOS app and to the browser, so reshaping it here
+     * would be the first step towards three clients that disagree.
+     */
+    suspend fun passkeyLoginOptions(): String = api.get("/api/auth/passkey/login")
+
+    suspend fun passkeyRegisterOptions(): String = api.get("/api/auth/passkey/register")
+
+    /** Signs in with an assertion, returning the tokens as `signIn` does. */
+    suspend fun passkeySignIn(fields: Map<String, String>): Pair<String, String?> {
+        val body = buildJsonObject {
+            for ((key, value) in fields) put(key, value)
+            put("client", "native")
+        }
+
+        val response =
+            json.parseToJsonElement(api.post("/api/auth/passkey/login", body.toString())) as JsonObject
+        val tokens = response["tokens"] as? JsonObject ?: response
+        val access = tokens["accessToken"]?.jsonPrimitive?.content
+            ?: error("The server did not return an access token")
+        return access to tokens["refreshToken"]?.jsonPrimitive?.content
+    }
+
+    /** Enrols a passkey against the signed-in account. */
+    suspend fun passkeyRegister(fields: Map<String, Any>) {
+        val body = buildJsonObject {
+            for ((key, value) in fields) {
+                if (key == "transports") continue
+                put(key, value.toString())
+            }
+        }
+        api.post("/api/auth/passkey/register", body.toString())
+    }
+
+    suspend fun signOut() {        // Best effort. The local session is cleared whatever this does — a
         // failed sign-out that leaves somebody signed in on their handset is
         // the worse of the two failures.
         runCatching { api.post("/api/auth/logout", null) }

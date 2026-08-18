@@ -137,11 +137,12 @@ const eslintConfig = [
     },
   },
   {
-    // CommonJS build configuration. Metro and friends load these with
-    // `require` before any ESM loader exists, so `require` is the only thing
-    // that works here — flagging it is the rule being wrong about the file
-    // rather than the file being wrong.
-    files: ["**/*.config.js", "**/*.config.cjs"],
+    // CommonJS build configuration and CommonJS scripts. Metro and friends
+    // load these with `require` before any ESM loader exists, and a `.cjs`
+    // file is CommonJS by definition — so `require` is the only thing that
+    // works, and flagging it is the rule being wrong about the file rather
+    // than the file being wrong.
+    files: ["**/*.config.js", "**/*.config.cjs", "**/*.cjs"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
     },

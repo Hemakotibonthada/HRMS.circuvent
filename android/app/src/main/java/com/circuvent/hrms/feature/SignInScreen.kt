@@ -41,6 +41,8 @@ import com.circuvent.hrms.core.ui.TextTone
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.net.ApiException
 import com.circuvent.hrms.data.net.OfflineException
+import androidx.compose.ui.platform.LocalContext
+import com.circuvent.hrms.security.PasskeyManager
 import kotlinx.coroutines.launch
 
 /**
@@ -63,6 +65,8 @@ fun SignInScreen(viewModel: AppViewModel) {
 
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
+    val passkeys = remember(context) { PasskeyManager(context) }
 
     fun submit() {
         if (email.isBlank() || password.isEmpty()) {
@@ -219,6 +223,55 @@ fun SignInScreen(viewModel: AppViewModel) {
             busy = busy,
             contentDescription = "Sign in to Circuvent HR",
             modifier = Modifier.padding(top = Theme.spacing.lg),
+        )
+
+        // Passkey sign-in.
+        //
+        // Offered below the password rather than instead of it: somebody
+        // signing in on a new phone has no passkey on it yet, and a screen that
+        // only offers one strands them. Once a passkey exists this is the
+        // shorter path — no password to phish, and nothing to type.
+        AppButton(
+            label = "Use a passkey",
+            onClick = {
+                busy = true
+                error = null
+                scope.launch {
+                    try {
+                        val options = viewModel.passkeyLoginOptions()
+                        when (val outcome = passkeys.authenticate(options)) {
+                            is PasskeyManager.Outcome.Success -> {
+                                val assertion = passkeys.flattenAssertion(outcome.responseJson)
+                                if (assertion == null) {
+                                    error = "That did not work" to
+                                        "Your device returned something unexpected."
+                                } else {
+                                    viewModel.signInWithPasskey(assertion)
+                                }
+                            }
+                            // Dismissing the sheet is a decision, not a failure.
+                            PasskeyManager.Outcome.Cancelled -> Unit
+                            PasskeyManager.Outcome.NoneEnrolled -> {
+                                error = "No passkey on this device" to
+                                    "Sign in with your password once, then add a passkey from your profile."
+                            }
+                            is PasskeyManager.Outcome.Failed -> {
+                                error = "That did not work" to outcome.message
+                            }
+                        }
+                    } catch (e: OfflineException) {
+                        error = "No connection" to "Check your signal and try again."
+                    } catch (e: Exception) {
+                        Log.e("SignIn", "Passkey sign-in failed", e)
+                        error = "That did not work" to "Please try your password."
+                    } finally {
+                        busy = false
+                    }
+                }
+            },
+            busy = false,
+            contentDescription = "Sign in using a passkey on this device",
+            modifier = Modifier.padding(top = Theme.spacing.sm),
         )
     }
 }

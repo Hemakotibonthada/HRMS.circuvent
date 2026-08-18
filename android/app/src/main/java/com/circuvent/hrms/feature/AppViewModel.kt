@@ -75,6 +75,26 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         _session.value = SessionState.SignedIn(runCatching { container.repository.me() }.getOrNull())
     }
 
+    /**
+     * Signs in with a passkey.
+     *
+     * Takes the already-flattened assertion rather than doing the ceremony
+     * itself, because the ceremony needs an Activity to host the system sheet
+     * and a ViewModel outlives the one that started it.
+     */
+    suspend fun signInWithPasskey(assertion: Map<String, String>) {
+        val (access, refresh) = container.repository.passkeySignIn(assertion)
+        container.tokens.save(access, refresh)
+        _session.value = SessionState.SignedIn(runCatching { container.repository.me() }.getOrNull())
+    }
+
+    suspend fun passkeyLoginOptions(): String = container.repository.passkeyLoginOptions()
+
+    suspend fun passkeyRegisterOptions(): String = container.repository.passkeyRegisterOptions()
+
+    suspend fun registerPasskey(fields: Map<String, Any>) =
+        container.repository.passkeyRegister(fields)
+
     fun signOut() {
         viewModelScope.launch {
             container.repository.signOut()

@@ -118,6 +118,16 @@ dependencies {
     // an invisible fragment, so the two cannot simply be kept apart: tapping
     // "Clock in" asked for location, and the app reported that it did not work.
     implementation(libs.androidx.fragment)
+    // Passkeys. Credential Manager is the only supported way to reach a
+    // platform authenticator on Android 14+, and the play-services artifact is
+    // what backs it on devices with Google Play.
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services)
+    // Custom Tabs for SSO. A WebView would work and must not be used: it gives
+    // the app access to the credentials typed into the identity provider, which
+    // is exactly what federating the sign-in was meant to avoid, and identity
+    // providers increasingly refuse to render in one.
+    implementation(libs.androidx.browser)
     implementation(libs.play.services.location)
 
     implementation(libs.okhttp)

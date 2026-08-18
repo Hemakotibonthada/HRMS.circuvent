@@ -373,3 +373,47 @@ export type Session = typeof sessions.$inferSelect;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
+
+
+/**
+ * Passkeys.
+ *
+ * One row per credential, not per user: a person legitimately registers a
+ * passkey on their phone, their laptop and a hardware key, and losing one
+ * must not lock them out of the others.
+ *
+ * `publicKey` is not a secret — the whole design is that the private half
+ * never leaves the authenticator, so a leaked table yields nothing that can
+ * sign anything. `signCount` is the only mutable field and exists solely for
+ * cloning detection.
+ */
+export const webauthnCredentials = identity.table(
+  "webauthn_credentials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Base64url credential id, as the authenticator issued it. */
+    credentialId: text("credential_id").notNull(),
+    /** Base64url COSE public key. */
+    publicKey: text("public_key").notNull(),
+    /** Cloning detection only. Synced authenticators legitimately hold at 0. */
+    signCount: integer("sign_count").notNull().default(0),
+    transports: jsonb("transports").notNull().default(sql`'[]'::jsonb`),
+    /** What the user calls this key, so they can revoke the right one. */
+    label: text("label"),
+    backedUp: boolean("backed_up").notNull().default(false),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // A credential id must resolve to exactly one account, globally: sign-in
+    // presents an id with no email, so a duplicate would be ambiguous.
+    uniqueIndex("webauthn_credentials_credential_id_key").on(t.credentialId),
+    index("webauthn_credentials_user_idx").on(t.userId),
+  ]
+);
