@@ -33,7 +33,7 @@ work.circuvent.com     → CV-365
 hrms.circuvent.com     → HRMS.circuvent
 ats.circuvent.com      → ATS.circuvent
 mail.circuvent.com     → Mail.circuvent
-office.circuvent.com   → Office.Circuvent (Express API)
+paystub.circuvent.com  → Paystub.circuvent
 ```
 
 **Identity fan-out** — `src/lib/cross-app-sync.ts` (HRMS) is the integration hub. Creating an

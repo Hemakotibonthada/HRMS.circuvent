@@ -73,7 +73,7 @@ One project per app, each pointing at its own repository and branch.
 | `ats` | ATS repository | `main` | `ats.circuvent.com` |
 | `cv365` | CV-365 repository | `main` | `cv.circuvent.com` |
 | `mail` | Mail repository | `main` | `mail.circuvent.com` |
-| `office` | Office.Circuvent | `main` | `office.circuvent.com` |
+| `paystub` | Paystub.circuvent | `main` | `paystub.circuvent.com` |
 | `website` | WebSite | `main` | `circuvent.com` + `www` |
 
 `develop` deploys to a preview URL automatically. **Production is `main`**, so
