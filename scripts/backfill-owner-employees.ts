@@ -23,7 +23,13 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import { DEFAULT_LEAVE_POLICIES, provisionFor, type LeavePolicy } from "../src/lib/leave-provisioning";
 import { DEFAULT_REFERRAL_POLICIES } from "../src/lib/referral-rules";
-import { allHolidays, MOVABLE_HOLIDAYS } from "../src/lib/india-holidays";
+import {
+  allHolidays,
+  FIXED_HOLIDAYS,
+  HOLIDAY_ALIASES,
+  MOVABLE_HOLIDAYS,
+  SUPPORTED_YEARS,
+} from "../src/lib/ap-holidays";
 
 const apply = process.argv.includes("--apply");
 
@@ -294,14 +300,16 @@ async function provisionMissingReferralPolicies(): Promise<void> {
 }
 
 /**
- * Gives every organisation the fixed-date Indian holidays for 2026 to 2036.
+ * Gives every organisation the fixed-date Andhra Pradesh holidays for 2026 to
+ * 2036.
  *
- * Only the dates that are certain: the three national gazetted holidays, plus
- * the widely observed ones marked restricted so a tenant chooses rather than
- * inherits them. The lunisolar and Islamic festivals are not written, because
- * their dates are not knowable here and a wrong holiday is acted on by
- * attendance and payroll — somebody marked absent on a day the office was
- * shut.
+ * Only the dates that are certain: the national gazetted days, the state's own
+ * commemorations, and the three-day Sankranti block. Sankranti is solar — it
+ * tracks the sun entering Makara and holds to mid-January — which is why it can
+ * be written here when Ugadi and Deepavali cannot. The lunisolar and Islamic
+ * festivals are not written, because their dates are not knowable here and a
+ * wrong holiday is acted on by attendance and payroll — somebody marked absent
+ * on a day the office was shut.
  *
  * Idempotent on (org, date, name), so re-running does not duplicate a year and
  * a tenant's own edits to a holiday it already has are left alone.
@@ -324,7 +332,10 @@ async function provisionMissingHolidays(): Promise<void> {
   const needing = orgs.filter((o) => Number(o.existing) < holidays.length);
 
   console.log(`${needing.length} organisation(s) missing 2026-2036 holidays\n`);
-  if (needing.length === 0) return;
+  if (needing.length === 0) {
+    await refreshHolidayDescriptions();
+    return;
+  }
 
   for (const org of needing) {
     console.log(`  ${org.name.padEnd(28)} has ${org.existing} of ${holidays.length}`);
@@ -332,6 +343,7 @@ async function provisionMissingHolidays(): Promise<void> {
 
   if (!apply) {
     console.log(`\nReport only. Re-run with --apply to create these.\n`);
+    await refreshHolidayDescriptions();
     return;
   }
 
@@ -365,9 +377,211 @@ async function provisionMissingHolidays(): Promise<void> {
 
   console.log(`\n${written} of ${needing.length} organisations given holidays.`);
   console.log(
-    `${MOVABLE_HOLIDAYS.length} festival dates per year still have to come from an ` +
-      `authoritative calendar — they are named in src/lib/india-holidays.ts.\n`
+    `${MOVABLE_HOLIDAYS.length} festival dates per year still have to come from a ` +
+      `Telugu panchangam — they are named in src/lib/ap-holidays.ts.\n`
   );
+
+  await refreshHolidayDescriptions();
+}
+
+/**
+ * Rewrites the description and optional flag of holidays seeded before the
+ * calendar was scoped to Andhra Pradesh, and removes days filed twice under two
+ * names.
+ *
+ * The earlier national set used the same names on the same dates, so none of
+ * those rows are wrong and none are deleted for their wording — but three of
+ * them read "nationally" where the state's own wording belongs, and Ambedkar
+ * Jayanti was carried as optional when Andhra Pradesh gazettes it. The two are
+ * checked separately because a flag can drift without the text changing.
+ *
+ * Matched on name and date against the fixed set, so a holiday a tenant added
+ * or renamed itself is never touched: rewriting somebody's own calendar entry
+ * to tidy up our seeding is a worse error than the stale sentence.
+ */
+async function refreshHolidayDescriptions(): Promise<void> {
+  const stale = await withTenant({ orgId: "", superuser: true }, async (tx) => {
+    const found: { name: string; rows: string }[] = [];
+    for (const h of FIXED_HOLIDAYS) {
+      const r = await tx.execute(sql`
+        select count(*)::text as rows from hrms.holidays
+         where year between ${SUPPORTED_YEARS.first} and ${SUPPORTED_YEARS.last}
+           and name = ${h.name}
+           and extract(month from holiday_date) = ${h.month}
+           and extract(day   from holiday_date) = ${h.day}
+           and (description is distinct from ${h.description}
+                or is_optional is distinct from ${h.restricted})
+      `);
+      const rows = ((r.rows ?? r) as unknown as { rows: string }[])[0]?.rows ?? "0";
+      if (Number(rows) > 0) found.push({ name: h.name, rows });
+    }
+    return found;
+  });
+
+  console.log(`${stale.length} holiday name(s) needing the Andhra Pradesh wording or flag\n`);
+  for (const s of stale) console.log(`  ${s.name.padEnd(30)} ${s.rows} rows`);
+
+  if (!apply) {
+    if (stale.length > 0) console.log(`\nReport only. Re-run with --apply to rewrite these.\n`);
+    await removeAliasDuplicates();
+    return;
+  }
+
+  let updated = 0;
+  if (stale.length > 0) {
+    await withTenant({ orgId: "", superuser: true }, async (tx) => {
+      for (const h of FIXED_HOLIDAYS) {
+        const r = await tx.execute(sql`
+          update hrms.holidays
+             set description = ${h.description}, is_optional = ${h.restricted}
+           where year between ${SUPPORTED_YEARS.first} and ${SUPPORTED_YEARS.last}
+             and name = ${h.name}
+             and extract(month from holiday_date) = ${h.month}
+             and extract(day   from holiday_date) = ${h.day}
+             and (description is distinct from ${h.description}
+                  or is_optional is distinct from ${h.restricted})
+          returning id
+        `);
+        updated += ((r.rows ?? r) as unknown[]).length;
+      }
+    });
+    console.log(`\n${updated} row(s) rewritten for Andhra Pradesh.\n`);
+  }
+
+  await removeAliasDuplicates();
+}
+
+/**
+ * Removes a holiday that duplicates another on the same day under a different
+ * name — "Dr Ambedkar Jayanti" beside "Ambedkar Jayanti".
+ *
+ * Only an alias listed in HOLIDAY_ALIASES is removed, and only when the
+ * canonical row already exists on that date for that organisation, so the day
+ * itself is never lost. A name nobody has claimed as an alias is left alone
+ * even if it shares a date, because two genuinely different observances can
+ * fall together.
+ */
+async function removeAliasDuplicates(): Promise<void> {
+  const dupes = await withTenant({ orgId: "", superuser: true }, async (tx) => {
+    const found: { alias: string; canonical: string; rows: string }[] = [];
+    for (const [alias, canonical] of Object.entries(HOLIDAY_ALIASES)) {
+      const r = await tx.execute(sql`
+        select count(*)::text as rows from hrms.holidays a
+         where a.name = ${alias}
+           and exists (
+             select 1 from hrms.holidays c
+              where c.org_id = a.org_id
+                and c.holiday_date = a.holiday_date
+                and c.name = ${canonical}
+           )
+      `);
+      const rows = ((r.rows ?? r) as unknown as { rows: string }[])[0]?.rows ?? "0";
+      if (Number(rows) > 0) found.push({ alias, canonical, rows });
+    }
+    return found;
+  });
+
+  console.log(`${dupes.length} day(s) listed twice under two names\n`);
+  if (dupes.length === 0) {
+    await canonicaliseHolidayNames();
+    return;
+  }
+
+  for (const d of dupes) {
+    console.log(`  ${d.alias.padEnd(30)} duplicates ${d.canonical} (${d.rows})`);
+  }
+
+  if (!apply) {
+    console.log(`\nReport only. Re-run with --apply to remove the duplicates.\n`);
+    await canonicaliseHolidayNames();
+    return;
+  }
+
+  let removed = 0;
+  await withTenant({ orgId: "", superuser: true }, async (tx) => {
+    for (const { alias, canonical } of dupes) {
+      const r = await tx.execute(sql`
+        delete from hrms.holidays a
+         where a.name = ${alias}
+           and exists (
+             select 1 from hrms.holidays c
+              where c.org_id = a.org_id
+                and c.holiday_date = a.holiday_date
+                and c.name = ${canonical}
+           )
+        returning a.id
+      `);
+      removed += ((r.rows ?? r) as unknown[]).length;
+    }
+  });
+
+  console.log(`\n${removed} duplicate row(s) removed.\n`);
+  await canonicaliseHolidayNames();
+}
+
+/**
+ * Renames a holiday carried under a north-Indian name to the Telugu one the
+ * state uses — "Dussehra" to "Dasara", "Diwali" to "Deepavali".
+ *
+ * The date is not touched. An earlier seeding wrote the right days under the
+ * wrong regional names, and those days are real: deleting them to tidy the
+ * naming would take away a holiday somebody has already planned around, which
+ * is far worse than an unfamiliar label. Only rows with no canonical row on the
+ * same date are renamed — the duplicate case is removed above instead, since
+ * renaming there would collide.
+ */
+async function canonicaliseHolidayNames(): Promise<void> {
+  const renameable = await withTenant({ orgId: "", superuser: true }, async (tx) => {
+    const found: { alias: string; canonical: string; rows: string }[] = [];
+    for (const [alias, canonical] of Object.entries(HOLIDAY_ALIASES)) {
+      const r = await tx.execute(sql`
+        select count(*)::text as rows from hrms.holidays a
+         where a.name = ${alias}
+           and not exists (
+             select 1 from hrms.holidays c
+              where c.org_id = a.org_id
+                and c.holiday_date = a.holiday_date
+                and c.name = ${canonical}
+           )
+      `);
+      const rows = ((r.rows ?? r) as unknown as { rows: string }[])[0]?.rows ?? "0";
+      if (Number(rows) > 0) found.push({ alias, canonical, rows });
+    }
+    return found;
+  });
+
+  console.log(`${renameable.length} holiday name(s) not using the Telugu name\n`);
+  if (renameable.length === 0) return;
+
+  for (const r of renameable) {
+    console.log(`  ${r.alias.padEnd(30)} should read ${r.canonical} (${r.rows})`);
+  }
+
+  if (!apply) {
+    console.log(`\nReport only. Re-run with --apply to rename these.\n`);
+    return;
+  }
+
+  let renamed = 0;
+  await withTenant({ orgId: "", superuser: true }, async (tx) => {
+    for (const { alias, canonical } of renameable) {
+      const r = await tx.execute(sql`
+        update hrms.holidays a
+           set name = ${canonical}
+         where a.name = ${alias}
+           and not exists (
+             select 1 from hrms.holidays c
+              where c.org_id = a.org_id
+                and c.holiday_date = a.holiday_date
+                and c.name = ${canonical}
+           )
+        returning a.id
+      `);
+      renamed += ((r.rows ?? r) as unknown[]).length;
+    }
+  });
+
+  console.log(`\n${renamed} holiday(s) renamed to the Telugu name.\n`);
 }
 
 main()
