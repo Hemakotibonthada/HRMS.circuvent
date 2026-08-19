@@ -10,6 +10,7 @@ import { NeonBenefitsRepository } from "@/db/repositories/benefits.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { describeIssues, toFieldIssues } from "@/lib/validation-response";
 
 const addSchema = z.object({
   fullName: z.string().trim().min(2, "Enter their name").max(150),
@@ -74,13 +75,7 @@ export async function POST(request: NextRequest) {
   const parsed = addSchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
-      {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((i) => ({
-          field: i.path.join("."),
-          message: i.message,
-        })),
-      },
+      { error: describeIssues(toFieldIssues(parsed.error)), issues: toFieldIssues(parsed.error) },
       { status: 400 }
     );
   }

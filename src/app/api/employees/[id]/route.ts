@@ -12,6 +12,7 @@ import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
 import { canViewOthersSalary } from "@/lib/rbac";
+import { describeIssues, toFieldIssues } from "@/lib/validation-response";
 
 const updateSchema = z
   .object({
@@ -120,13 +121,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const parsed = updateSchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
-      {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((i) => ({
-          field: i.path.join("."),
-          message: i.message,
-        })),
-      },
+      { error: describeIssues(toFieldIssues(parsed.error)), issues: toFieldIssues(parsed.error) },
       { status: 400 }
     );
   }

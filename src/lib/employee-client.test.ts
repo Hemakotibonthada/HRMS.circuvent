@@ -22,7 +22,11 @@ function form(overrides: Partial<EmployeeFormValues> = {}): EmployeeFormValues {
     phone: "9876543210",
     department: "Engineering",
     designation: "Senior Engineer",
-    joiningDate: "2026-08-01",
+    // Far enough ahead to stay valid however long this test lives. A joining
+    // date in the past is now refused — see `employee-rules.test.ts` — so a
+    // fixture with a fixed near date would start failing on its own one day,
+    // which is the worst kind of test.
+    joiningDate: "2099-08-01",
     employmentType: "Full-time",
     location: "Hyderabad",
     status: "active",
@@ -141,18 +145,29 @@ describe("validateEmployeeForm", () => {
 });
 
 describe("ValidationError", () => {
-  it("names the fields rather than saying 'Validation failed'", () => {
+  it("carries the reasons rather than saying 'Validation failed'", () => {
     // The whole reason this bug was hard to diagnose: the API returned
     // `issues: [{ field, message }]` and the page discarded it.
+    //
+    // The field *names* are deliberately not in the message any more. They are
+    // code identifiers — `joinDate`, `employmentType` — and prefixing them onto
+    // a sentence adds jargon to something somebody has to read and act on. The
+    // structured `issues` are still there for a form that wants to highlight an
+    // input.
     const error = new ValidationError([
-      { field: "joinDate", message: "Required" },
-      { field: "employmentType", message: "Invalid enum value" },
+      { field: "joinDate", message: "Joining date is required" },
+      { field: "employmentType", message: '"Wizard" is not an employment type' },
     ]);
-    expect(error.message).toContain("joinDate");
-    expect(error.message).toContain("employmentType");
+    expect(error.message).toContain("Joining date is required");
+    expect(error.message).toContain('"Wizard" is not an employment type');
+    expect(error.issues).toHaveLength(2);
+    expect(error.issues[0].field).toBe("joinDate");
   });
 
-  it("falls back to a general message when the server sends no issues", () => {
-    expect(new ValidationError([]).message).toBe("Validation failed");
+  it("says something honest when the server sends no issues", () => {
+    // "Validation failed" was the string this whole change exists to remove.
+    const message = new ValidationError([]).message;
+    expect(message).not.toBe("Validation failed");
+    expect(message).toBe("The details could not be saved, but no reason was given");
   });
 });

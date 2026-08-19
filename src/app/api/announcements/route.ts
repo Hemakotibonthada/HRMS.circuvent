@@ -19,6 +19,7 @@ import { announcements } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
 import { roleHasPermission } from "@/lib/rbac";
+import { describeIssues, toFieldIssues } from "@/lib/validation-response";
 
 const createSchema = z.object({
   title: z.string().trim().min(1, "A title is required").max(300),
@@ -106,13 +107,7 @@ export async function POST(request: NextRequest) {
   const parsed = createSchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
-      {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((i) => ({
-          field: i.path.join("."),
-          message: i.message,
-        })),
-      },
+      { error: describeIssues(toFieldIssues(parsed.error)), issues: toFieldIssues(parsed.error) },
       { status: 400 }
     );
   }

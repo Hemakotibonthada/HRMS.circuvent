@@ -28,6 +28,8 @@ import {
   createEmployee,
   listDepartments,
   validateEmployeeForm,
+  EMPLOYMENT_TYPE_OPTIONS,
+  todayLocalIso,
   type DepartmentOption,
 } from "@/lib/employee-client";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
@@ -49,7 +51,10 @@ const STATUS_CONF: Record<string, { label: string; className: string }> = {
   terminated: { label: "Terminated", className: "status-rejected" },
 };
 const DEPARTMENTS = ["Engineering", "HR", "Design", "Sales", "Marketing", "Finance", "Support", "Operations"];
-const EMPLOYMENT_TYPES = ["Full-time", "Part-time", "Contract", "Intern", "Consultant"];
+// Employment types come from `lib/employee-rules`, which is also what the API
+// validates against. The list used to be written out here as display strings —
+// including "Consultant", which the database enum had never heard of, so the
+// dropdown offered a choice the server refused.
 
 export default function EmployeesPage() {
   const store = useEmployeeStore();
@@ -117,9 +122,10 @@ export default function EmployeesPage() {
   const resetForm = () => setForm({ firstName: "", lastName: "", email: "", phone: "", department: "", designation: "", joiningDate: "", employmentType: "Full-time", location: "", status: "active", salary: "", password: "", syncToApps: true });
 
   const handleCreate = async () => {
-    // Checked here so a missing designation or joining date is named before a
-    // round trip, rather than coming back as an unexplained "Validation
-    // failed".
+    // Checked here so a bad address, a past joining date or a title with digits
+    // in it is named before a round trip, rather than coming back as an
+    // unexplained "Validation failed". The same rules run again on the server —
+    // see `lib/employee-rules.ts`.
     const issues = validateEmployeeForm(form);
     if (issues.length > 0) {
       toast.error(issues.map((i) => i.message).join("\n"));
@@ -128,38 +134,12 @@ export default function EmployeesPage() {
 
     setCreating(true);
     try {
-      // If sync to other apps is enabled and password provided, create across all apps
-      if (form.syncToApps && form.password) {
-        const syncResult = await createEmployeeAcrossApps({
-          uid: "",
-          email: form.email,
-          displayName: `${form.firstName} ${form.lastName}`,
-          firstName: form.firstName,
-          lastName: form.lastName,
-          phone: form.phone,
-          department: form.department,
-          designation: form.designation,
-          joiningDate: form.joiningDate,
-          status: form.status,
-          employmentType: form.employmentType,
-          location: form.location,
-          reportingManager: "",
-          role: "employee",
-        }, form.password);
-
-        if (syncResult.success) {
-          toast.success(`${form.firstName} ${form.lastName} added.`);
-        } else {
-          toast.error(syncResult.errors[0] ?? "Could not add this employee.");
-          return;
-        }
-      } else {
-        // Goes through the real employee route, mapping the form onto its
-        // contract — `joiningDate` is `joinDate` there, employment types are
-        // snake_case, and a department is a uuid rather than a name.
-        await createEmployee(form, departmentOptions);
-        toast.success(`${form.firstName} ${form.lastName} added.`);
-      }
+      // One path. There used to be two: a "cross-app" branch that posted the
+      // raw form — display-cased employment type, a department *name* the
+      // schema has no field for — and so failed on every submission, and this
+      // one, which maps the form onto the API contract properly.
+      await createEmployee(form, departmentOptions);
+      toast.success(`${form.firstName} ${form.lastName} added.`);
 
       // The employees store subscribes and polls, so the new row arrives on
       // its own. Departments are re-read because this may have created one.
@@ -453,7 +433,7 @@ export default function EmployeesPage() {
               <div className="space-y-2"><Label>Last Name *</Label><Input value={form.lastName} onChange={e => setForm(p => ({ ...p, lastName: e.target.value }))} placeholder="Last name" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>Email *</Label><Input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="email@company.com" /></div>
+              <div className="space-y-2"><Label>Email *</Label><Input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="firstname.lastname@circuvent.com" /></div>
               <div className="space-y-2"><Label>Phone</Label><Input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="+91 9876543210" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -461,12 +441,12 @@ export default function EmployeesPage() {
               <div className="space-y-2"><Label>Designation</Label><Input value={form.designation} onChange={e => setForm(p => ({ ...p, designation: e.target.value }))} placeholder="Software Engineer" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>Joining Date</Label><Input type="date" value={form.joiningDate} onChange={e => setForm(p => ({ ...p, joiningDate: e.target.value }))} /></div>
-              <div className="space-y-2"><Label>Employment Type</Label><Select value={form.employmentType} onValueChange={v => setForm(p => ({ ...p, employmentType: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{EMPLOYMENT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-2"><Label>Joining Date</Label><Input type="date" min={todayLocalIso()} value={form.joiningDate} onChange={e => setForm(p => ({ ...p, joiningDate: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>Employment Type</Label><Select value={form.employmentType} onValueChange={v => setForm(p => ({ ...p, employmentType: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{EMPLOYMENT_TYPE_OPTIONS.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2"><Label>Location</Label><Input value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))} placeholder="Bangalore HQ" /></div>
-              <div className="space-y-2"><Label>Salary (Annual ₹)</Label><Input type="number" value={form.salary} onChange={e => setForm(p => ({ ...p, salary: e.target.value }))} placeholder="1200000" /></div>
+              <div className="space-y-2"><Label>Salary (Annual ₹)</Label><Input type="number" min={0} step={1000} value={form.salary} onChange={e => setForm(p => ({ ...p, salary: e.target.value }))} placeholder="1200000" /></div>
             </div>
             {editOpen && (
               <div className="space-y-2"><Label>Status</Label><Select value={form.status} onValueChange={v => setForm(p => ({ ...p, status: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(STATUS_CONF).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}</SelectContent></Select></div>
@@ -474,14 +454,21 @@ export default function EmployeesPage() {
             {!editOpen && (
               <>
                 <Separator />
-                <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-                  <h4 className="text-xs font-semibold text-muted-foreground">Cross-App Account Setup</h4>
-                  <p className="text-[10px] text-muted-foreground">Create login access for this employee across HRMS, CV-365, and Mail apps.</p>
-                  <div className="space-y-2"><Label>Login Password</Label><Input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder="Set initial password (min 6 chars)" /></div>
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="syncApps" checked={form.syncToApps} onChange={e => setForm(p => ({ ...p, syncToApps: e.target.checked }))} className="rounded" />
-                    <label htmlFor="syncApps" className="text-xs">Create accounts in CV-365 and Mail.circuvent</label>
-                  </div>
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                  <h4 className="text-xs font-semibold text-muted-foreground">Sign-in and mailbox</h4>
+                  {/* This block used to take a password and offer a ticked
+                      "Create accounts in CV-365 and Mail.circuvent" checkbox.
+                      Neither did anything: the function behind it accepted the
+                      password and ignored it, and created no account anywhere.
+                      Saying what actually happens beats a control that looks
+                      like it works. */}
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Adding somebody here records them in HRMS only. Their mailbox and
+                    single sign-on account are created when a candidate is hired through
+                    the ATS, which is the normal route — Careers, then ATS, then employee.
+                    For anyone added here, create the mailbox in Mail and they will be
+                    linked on their first sign-in.
+                  </p>
                 </div>
               </>
             )}

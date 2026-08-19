@@ -10,6 +10,7 @@ import { NeonBenefitsRepository } from "@/db/repositories/benefits.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { describeIssues, toFieldIssues } from "@/lib/validation-response";
 
 const submitSchema = z.object({
   enrolmentId: z.string().uuid(),
@@ -76,13 +77,7 @@ export async function POST(request: NextRequest) {
   const parsed = submitSchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
-      {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((i) => ({
-          field: i.path.join("."),
-          message: i.message,
-        })),
-      },
+      { error: describeIssues(toFieldIssues(parsed.error)), issues: toFieldIssues(parsed.error) },
       { status: 400 }
     );
   }

@@ -53,102 +53,59 @@ export interface FieldIssue {
 
 export class ValidationError extends Error {
   constructor(readonly issues: FieldIssue[]) {
-    // Named fields rather than "Validation failed". Someone who cannot see
-    // which field is wrong cannot fix it.
+    // The messages alone, one per line. They already name their field in
+    // ordinary words — "Joining date cannot be in the past" — so prefixing
+    // `joiningDate:` only added jargon to something a person has to read and
+    // act on. What matters is that the reason appears at all: this used to be
+    // the single word "Validation failed".
     super(
       issues.length > 0
-        ? issues.map((i) => (i.field ? `${i.field}: ${i.message}` : i.message)).join("; ")
-        : "Validation failed"
+        ? issues.map((i) => i.message).join("\n")
+        : "The details could not be saved, but no reason was given"
     );
     this.name = "ValidationError";
   }
 }
 
-/**
- * The employment types the API accepts.
- *
- * The form offered "Full-time", "Part-time", "Contract", "Intern" — display
- * labels, sent verbatim into a snake_case enum. Kept as a mapping rather than
- * a lowercase-and-replace so the two lists cannot drift silently: an option
- * added to the form with no entry here fails loudly at the boundary.
- */
-const EMPLOYMENT_TYPES: Record<string, string> = {
-  "full-time": "full_time",
-  "full time": "full_time",
-  full_time: "full_time",
-  "part-time": "part_time",
-  "part time": "part_time",
-  part_time: "part_time",
-  contract: "contract",
-  contractor: "contract",
-  intern: "intern",
-  internship: "intern",
-  freelance: "freelance",
-  freelancer: "freelance",
-};
+// -- The rules, which live in one place -----------------------
+//
+// `lib/employee-rules.ts` owns them, free of "use client", so the API route
+// enforces exactly the same checks. A rule that runs only in the browser is a
+// suggestion: anything with a session can post JSON straight at the route.
+// Re-exported here so the page keeps importing from one module.
 
-export function normaliseEmploymentType(value: string): string | null {
-  return EMPLOYMENT_TYPES[value.trim().toLowerCase()] ?? null;
-}
+import {
+  normaliseEmploymentType,
+  normaliseStatus,
+  validateEmployeeFields,
+} from "@/lib/employee-rules";
 
-const STATUSES = new Set([
-  "active",
-  "on_leave",
-  "probation",
-  "notice_period",
-  "terminated",
-  "inactive",
-]);
+export {
+  EMPLOYMENT_TYPE_OPTIONS,
+  isCompanyAddress,
+  isRoleAddress,
+  normaliseEmploymentType,
+  normaliseStatus,
+  todayLocalIso,
+} from "@/lib/employee-rules";
 
-export function normaliseStatus(value: string): string | null {
-  const key = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  return STATUSES.has(key) ? key : null;
-}
-
-/**
- * Checks what the form can check, before a round trip.
- *
- * The page only required first name, last name, email and department, so a
- * blank designation reached the server and came back as an unexplained
- * "Validation failed". Designation is required by the schema and is checked
- * here too.
- */
-export function validateEmployeeForm(form: EmployeeFormValues): FieldIssue[] {
-  const issues: FieldIssue[] = [];
-
-  if (!form.firstName.trim()) issues.push({ field: "firstName", message: "First name is required" });
-  if (!form.lastName.trim()) issues.push({ field: "lastName", message: "Last name is required" });
-
-  if (!form.email.trim()) issues.push({ field: "email", message: "Email is required" });
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-    issues.push({ field: "email", message: "Enter a valid email address" });
-  }
-
-  if (!form.designation.trim()) {
-    issues.push({ field: "designation", message: "Designation is required" });
-  }
-
-  if (!form.joiningDate.trim()) {
-    issues.push({ field: "joiningDate", message: "Joining date is required" });
-  } else if (!/^\d{4}-\d{2}-\d{2}$/.test(form.joiningDate.trim())) {
-    issues.push({ field: "joiningDate", message: "Joining date must be YYYY-MM-DD" });
-  }
-
-  if (form.employmentType && normaliseEmploymentType(form.employmentType) === null) {
-    issues.push({
-      field: "employmentType",
-      message: `"${form.employmentType}" is not an employment type`,
-    });
-  }
-
-  if (form.salary.trim()) {
-    const salary = Number(form.salary);
-    if (!Number.isFinite(salary) || salary < 0) {
-      issues.push({ field: "salary", message: "Salary must be a positive number" });
-    }
-  }
-
-  return issues;
+/** Checks what the form can check, before a round trip. */
+export function validateEmployeeForm(
+  form: EmployeeFormValues,
+  now: Date = new Date()
+): FieldIssue[] {
+  return validateEmployeeFields(
+    {
+      firstName: form.firstName,
+      lastName: form.lastName,
+      email: form.email,
+      designation: form.designation,
+      joiningDate: form.joiningDate,
+      employmentType: form.employmentType,
+      salary: form.salary,
+    },
+    { now }
+  );
 }
 
 async function readError(response: Response): Promise<never> {

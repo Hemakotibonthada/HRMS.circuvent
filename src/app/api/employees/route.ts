@@ -18,6 +18,11 @@ import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
 import { canViewOthersSalary } from "@/lib/rbac";
+import {
+  EMPLOYMENT_TYPE_VALUES,
+  normaliseEmploymentType,
+  validateEmployeeFields,
+} from "@/lib/employee-rules";
 
 const listQuerySchema = z.object({
   search: z.string().trim().max(200).optional(),
@@ -33,22 +38,39 @@ const createSchema = z.object({
   employeeCode: z.string().trim().min(1).max(64).optional(),
   firstName: z.string().trim().min(1, "First name is required").max(100),
   lastName: z.string().trim().min(1, "Last name is required").max(100),
-  email: z.string().trim().email("Invalid email address").max(320),
+  email: z.string().trim().email("Enter a valid email address").max(320),
   phone: z.string().trim().max(32).optional(),
   departmentId: z.string().uuid().optional(),
   designation: z.string().trim().min(1, "Designation is required").max(150),
   reportingToId: z.string().uuid().optional(),
-  employmentType: z
-    .enum(["full_time", "part_time", "contract", "intern", "freelance"])
-    .optional(),
+  // Left as a string here and validated by the shared rules, for the same
+  // reason as `salary` below: a Zod enum failure short-circuits the parse and
+  // would hide every other problem in the same submission. Normalised to the
+  // stored value after validation, just before the insert.
+  employmentType: z.string().trim().optional(),
   status: z
     .enum(["active", "on_leave", "probation", "notice_period", "terminated", "inactive"])
     .optional(),
-  joinDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "joinDate must be YYYY-MM-DD"),
+  joinDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Joining date must be YYYY-MM-DD"),
   location: z.string().trim().max(150).optional(),
-  // Rejected rather than silently clamped: a negative or absurd salary is a
-  // client bug, and payroll must never quietly accept one.
-  salary: z.number().nonnegative().max(1_000_000_000).optional(),
+  /**
+   * Only the outer bound here; the sign is checked by the shared rules.
+   *
+   * A Zod failure short-circuits the whole parse, so putting `.nonnegative()`
+   * here meant a submission with a negative salary reported *only* that, hiding
+   * the personal email address, the digits in the job title and the joining date
+   * in the past that were wrong in the same submission. A form that reveals one
+   * fault per attempt takes as many round trips as there are mistakes, which is
+   * the complaint this change exists to answer.
+   */
+  salary: z.number().max(1_000_000_000, "Salary is implausibly large").optional(),
+  /**
+   * Allows a joining date in the past.
+   *
+   * For backfilling somebody who genuinely started before today. Named rather
+   * than inferred, so recording a historic start is a deliberate act.
+   */
+  allowPastJoiningDate: z.boolean().optional(),
 });
 
 /** Filters are namespaced `filter.<field>` so they cannot collide with paging. */
@@ -149,21 +171,56 @@ export async function POST(request: NextRequest) {
 
   const parsed = createSchema.safeParse(raw);
   if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => ({
+      field: i.path.join("."),
+      message: i.message,
+    }));
     return NextResponse.json(
       {
-        error: "Validation failed",
-        issues: parsed.error.issues.map((i) => ({
-          field: i.path.join("."),
-          message: i.message,
-        })),
+        // The message is now the reasons, not the word "Validation failed".
+        // Clients that only read `error` — and the employees screen was one —
+        // used to show a bare "Validation failed" over a response that had
+        // named every problem in `issues`.
+        error: issues.map((i) => i.message).join("\n"),
+        issues,
       },
+      { status: 400 }
+    );
+  }
+
+  // ── Who may be an employee ──
+  //
+  // Enforced here and not only in the browser, because anything holding a
+  // session can post JSON straight at this route. These are the rules that keep
+  // role mailboxes — abuse@, accounts@, billing@ — out of the staff directory;
+  // see `lib/employee-rules.ts` for why a mailbox is not a colleague.
+  const ruleIssues = validateEmployeeFields(
+    {
+      firstName: parsed.data.firstName,
+      lastName: parsed.data.lastName,
+      email: parsed.data.email,
+      designation: parsed.data.designation,
+      joiningDate: parsed.data.joinDate,
+      employmentType: parsed.data.employmentType,
+      salary: parsed.data.salary === undefined ? "" : String(parsed.data.salary),
+    },
+    { allowPastJoiningDate: parsed.data.allowPastJoiningDate }
+  );
+  if (ruleIssues.length > 0) {
+    return NextResponse.json(
+      { error: ruleIssues.map((i) => i.message).join("\n"), issues: ruleIssues },
       { status: 400 }
     );
   }
 
   try {
     const repo = new NeonEmployeeRepository(ctx);
-    const created = await repo.create(parsed.data);
+    const { allowPastJoiningDate: _allowPast, employmentType, ...employee } = parsed.data;
+    // Normalised only now that it is known to be one of the accepted spellings.
+    const created = await repo.create({
+      ...employee,
+      employmentType: employmentType ? normaliseEmploymentType(employmentType) ?? undefined : undefined,
+    });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     // A duplicate work email or employee code trips a unique index; that is

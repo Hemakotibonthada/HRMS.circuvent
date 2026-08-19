@@ -446,7 +446,13 @@ export default function RecruitmentPage() {
                   <Badge className={(STATUS_CONF[selectedJob.status] || STATUS_CONF.open).className}>
                     {(STATUS_CONF[selectedJob.status] || STATUS_CONF.open).label}
                   </Badge>
-                  <Badge variant="outline">{selectedJob.department}</Badge>
+                  {/* Only when there is a department. An outline badge with no
+                      text renders as a small empty pill — the unexplained circle
+                      that sat between the status and the location on every
+                      posting that had no department set. */}
+                  {selectedJob.department ? (
+                    <Badge variant="outline">{selectedJob.department}</Badge>
+                  ) : null}
                   <Badge variant="outline"><MapPin className="h-3 w-3 mr-1" />{selectedJob.location || "Remote"}</Badge>
                 </div>
                 <Separator />
