@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.EditCalendar
 import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.History
@@ -398,6 +399,12 @@ private fun itemsFor(section: MeSection, go: (String) -> Unit): List<FeatureGrid
 
     MeSection.WORKPLACE -> listOf(
         FeatureGridItem(
+            "Company wall",
+            "Welcomes, thank-yous and news",
+            Glyph.Vector(Icons.Filled.Forum),
+            AccentTone.Plum,
+        ) { go("wall") },
+        FeatureGridItem(
             "Directory",
             "Find a colleague",
             Glyph.Vector(Icons.Filled.PersonSearch),
@@ -425,7 +432,7 @@ private fun itemsFor(section: MeSection, go: (String) -> Unit): List<FeatureGrid
             "Helpdesk",
             "Raise a ticket with HR or IT, and track it",
             Glyph.Vector(Icons.Filled.SupportAgent),
-            AccentTone.Plum,
+            AccentTone.Teal,
         ) { go("helpdesk") },
     )
 

@@ -24,13 +24,19 @@ import { withTenant } from "@/db/client";
  *
  * An allowlist rather than a free-for-all: without it any caller could invent a
  * collection name and use the table as unbounded storage.
+ *
+ * `socialPosts` was missing until it was noticed that the company wall had
+ * never worked. The page called this route, got a 404 for an unknown
+ * collection, and rendered an empty feed; posting failed just as silently. It
+ * belongs here rather than in its own table for the same reason as the rest --
+ * a wall post is free-form text with no relationships anything else depends on.
  */
 export const ALLOWED_COLLECTIONS = new Set([
   "goals", "training", "enrollments", "documents", "notifications", "teams",
   "surveys", "feedback", "kudos", "events", "policies", "loans", "travel",
   "wfh", "overtime", "timesheets", "meetingBookings", "visitors", "incidents",
   "celebrations", "settings", "awards", "knowledgebase", "grievances",
-  "wellness", "badges", "performanceReviews", "auditLog",
+  "wellness", "badges", "performanceReviews", "auditLog", "socialPosts",
 ]);
 
 function guard(collection: string): string | null {

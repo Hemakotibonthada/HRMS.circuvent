@@ -476,6 +476,59 @@ class AppRepository(private val api: ApiClient) {
     suspend fun teamPulse(): TeamPulseResponse =
         json.decodeFromString(api.get("/api/team/pulse"))
 
+    // ─── The company wall ────────────────────────────────────
+
+    /**
+     * Posts on the company wall.
+     *
+     * Goes through the generic collection route because the wall has no table
+     * of its own: a post is free-form text with no relationships anything else
+     * depends on. That route rejects any collection not on its allowlist, and
+     * `socialPosts` was missing from it — so this endpoint answered 404 and the
+     * dashboard's wall had never once loaded a post.
+     */
+    suspend fun wallPosts(): List<WallPostDto> =
+        json.decodeFromString<WallResponse>(api.get("/api/collections/socialPosts")).items
+
+    /**
+     * Publishes a post.
+     *
+     * The id is generated here rather than by the server, matching what the
+     * dashboard does, so the two cannot disagree about which field identifies a
+     * post. Counts start at zero and `liked` at false because nobody has seen
+     * it yet — sending anything else would be describing a past that did not
+     * happen.
+     */
+    suspend fun publishWallPost(post: WallPostDto) {
+        api.post(
+            "/api/collections/socialPosts",
+            json.encodeToString(WallPostDto.serializer(), post),
+        )
+    }
+
+    /**
+     * Records a like, or takes one back.
+     *
+     * PATCH rather than PUT: the collection route merges a PATCH into the
+     * stored document and replaces it wholesale on a PUT. Sending the whole
+     * post back would overwrite anything changed since it was read — including
+     * the author's own edit to the text — to move a counter by one.
+     *
+     * Two people liking at once will still lose one increment. That is accepted
+     * here: a like count is not money, and a counter endpoint per collection is
+     * a large amount of machinery for a number nobody reconciles.
+     */
+    suspend fun setWallPostLiked(post: WallPostDto, liked: Boolean) {
+        val delta = if (liked) 1 else -1
+        api.patch(
+            "/api/collections/socialPosts/${post.id}",
+            buildJsonObject {
+                put("liked", liked)
+                put("likes", (post.likes + delta).coerceAtLeast(0))
+            }.toString(),
+        )
+    }
+
     // ─── Working away from the office ────────────────────────
 
     /**
