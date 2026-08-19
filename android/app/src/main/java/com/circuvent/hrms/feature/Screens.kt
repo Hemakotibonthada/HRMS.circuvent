@@ -496,6 +496,12 @@ fun ProfileScreen(
 
         item { ProfileSectionHeading("Your record") }
         item { ProfileLink("Attendance history", "Your punches, month by month") { onNavigate("attendance") } }
+        item {
+            ProfileLink(
+                "Correct attendance",
+                "A missed punch, or a day the reader did not record",
+            ) { onNavigate("attendance/regularise") }
+        }
         item { ProfileLink("My equipment", "Laptops and other assets issued to you") { onNavigate("assets") } }
         item { ProfileLink("Benefits", "Your cover, the plans on offer, and dependants") { onNavigate("benefits") } }
         item { ProfileLink("Check-ins", "Notes and agreed actions from your one-to-ones") { onNavigate("check-ins") } }

@@ -433,6 +433,48 @@ class AppRepository(private val api: ApiClient) {
         )
     }
 
+    // ─── Attendance regularisation ───────────────────────────
+
+    /**
+     * The caller's own corrections, or the approval queue.
+     *
+     * The policy travels with the list so the form can refuse a day outside the
+     * window before the employee types a reason — the server refuses it too, but
+     * finding out after filling in a form is a poor way to be told.
+     */
+    suspend fun regularisations(queue: Boolean = false): RegularisationListResponse =
+        json.decodeFromString(
+            api.get(
+                if (queue) "/api/attendance/regularisation?queue=1"
+                else "/api/attendance/regularisation"
+            )
+        )
+
+    suspend fun raiseRegularisation(create: RegularisationCreate): RegularisationCreated =
+        json.decodeFromString(
+            api.post(
+                "/api/attendance/regularisation",
+                json.encodeToString(RegularisationCreate.serializer(), create),
+            )
+        )
+
+    /**
+     * Approves, rejects or withdraws one.
+     *
+     * A rejection carries a reason because the server requires it, and it
+     * requires it because somebody losing a day's pay is owed one.
+     */
+    suspend fun decideRegularisation(id: String, status: String, reason: String? = null) {
+        api.patch(
+            "/api/attendance/regularisation",
+            buildJsonObject {
+                put("id", id)
+                put("status", status)
+                reason?.takeIf { it.isNotBlank() }?.let { put("reason", it) }
+            }.toString(),
+        )
+    }
+
     // ─── Income tax ──────────────────────────────────────────
 
     /**

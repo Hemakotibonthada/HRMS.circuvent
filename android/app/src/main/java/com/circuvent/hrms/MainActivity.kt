@@ -55,6 +55,7 @@ import com.circuvent.hrms.feature.NewTicketScreen
 import com.circuvent.hrms.feature.PayslipDetailScreen
 import com.circuvent.hrms.feature.PayslipsScreen
 import com.circuvent.hrms.feature.ProfileScreen
+import com.circuvent.hrms.feature.RegularisationScreen
 import com.circuvent.hrms.feature.SessionState
 import com.circuvent.hrms.feature.SettingsScreen
 import com.circuvent.hrms.feature.ShiftsScreen
@@ -118,6 +119,7 @@ private object Routes {
     const val SWAPS = "swaps"
     const val TAX = "tax"
     const val FORM16 = "tax/form16"
+    const val REGULARISATION = "attendance/regularise"
 
     /** Titles for the pushed screens; the tabs take theirs from Destination. */
     val titles = mapOf(
@@ -141,6 +143,7 @@ private object Routes {
         SWAPS to "Shift swaps",
         TAX to "Tax declaration",
         FORM16 to "Form 16",
+        REGULARISATION to "Correct attendance",
     )
 }
 
@@ -240,6 +243,7 @@ private fun SignedInApp(
                         TaxDeclarationScreen(container) { nav.navigate(Routes.FORM16) }
                     }
                     composable(Routes.FORM16) { Form16Screen(container) }
+                    composable(Routes.REGULARISATION) { RegularisationScreen(container) }
                     composable(Routes.APPROVALS) { ApprovalsScreen(container, state.user) }
                     composable(Routes.SETTINGS) { SettingsScreen(container, viewModel, state.user) }
                     composable(Routes.HELPDESK) {
