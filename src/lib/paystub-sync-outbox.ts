@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
-import { employees, paystubEmployeeSyncOutbox } from "@/db/schema/hrms";
-import { pushEmployeeToPaystub } from "@/lib/paystub-client";
+import { departments, employees, locations, paystubEmployeeSyncOutbox } from "@/db/schema/hrms";
+import { pushEmployeeToPaystub, type PaystubSyncSource } from "@/lib/paystub-client";
 
 type EmployeeRow = typeof employees.$inferSelect;
 type TenantTx = Parameters<Parameters<typeof withTenant>[1]>[0];
@@ -91,15 +91,15 @@ async function markFailure(
 }
 
 export async function deliverPaystubEmployeeSync(
-  employee: EmployeeRow,
+  source: PaystubSyncSource,
   save: {
     success(created: boolean): Promise<void>;
     failure(error: string): Promise<void>;
   },
-  push: (row: EmployeeRow) => Promise<{ created: boolean }> = pushEmployeeToPaystub
+  push: (row: PaystubSyncSource) => Promise<{ created: boolean }> = pushEmployeeToPaystub
 ): Promise<PaystubOutboxAttemptResult> {
   try {
-    const result = await push(employee);
+    const result = await push(source);
     await save.success(result.created);
     return { ok: true, created: result.created };
   } catch (error) {
@@ -118,6 +118,13 @@ export async function attemptPaystubEmployeeSync(
       .select({
         employee: employees,
         attemptCount: paystubEmployeeSyncOutbox.attemptCount,
+        // Joined rather than sent as ids: Paystub keeps its own departments
+        // and locations, so a code and a name are the only identifiers the
+        // two systems can share. See PaystubEmployeeSyncBody.
+        departmentCode: departments.code,
+        departmentName: departments.name,
+        locationCode: locations.code,
+        locationName: locations.name,
       })
       .from(employees)
       .leftJoin(
@@ -127,6 +134,8 @@ export async function attemptPaystubEmployeeSync(
           eq(paystubEmployeeSyncOutbox.employeeId, employees.id)
         )
       )
+      .leftJoin(departments, eq(departments.id, employees.departmentId))
+      .leftJoin(locations, eq(locations.id, employees.locationId))
       .where(and(eq(employees.id, employeeId), isNull(employees.deletedAt)))
       .limit(1);
     return row ?? null;
@@ -136,7 +145,19 @@ export async function attemptPaystubEmployeeSync(
     return { ok: false, error: `Employee ${employeeId} was not found for Paystub sync.` };
   }
 
-  return deliverPaystubEmployeeSync(found.employee, {
+  const source: PaystubSyncSource = {
+    employee: found.employee,
+    department:
+      found.departmentCode && found.departmentName
+        ? { code: found.departmentCode, name: found.departmentName }
+        : null,
+    location:
+      found.locationCode && found.locationName
+        ? { code: found.locationCode, name: found.locationName }
+        : null,
+  };
+
+  return deliverPaystubEmployeeSync(source, {
     success: (created) => markSuccess(ctx, employeeId, created),
     failure: (error) => markFailure(ctx, employeeId, found.attemptCount ?? 0, error),
   });

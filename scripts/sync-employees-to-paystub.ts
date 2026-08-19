@@ -43,7 +43,7 @@ async function main() {
   for (const row of rows) {
     if (!confirm) {
       try {
-        const body = employeeToPaystubSyncBody(row.employee);
+        const body = employeeToPaystubSyncBody({ employee: row.employee });
         ready++;
         console.log(`  ready    org=${row.orgId} employee=${row.id} paystubOrg=${body.orgId} entity=${body.entityId}`);
       } catch (error) {

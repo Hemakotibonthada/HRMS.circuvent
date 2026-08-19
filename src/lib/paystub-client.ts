@@ -2,6 +2,19 @@ import type { employees } from "@/db/schema/hrms";
 
 type EmployeeRow = typeof employees.$inferSelect;
 
+/**
+ * An employee plus the two things Paystub needs that do not live on the row.
+ *
+ * `department_id` and `location_id` are foreign keys into HRMS's own tables;
+ * Paystub cannot use either, so the caller resolves them to a code and a name
+ * first. Both are optional because an employee genuinely may have neither.
+ */
+export interface PaystubSyncSource {
+  employee: EmployeeRow;
+  department?: { code: string; name: string } | null;
+  location?: { code: string; name: string } | null;
+}
+
 export interface PaystubTenantMapping {
   orgId: string;
   entityId: string;
@@ -27,6 +40,30 @@ export interface PaystubEmployeeSyncBody {
   employmentType?: "full_time" | "part_time" | "contract" | "intern" | "consultant";
   exitDate?: string;
   exitReason?: string;
+  /**
+   * Department and work location travel as a code and a name, never as an id.
+   *
+   * HRMS and Paystub each keep their own `departments` and `locations` tables
+   * with their own primary keys, and Paystub's employee rows carry a foreign
+   * key into its own. Sending an HRMS uuid would either dangle or be rejected
+   * outright — which is exactly what the previous contract did: it declared
+   * `departmentId` and `locationId`, the receiving end validated them as
+   * UUIDs, and no HRMS employee could ever have been given a department
+   * through it. A code is the identifier the two systems can genuinely share.
+   */
+  departmentCode?: string;
+  departmentName?: string;
+  locationCode?: string;
+  locationName?: string;
+  /**
+   * PAN, UAN, PF and ESI numbers.
+   *
+   * These are facts about the person, collected once at onboarding, not
+   * payroll configuration — and an Indian payslip is required to carry them.
+   * HRMS is where they are captured, so HRMS is what sends them; Paystub had
+   * no other way to learn them and was printing an em dash in their place.
+   */
+  statutoryIds?: Partial<Record<"pan" | "uan" | "pf_number" | "esi_number", string>>;
 }
 
 export interface PaystubEmployeeSyncResult {
@@ -130,13 +167,34 @@ function mapAddress(row: EmployeeRow): Record<string, string> | undefined {
     | undefined;
 }
 
+/**
+ * The statutory identifiers HRMS holds, dropping the ones it does not.
+ *
+ * A masked value ("XXXXXX740A") is passed through as it stands: HRMS masks on
+ * capture, so the masked form is the only form it has, and a payslip showing a
+ * masked PAN is right where showing nothing is wrong.
+ */
+function mapStatutoryIds(row: EmployeeRow): PaystubEmployeeSyncBody["statutoryIds"] | undefined {
+  const ids = {
+    pan: row.panNumber ?? undefined,
+    uan: row.uanNumber ?? undefined,
+    pf_number: row.pfNumber ?? undefined,
+    esi_number: row.esiNumber ?? undefined,
+  };
+  const present = Object.fromEntries(Object.entries(ids).filter(([, value]) => value));
+  return Object.keys(present).length > 0 ? present : undefined;
+}
+
 export function employeeToPaystubSyncBody(
-  row: EmployeeRow,
-  mapping: PaystubTenantMapping = resolvePaystubTenant(row.orgId)
+  source: PaystubSyncSource,
+  mapping?: PaystubTenantMapping
 ): PaystubEmployeeSyncBody {
+  const row = source.employee;
+  const tenant = mapping ?? resolvePaystubTenant(row.orgId);
+
   const body: PaystubEmployeeSyncBody = {
-    orgId: mapping.orgId,
-    entityId: mapping.entityId,
+    orgId: tenant.orgId,
+    entityId: tenant.entityId,
     hrmsEmployeeId: row.id,
     employeeCode: row.employeeCode,
     firstName: row.firstName,
@@ -159,16 +217,27 @@ export function employeeToPaystubSyncBody(
   if (row.exitDate) body.exitDate = row.exitDate;
   if (row.exitReason) body.exitReason = row.exitReason;
 
+  if (source.department) {
+    body.departmentCode = source.department.code;
+    body.departmentName = source.department.name;
+  }
+  if (source.location) {
+    body.locationCode = source.location.code;
+    body.locationName = source.location.name;
+  }
+  const statutoryIds = mapStatutoryIds(row);
+  if (statutoryIds) body.statutoryIds = statutoryIds;
+
   return body;
 }
 
 export async function pushEmployeeToPaystub(
-  row: EmployeeRow,
+  source: PaystubSyncSource,
   fetchImpl: typeof fetch = fetch
 ): Promise<PaystubEmployeeSyncResult> {
   const url = requiredEnv("PAYSTUB_SYNC_URL");
   const token = requiredEnv("CROSS_APP_SYNC_TOKEN");
-  const body = employeeToPaystubSyncBody(row);
+  const body = employeeToPaystubSyncBody(source);
 
   const response = await fetchImpl(url, {
     method: "POST",

@@ -62,7 +62,7 @@ function employee(overrides: Partial<EmployeeRow> = {}): EmployeeRow {
 
 describe("employeeToPaystubSyncBody", () => {
   it("maps HRMS employee fields into Paystub's sync contract", () => {
-    const body = employeeToPaystubSyncBody(employee(), {
+    const body = employeeToPaystubSyncBody({ employee: employee() }, {
       orgId: "paystub-org-1",
       entityId: "paystub-entity-1",
     });
@@ -90,7 +90,7 @@ describe("employeeToPaystubSyncBody", () => {
   });
 
   it("does not send HRMS-only relationship ids as Paystub ids", () => {
-    const body = employeeToPaystubSyncBody(employee(), {
+    const body = employeeToPaystubSyncBody({ employee: employee() }, {
       orgId: "paystub-org-1",
       entityId: "paystub-entity-1",
     });
@@ -98,6 +98,55 @@ describe("employeeToPaystubSyncBody", () => {
     expect(body).not.toHaveProperty("departmentId");
     expect(body).not.toHaveProperty("locationId");
     expect(body).not.toHaveProperty("reportingToId");
+  });
+
+  it("sends the department and location by code and name", () => {
+    // HRMS's department_id is a key into HRMS's own table; Paystub has its own
+    // with different ids and a foreign key that would reject it. The code is
+    // the only identifier the two systems can share.
+    const body = employeeToPaystubSyncBody(
+      {
+        employee: employee(),
+        department: { code: "ENG", name: "Engineering" },
+        location: { code: "HHR", name: "Hyderabad (Hybrid / Remote)" },
+      },
+      { orgId: "paystub-org-1", entityId: "paystub-entity-1" }
+    );
+
+    expect(body.departmentCode).toBe("ENG");
+    expect(body.departmentName).toBe("Engineering");
+    expect(body.locationCode).toBe("HHR");
+    expect(body.locationName).toBe("Hyderabad (Hybrid / Remote)");
+  });
+
+  it("sends the statutory identifiers an Indian payslip has to carry", () => {
+    const body = employeeToPaystubSyncBody(
+      {
+        employee: employee({
+          panNumber: "ABCDE1234F",
+          uanNumber: "100200300400",
+          pfNumber: "TN/MAS/12345/678",
+          esiNumber: null,
+        }),
+      },
+      { orgId: "paystub-org-1", entityId: "paystub-entity-1" }
+    );
+
+    expect(body.statutoryIds).toEqual({
+      pan: "ABCDE1234F",
+      uan: "100200300400",
+      pf_number: "TN/MAS/12345/678",
+    });
+  });
+
+  it("omits statutory identifiers entirely when HRMS holds none", () => {
+    // An empty bag would read as an instruction to clear them.
+    const body = employeeToPaystubSyncBody(
+      { employee: employee() },
+      { orgId: "paystub-org-1", entityId: "paystub-entity-1" }
+    );
+
+    expect(body).not.toHaveProperty("statutoryIds");
   });
 
   it("refuses to guess Paystub tenant ids", () => {
@@ -116,7 +165,7 @@ describe("deliverPaystubEmployeeSync", () => {
     };
 
     const result = await deliverPaystubEmployeeSync(
-      employee(),
+      { employee: employee() },
       save,
       async () => {
         throw new Error("Paystub is unavailable");
