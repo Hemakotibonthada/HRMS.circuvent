@@ -14,8 +14,8 @@ All in `android\release-artifacts\`.
 
 | File | Size | What it is |
 | --- | --- | --- |
-| `circuvent-hr-1.0.1.aab` | 5.1 MB | **Upload this one.** Play requires a bundle for new apps. |
-| `circuvent-hr-1.0.1.apk` | 2.5 MB | Sideloading and manual testing only. Play will not accept it. |
+| `circuvent-hr-1.7.0.aab` | 5.3 MB | **Upload this one.** Play requires a bundle for new apps. |
+| `circuvent-hr-1.7.0.apk` | 2.6 MB | Sideloading and manual testing only. Play will not accept it. |
 | `play-icon-512.png` | 512×512 | Store listing icon, opaque. |
 | `play-feature-graphic-1024x500.png` | 1024×500 | Listing header, opaque. |
 | `play-screenshots\1-sign-in.png` … `4-profile.png` | 1080×1920 each | Phone screenshots, 9:16. |
@@ -35,8 +35,8 @@ slice.
 | Field | Value |
 | --- | --- |
 | Package name | `com.circuvent.hrms` |
-| Version name | `1.0.1` |
-| Version code | `2` |
+| Version name | `1.7.0` |
+| Version code | `9` |
 | Minimum SDK | 26 (Android 8.0) |
 | Target SDK | 36 (Android 16) |
 | Signature schemes | v2 + v3 (v1 deliberately off) |
@@ -49,7 +49,7 @@ slice.
 and it cannot be reused even if you delete the app. Be sure `com.circuvent.hrms`
 is what you want before you press publish.
 
-**Version code must increase on every upload.** Version code 1 was consumed by
+**Version code must increase on every upload.** Codes 1 to 8 have been consumed by
 the first upload attempt, so this build is 2 and the next is 3. Play rejects a
 repeat at upload rather than at build time, and it is the single most common
 failed upload — including when the only change is a store listing.
@@ -248,7 +248,7 @@ Answer the questionnaire honestly; for this app every answer is no.
 3. **Release → Testing → Internal testing** first. Not production. Internal
    testing has no review wait, so you find installation problems in minutes
    rather than days.
-4. **Create new release.** Upload `circuvent-hr-1.0.1.aab`.
+4. **Create new release.** Upload `circuvent-hr-1.7.0.aab`.
 5. Accept **Play App Signing** when offered. This is the point of no return for
    the key; from here Google holds the app signing key.
 6. Release notes — for a first release:
