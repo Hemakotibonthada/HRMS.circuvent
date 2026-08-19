@@ -29,6 +29,8 @@ export const ECOSYSTEM = {
   mail: resolve(process.env.NEXT_PUBLIC_MAIL_URL, "https://mail.circuvent.com", 3004),
     /** Paystub.circuvent — payroll */
     paystub: resolve(process.env.NEXT_PUBLIC_PAYSTUB_URL, "https://paystub.circuvent.com", 3006),
+    /** DevOps.circuvent - pull requests, repositories and delivery */
+    devops: resolve(process.env.NEXT_PUBLIC_DEVOPS_URL, "https://devops.circuvent.com", 3007),
 } as const;
 
 export type EcosystemAppId = keyof typeof ECOSYSTEM;
@@ -47,5 +49,6 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
   { id: "ats", name: "ATS", description: "Applicant tracking", url: ECOSYSTEM.ats },
   { id: "mail", name: "Mail", description: "Email platform", url: ECOSYSTEM.mail },
   { id: "paystub", name: "Paystub", description: "Payroll", url: ECOSYSTEM.paystub },
+  { id: "devops", name: "DevOps", description: "Pull requests & delivery", url: ECOSYSTEM.devops },
   { id: "landing", name: "Circuvent.com", description: "Company website", url: ECOSYSTEM.landing },
 ];
