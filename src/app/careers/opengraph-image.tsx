@@ -8,15 +8,9 @@ export default function CareersOpengraphImage() {
   return ogImageResponse({
     product: "Careers",
     domain: "hrms.circuvent.com/careers",
-    headline: "Build What",
-    headlineAccent: "Comes Next.",
-    tagline: "Engineering · AI · IoT · Product · Design",
-    accent: "#a78bfa",
-    accentAlt: "#7c3aed",
-    stats: [
-      { value: "Hybrid", label: "Ways Of Working" },
-      { value: "4 Rounds", label: "Interview Process" },
-      { value: "India", label: "Based" },
-    ],
+    headline: "Build what comes next",
+    description:
+      "Open roles at Circuvent Technologies across engineering, AI, IoT, product and design — what each team is building, and how to apply.",
+    accent: "#2e1065",
   });
 }

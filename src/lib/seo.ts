@@ -46,17 +46,10 @@ export const siteConfig = {
 export const OG_CARD: OgCardOptions = {
   product: "HRMS",
   domain: "hrms.circuvent.com",
-  headline: "Hire To Retire,",
-  headlineAccent: "In One System.",
-  tagline: "Payroll · Attendance · Leave · Performance · Compliance",
-  accent: "#a78bfa",
-  accentAlt: "#7c3aed",
-  stats: [
-    { value: "92", label: "HR Modules" },
-    { value: "PF+ESI+TDS", label: "Indian Payroll" },
-    { value: "Multi", label: "Tenant" },
-    { value: "RLS", label: "Data Isolation" },
-  ],
+  headline: "Hire to retire, in one system",
+  description:
+    "The full employee lifecycle — onboarding, attendance, leave, performance and exit — with an Indian payroll engine for PF, ESI, professional tax, TDS and gratuity.",
+  accent: "#2e1065",
 };
 
 const KEYWORDS = [
