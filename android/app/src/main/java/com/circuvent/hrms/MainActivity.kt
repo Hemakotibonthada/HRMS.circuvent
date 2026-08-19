@@ -38,6 +38,7 @@ import com.circuvent.hrms.feature.AssetsScreen
 import com.circuvent.hrms.feature.BenefitsScreen
 import com.circuvent.hrms.feature.CheckInsScreen
 import com.circuvent.hrms.feature.CourseDetailScreen
+import com.circuvent.hrms.feature.Form16Screen
 import com.circuvent.hrms.feature.LearningScreen
 import com.circuvent.hrms.feature.ReferScreen
 import com.circuvent.hrms.feature.ReferralsScreen
@@ -58,6 +59,7 @@ import com.circuvent.hrms.feature.SessionState
 import com.circuvent.hrms.feature.SettingsScreen
 import com.circuvent.hrms.feature.ShiftsScreen
 import com.circuvent.hrms.feature.SignInScreen
+import com.circuvent.hrms.feature.TaxDeclarationScreen
 import com.circuvent.hrms.feature.TabBar
 import com.circuvent.hrms.feature.TicketDetailScreen
 import com.circuvent.hrms.feature.TodayScreen
@@ -114,6 +116,8 @@ private object Routes {
     const val CHECKINS = "check-ins"
     const val INBOX = "inbox"
     const val SWAPS = "swaps"
+    const val TAX = "tax"
+    const val FORM16 = "tax/form16"
 
     /** Titles for the pushed screens; the tabs take theirs from Destination. */
     val titles = mapOf(
@@ -135,6 +139,8 @@ private object Routes {
         CHECKINS to "Check-ins",
         INBOX to "Approvals inbox",
         SWAPS to "Shift swaps",
+        TAX to "Tax declaration",
+        FORM16 to "Form 16",
     )
 }
 
@@ -230,6 +236,10 @@ private fun SignedInApp(
                         PayslipDetailScreen(container, backStack.arguments?.getString("id").orEmpty())
                     }
                     composable(Routes.ATTENDANCE) { AttendanceScreen(container, state.user) }
+                    composable(Routes.TAX) {
+                        TaxDeclarationScreen(container) { nav.navigate(Routes.FORM16) }
+                    }
+                    composable(Routes.FORM16) { Form16Screen(container) }
                     composable(Routes.APPROVALS) { ApprovalsScreen(container, state.user) }
                     composable(Routes.SETTINGS) { SettingsScreen(container, viewModel, state.user) }
                     composable(Routes.HELPDESK) {

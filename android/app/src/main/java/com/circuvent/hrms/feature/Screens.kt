@@ -500,6 +500,20 @@ fun ProfileScreen(
         item { ProfileLink("Benefits", "Your cover, the plans on offer, and dependants") { onNavigate("benefits") } }
         item { ProfileLink("Check-ins", "Notes and agreed actions from your one-to-ones") { onNavigate("check-ins") } }
 
+        // Money the employee can act on, kept apart from the payslips tab:
+        // a payslip is a record of what happened, a declaration changes what
+        // happens next month.
+        item { ProfileSectionHeading("Tax") }
+        item {
+            ProfileLink(
+                "Tax declaration",
+                "Declare your investments so less tax is deducted each month",
+            ) { onNavigate("tax") }
+        }
+        item {
+            ProfileLink("Form 16", "Your annual TDS certificate") { onNavigate("tax/form16") }
+        }
+
         item { ProfileSectionHeading("Grow") }
         item { ProfileLink("Learning", "Courses assigned to you, and what you can start") { onNavigate("learning") } }
         item { ProfileLink("Referrals", "Put someone forward, and follow how they get on") { onNavigate("referrals") } }

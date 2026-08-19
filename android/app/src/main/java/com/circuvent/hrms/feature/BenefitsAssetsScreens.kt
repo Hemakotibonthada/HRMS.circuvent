@@ -401,8 +401,14 @@ fun CheckInsScreen(container: AppContainer) {
     }
 }
 
+/**
+ * A small heading above a group of cards.
+ *
+ * Internal rather than private: several screens need it and a second copy would
+ * drift from this one the first time the spacing changed.
+ */
 @Composable
-private fun SectionLabel(text: String) {
+internal fun SectionLabel(text: String) {
     AppText(
         text,
         size = Theme.type.footnote,

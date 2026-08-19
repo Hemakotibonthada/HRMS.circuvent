@@ -77,6 +77,15 @@ class ApiClient(
     suspend fun post(path: String, body: String?, idempotencyKey: String? = null): String =
         request("POST", path, body, idempotencyKey)
 
+    /**
+     * Replaces a resource outright.
+     *
+     * Used where a partial update would be wrong — a tax declaration is saved
+     * whole, because a section the employee deleted has to arrive as an absence
+     * rather than be merged back in from what the server already had.
+     */
+    suspend fun put(path: String, body: String?): String = request("PUT", path, body)
+
     suspend fun patch(path: String, body: String?): String = request("PATCH", path, body)
 
     private suspend fun request(
@@ -106,6 +115,7 @@ class ApiClient(
         when (method) {
             "GET" -> builder.get()
             "POST" -> builder.post(payload ?: EMPTY_BODY)
+            "PUT" -> builder.put(payload ?: EMPTY_BODY)
             "PATCH" -> builder.patch(payload ?: EMPTY_BODY)
             else -> throw IllegalArgumentException("Unsupported method $method")
         }

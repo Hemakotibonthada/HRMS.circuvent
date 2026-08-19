@@ -433,6 +433,48 @@ class AppRepository(private val api: ApiClient) {
         )
     }
 
+    // ─── Income tax ──────────────────────────────────────────
+
+    /**
+     * The employee's declaration for a financial year.
+     *
+     * The server creates an empty one on first read rather than answering 404,
+     * because a first-time visitor has not missed a declaration — they simply
+     * have not made one, and a blank form is the correct answer to that.
+     */
+    suspend fun taxDeclaration(financialYear: Int? = null): TaxDeclarationResponse {
+        val path =
+            if (financialYear == null) "/api/tax/declaration"
+            else "/api/tax/declaration?financialYear=$financialYear"
+        return json.decodeFromString(api.get(path))
+    }
+
+    /**
+     * Saves a declaration.
+     *
+     * Sends every section the employee has entered, not only the changed ones:
+     * the server replaces rather than merges, so a section removed on the phone
+     * has to arrive as an absence. Merging would leave a withdrawn claim
+     * standing for ever.
+     */
+    suspend fun saveTaxDeclaration(save: TaxDeclarationSave) {
+        api.put("/api/tax/declaration", json.encodeToString(TaxDeclarationSave.serializer(), save))
+    }
+
+    /**
+     * Form 16 Part B for a year.
+     *
+     * Assembled from approved payroll only, so a year still being processed
+     * reports the months it actually covers rather than a projection. Part A
+     * comes from TRACES and is not ours to issue.
+     */
+    suspend fun form16(financialYear: Int? = null): Form16Response {
+        val path =
+            if (financialYear == null) "/api/tax/form16"
+            else "/api/tax/form16?financialYear=$financialYear"
+        return json.decodeFromString(api.get(path))
+    }
+
     // ─── Assets ──────────────────────────────────────────────
 
     /**
