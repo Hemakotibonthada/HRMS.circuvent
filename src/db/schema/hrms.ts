@@ -565,6 +565,56 @@ export const holidays = hrms.table(
   (t) => [index("holidays_org_year_idx").on(t.orgId, t.year)]
 );
 
+// ─── Attendance regularisation ───────────────────────────────
+
+/**
+ * A correction to a day's attendance, raised by the employee.
+ *
+ * Kept apart from `attendanceRecords` rather than editing them in place. The
+ * record is what payroll computed from, so the request is the audit trail of
+ * who asked for what and who agreed — an edit with no trail is indistinguishable
+ * from somebody quietly awarding themselves a day.
+ *
+ * `routing` says whether the correction can change the month it belongs to or
+ * has to travel to the next payroll run as an adjustment. A month that has
+ * already been paid cannot be reshaped without the payslip, the register and
+ * the record disagreeing.
+ */
+export const attendanceRegularisations = hrms.table(
+  "attendance_regularisations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    /** The day being corrected. */
+    attendanceDate: date("attendance_date").notNull(),
+    /** "missed_punch", "on_duty", "system_error" and the rest. */
+    reason: text("reason").notNull(),
+    note: text("note"),
+    /** Corrected times, as HH:MM. Null where the reason does not need them. */
+    inTime: time("in_time"),
+    outTime: time("out_time"),
+    hasProof: boolean("has_proof").notNull().default(false),
+    status: text("status").notNull().default("pending"),
+    /** "normal" or "adjustment", decided when the request is raised. */
+    routing: text("routing").notNull().default("normal"),
+    decidedById: uuid("decided_by_id").references(() => employees.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** Required when rejecting. Somebody losing a day's pay is owed a reason. */
+    decisionReason: text("decision_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("attendance_regularisations_employee_idx").on(t.employeeId, t.attendanceDate),
+    index("attendance_regularisations_org_status_idx").on(t.orgId, t.status),
+  ]
+);
+
 // ─── Income tax declarations ─────────────────────────────────
 
 /**

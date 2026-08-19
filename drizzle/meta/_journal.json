@@ -232,6 +232,13 @@
       "when": 1787142109654,
       "tag": "0032_it_declarations",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1787156951763,
+      "tag": "0033_attendance_regularisation",
+      "breakpoints": true
     }
   ]
 }
