@@ -46,6 +46,7 @@ import com.circuvent.hrms.feature.ExpensesScreen
 import com.circuvent.hrms.feature.HolidaysScreen
 import com.circuvent.hrms.feature.IdCardScreen
 import com.circuvent.hrms.feature.LoansScreen
+import com.circuvent.hrms.feature.MyTeamScreen
 import com.circuvent.hrms.feature.ReferScreen
 import com.circuvent.hrms.feature.ReferralsScreen
 import com.circuvent.hrms.feature.SwapsScreen
@@ -132,6 +133,7 @@ private object Routes {
     const val HOLIDAYS = "holidays"
     const val EXPENSES = "expenses"
     const val ID_CARD = "id-card"
+    const val MY_TEAM = "my-team"
 
     /** Titles for the pushed screens; the tabs take theirs from Destination. */
     val titles = mapOf(
@@ -162,6 +164,7 @@ private object Routes {
         HOLIDAYS to "Holidays",
         EXPENSES to "Expenses",
         ID_CARD to "Identity card",
+        MY_TEAM to "My team",
     )
 }
 
@@ -268,6 +271,7 @@ private fun SignedInApp(
                     composable(Routes.HOLIDAYS) { HolidaysScreen(container) }
                     composable(Routes.EXPENSES) { ExpensesScreen(container) }
                     composable(Routes.ID_CARD) { IdCardScreen(state.user) }
+                    composable(Routes.MY_TEAM) { MyTeamScreen(container) }
                     composable(Routes.APPROVALS) { ApprovalsScreen(container, state.user) }
                     composable(Routes.SETTINGS) { SettingsScreen(container, viewModel, state.user) }
                     composable(Routes.HELPDESK) {

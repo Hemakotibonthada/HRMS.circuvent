@@ -467,6 +467,15 @@ class AppRepository(private val api: ApiClient) {
         api.post("/api/expenses", json.encodeToString(ExpenseSubmission.serializer(), submission))
     }
 
+    /**
+     * Who is away, and whose day it is.
+     *
+     * One call because it is one screen. Two round trips to render a single
+     * card is two chances to show half of it on a slow connection.
+     */
+    suspend fun teamPulse(): TeamPulseResponse =
+        json.decodeFromString(api.get("/api/team/pulse"))
+
     // ─── Loans and advances ──────────────────────────────────
 
     /**

@@ -110,3 +110,49 @@ data class ExpenseSubmission(
     val amountMinor: String,
     val description: String? = null,
 )
+
+// ─── The team ────────────────────────────────────────────────
+
+@Serializable
+data class TeamAbsenceDto(
+    val employeeId: String = "",
+    val name: String = "",
+    val leaveType: String = "",
+    val startDate: String = "",
+    val endDate: String = "",
+    /** True when the absence covers today rather than starting later. */
+    val today: Boolean = false,
+)
+
+/**
+ * A birthday, without the year.
+ *
+ * The server does not send a year and this cannot ask for one. Day and month
+ * are what a colleague needs; the year is somebody's age.
+ */
+@Serializable
+data class TeamBirthdayDto(
+    val employeeId: String = "",
+    val name: String = "",
+    val designation: String = "",
+    val on: String = "",
+    val isToday: Boolean = false,
+)
+
+@Serializable
+data class TeamAnniversaryDto(
+    val employeeId: String = "",
+    val name: String = "",
+    val designation: String = "",
+    val on: String = "",
+    val years: Int = 0,
+    val isToday: Boolean = false,
+)
+
+@Serializable
+data class TeamPulseResponse(
+    val teamSize: Int = 0,
+    val onLeave: List<TeamAbsenceDto> = emptyList(),
+    val birthdays: List<TeamBirthdayDto> = emptyList(),
+    val anniversaries: List<TeamAnniversaryDto> = emptyList(),
+)

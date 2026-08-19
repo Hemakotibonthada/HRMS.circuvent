@@ -547,6 +547,9 @@ fun ProfileScreen(
         // 403 reads as a broken app rather than as a boundary.
         if (canApprove) {
             item { ProfileSectionHeading("Your team") }
+        item {
+            ProfileLink("My team", "Who is away, and whose day it is") { onNavigate("my-team") }
+        }
             item { ProfileLink("Approvals inbox", "Anything routed to you for a decision") { onNavigate("inbox") } }
             item { ProfileLink("Leave approvals", "Leave requests waiting on you") { onNavigate("approvals") } }
         }
