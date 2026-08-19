@@ -433,6 +433,40 @@ class AppRepository(private val api: ApiClient) {
         )
     }
 
+    // ─── Directory, announcements, holidays, expenses ────────
+
+    /**
+     * Colleagues, searched server-side.
+     *
+     * The search term goes to the server rather than the whole directory coming
+     * to the phone: an organisation of any size is a lot of rows to send and
+     * hold, and the server is already filtering by what the caller may see.
+     */
+    suspend fun directory(search: String? = null): DirectoryResponse {
+        val query = search?.trim()?.takeIf { it.isNotEmpty() }
+        val path =
+            if (query == null) "/api/employees?pageSize=50&status=active"
+            else "/api/employees?pageSize=50&status=active&search=" +
+                java.net.URLEncoder.encode(query, "UTF-8")
+        return json.decodeFromString(api.get(path))
+    }
+
+    suspend fun announcements(): AnnouncementsResponse =
+        json.decodeFromString(api.get("/api/announcements"))
+
+    /** The holiday calendar for a year, or the current one. */
+    suspend fun holidays(year: Int? = null): HolidaysResponse =
+        json.decodeFromString(
+            api.get(if (year == null) "/api/holidays" else "/api/holidays?year=$year")
+        )
+
+    suspend fun expenses(): ExpensesResponse =
+        json.decodeFromString(api.get("/api/expenses?limit=50"))
+
+    suspend fun submitExpense(submission: ExpenseSubmission) {
+        api.post("/api/expenses", json.encodeToString(ExpenseSubmission.serializer(), submission))
+    }
+
     // ─── Loans and advances ──────────────────────────────────
 
     /**

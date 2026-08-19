@@ -495,6 +495,11 @@ fun ProfileScreen(
         }
 
         item { ProfileSectionHeading("Your record") }
+        item {
+            ProfileLink("Identity card", "Your details, without needing a connection") {
+                onNavigate("id-card")
+            }
+        }
         item { ProfileLink("Attendance history", "Your punches, month by month") { onNavigate("attendance") } }
         item {
             ProfileLink(
@@ -531,6 +536,10 @@ fun ProfileScreen(
         item { ProfileLink("Referrals", "Put someone forward, and follow how they get on") { onNavigate("referrals") } }
 
         item { ProfileSectionHeading("Work") }
+        item { ProfileLink("Directory", "Find a colleague") { onNavigate("directory") } }
+        item { ProfileLink("Announcements", "Notices from your company") { onNavigate("announcements") } }
+        item { ProfileLink("Holidays", "The days the office is closed") { onNavigate("holidays") } }
+        item { ProfileLink("Expenses", "Claim something back, and follow it") { onNavigate("expenses") } }
         item { ProfileLink("Shift swaps", "Offer a shift, or take one offered to you") { onNavigate("swaps") } }
         item { ProfileLink("Helpdesk", "Raise a ticket with HR or IT, and track it") { onNavigate("helpdesk") } }
 

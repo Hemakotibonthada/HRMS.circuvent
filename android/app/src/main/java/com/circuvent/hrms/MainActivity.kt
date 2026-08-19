@@ -40,6 +40,11 @@ import com.circuvent.hrms.feature.CheckInsScreen
 import com.circuvent.hrms.feature.CourseDetailScreen
 import com.circuvent.hrms.feature.Form16Screen
 import com.circuvent.hrms.feature.LearningScreen
+import com.circuvent.hrms.feature.AnnouncementsScreen
+import com.circuvent.hrms.feature.DirectoryScreen
+import com.circuvent.hrms.feature.ExpensesScreen
+import com.circuvent.hrms.feature.HolidaysScreen
+import com.circuvent.hrms.feature.IdCardScreen
 import com.circuvent.hrms.feature.LoansScreen
 import com.circuvent.hrms.feature.ReferScreen
 import com.circuvent.hrms.feature.ReferralsScreen
@@ -122,6 +127,11 @@ private object Routes {
     const val FORM16 = "tax/form16"
     const val REGULARISATION = "attendance/regularise"
     const val LOANS = "loans"
+    const val DIRECTORY = "directory"
+    const val ANNOUNCEMENTS = "announcements"
+    const val HOLIDAYS = "holidays"
+    const val EXPENSES = "expenses"
+    const val ID_CARD = "id-card"
 
     /** Titles for the pushed screens; the tabs take theirs from Destination. */
     val titles = mapOf(
@@ -147,6 +157,11 @@ private object Routes {
         FORM16 to "Form 16",
         REGULARISATION to "Correct attendance",
         LOANS to "Loans and advances",
+        DIRECTORY to "Directory",
+        ANNOUNCEMENTS to "Announcements",
+        HOLIDAYS to "Holidays",
+        EXPENSES to "Expenses",
+        ID_CARD to "Identity card",
     )
 }
 
@@ -248,6 +263,11 @@ private fun SignedInApp(
                     composable(Routes.FORM16) { Form16Screen(container) }
                     composable(Routes.REGULARISATION) { RegularisationScreen(container) }
                     composable(Routes.LOANS) { LoansScreen(container) }
+                    composable(Routes.DIRECTORY) { DirectoryScreen(container) }
+                    composable(Routes.ANNOUNCEMENTS) { AnnouncementsScreen(container) }
+                    composable(Routes.HOLIDAYS) { HolidaysScreen(container) }
+                    composable(Routes.EXPENSES) { ExpensesScreen(container) }
+                    composable(Routes.ID_CARD) { IdCardScreen(state.user) }
                     composable(Routes.APPROVALS) { ApprovalsScreen(container, state.user) }
                     composable(Routes.SETTINGS) { SettingsScreen(container, viewModel, state.user) }
                     composable(Routes.HELPDESK) {
