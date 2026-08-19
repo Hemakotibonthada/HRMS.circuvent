@@ -12,7 +12,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { organizations, userRoles, users } from "@/db/schema/identity";
 import { employees, leavePolicies } from "@/db/schema/hrms";
@@ -201,15 +201,27 @@ export async function POST(request: NextRequest) {
       // then the two ids agreeing for this row is what makes those routes work
       // rather than silently return nothing.
       const [firstName, ...rest] = name.trim().split(/\s+/);
+      // The founder is CV-001 of a brand-new organisation. Taken from
+      // `hrms.next_employee_code` rather than written as a literal — this used
+      // to be the string "EMP-0001", which is why three rows in this database
+      // share that code.
+      const codeResult = await tx.execute(
+        sql`SELECT hrms.next_employee_code(${org.id}::uuid) AS code`
+      );
+      const employeeCode = (codeResult.rows[0] as { code?: string } | undefined)?.code ?? "CV-001";
       await tx.insert(employees).values({
         id: user.id,
         orgId: org.id,
         userId: user.id,
-        employeeCode: "EMP-0001",
+        employeeCode,
         firstName: firstName || name.trim(),
         lastName: rest.join(" ") || "-",
         workEmail: email,
-        designation: "Owner",
+        // The person registering a company is its founder. "Owner" is the app
+        // *role* they hold, not a job title, and putting it in the designation
+        // column is how the staff directory came to list several people as
+        // holding a job called Owner.
+        designation: "Founder",
         joinDate: new Date().toISOString().slice(0, 10),
         status: "active",
       });

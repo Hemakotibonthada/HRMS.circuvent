@@ -179,13 +179,27 @@ export class NeonEmployeeRepository implements EmployeeRepository {
 
   async create(data: EmployeeCreate): Promise<EmployeeRecord> {
     const row = await withTenant(this.ctx, async (tx) => {
-      // Employee codes are unique per organization. Generating one inside the
-      // transaction keeps two concurrent hires from colliding.
+      // The code comes from `hrms.next_employee_code` — see migration 0030.
+      //
+      // It used to be `CIR-${count + 1}`, which is wrong in a way that only
+      // shows up later: `count` skips anybody soft-deleted, so the first
+      // departure makes the next hire collide with a code already issued. The
+      // function takes the maximum over every row, including deleted ones, and
+      // holds a transaction-scoped advisory lock so two concurrent hires cannot
+      // read the same number.
       const code =
         data.employeeCode ??
         (await (async () => {
-          const [{ value }] = await tx.select({ value: count() }).from(employees);
-          return `CIR-${String(value + 1).padStart(4, "0")}`;
+          const result = await tx.execute(
+            sql`SELECT hrms.next_employee_code(${this.ctx.orgId}::uuid) AS code`
+          );
+          const next = (result.rows[0] as { code?: string } | undefined)?.code;
+          if (!next) {
+            throw new Error(
+              "hrms.next_employee_code returned nothing; migration 0030 may not be applied"
+            );
+          }
+          return next;
         })());
 
       const [row] = await tx
