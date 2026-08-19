@@ -94,7 +94,11 @@ export default function ComplianceHubPage() {
         store.setItems(data as unknown as ComplianceDoc[]);
       }).catch(() => store.setItems([]));
     }
-  }, [initialized, store]);
+    // `store` is deliberately not a dependency — it is the whole zustand state
+    // object, so setLoading() above replaces it and listing it here re-triggers
+    // this effect forever. `initialized` is the real guard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized]);
 
   const filtered = useMemo(() => {
     if (!search) return items;

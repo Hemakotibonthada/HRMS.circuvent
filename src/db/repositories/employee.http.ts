@@ -119,9 +119,14 @@ export class HttpEmployeeRepository implements EmployeeRepository {
    *  - Overlapping requests are suppressed, so a slow response cannot queue up
    *    a backlog of in-flight fetches.
    */
-  subscribe(onChange: (items: EmployeeRecord[]) => void, q: ListQuery = {}): Unsubscribe {
+  subscribe(
+    onChange: (items: EmployeeRecord[]) => void,
+    q: ListQuery = {},
+    onError?: (error: Error) => void,
+  ): Unsubscribe {
     let cancelled = false;
     let inFlight = false;
+    let delivered = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const poll = async () => {
@@ -131,9 +136,20 @@ export class HttpEmployeeRepository implements EmployeeRepository {
       inFlight = true;
       try {
         const page = await this.list(q);
-        if (!cancelled) onChange(page.items);
+        if (!cancelled) {
+          onChange(page.items);
+          delivered = true;
+        }
       } catch (error) {
         console.error("Employee poll failed:", error);
+        // Only report while nothing has loaded yet. Callers flip a loading
+        // flag on before subscribing, so swallowing this first failure left
+        // the page on a skeleton that never resolved. Later failures are
+        // transient refreshes over data the user can still see, and the next
+        // successful poll heals them silently.
+        if (!cancelled && !delivered) {
+          onError?.(error instanceof Error ? error : new Error(String(error)));
+        }
       } finally {
         inFlight = false;
       }

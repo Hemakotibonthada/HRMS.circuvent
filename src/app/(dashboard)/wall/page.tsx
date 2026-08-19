@@ -105,7 +105,11 @@ export default function WallPage() {
       store.setLoading(false);
       setInitialized(true);
     });
-  }, [initialized, store]);
+    // `store` is deliberately not a dependency — it is the whole zustand state
+    // object, so setLoading() above replaces it and listing it here re-triggers
+    // this effect forever. `initialized` is the real guard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized]);
 
   // KPIs
   const totalPosts = posts.length;

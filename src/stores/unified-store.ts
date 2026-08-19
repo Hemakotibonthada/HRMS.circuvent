@@ -239,10 +239,27 @@ export interface VisitorDoc extends BaseRecord {
 export const useVisitorStore = createDataStore<VisitorDoc>();
 
 // Referrals
+// Mirrors ReferralRecord from db/repositories/referral.neon.ts, which is what
+// /api/referrals actually returns. This used to be a leftover Firestore shape
+// (referrerName/position/bonus/referredDate) that shared only two field names
+// with the real record, so the page read undefined for everything else.
 export interface ReferralDoc extends BaseRecord {
-  referrerName: string; candidateName: string;
-  position: string; status: string; bonus: number;
-  referredDate: string;
+  referrerId: string;
+  referrerName?: string;
+  candidateName: string;
+  candidateEmail: string;
+  candidatePhone?: string;
+  positionTitle: string;
+  departmentName?: string;
+  relationship?: string;
+  recommendation?: string;
+  status: string;
+  /** Major currency units. Zeroed by the API for referrals that are not yours. */
+  bonusAmount: number;
+  currency: string;
+  payoutStatus: string;
+  createdAt?: string;
+  hiredOn?: string;
 }
 export const useReferralStore = createDataStore<ReferralDoc>();
 
@@ -332,9 +349,20 @@ export function startSync<T extends BaseRecord>(collectionName: string, store: D
   store.setError(null);
 
   if (collectionName === COLLECTIONS.employees) {
-    const unsub = employeeRepository().subscribe((records) => {
-      store.setItems(records.map(toEmployeeDoc) as unknown as T[]);
-    });
+    const unsub = employeeRepository().subscribe(
+      (records) => {
+        store.setItems(records.map(toEmployeeDoc) as unknown as T[]);
+      },
+      {},
+      (error) => {
+        // This branch returns early, so it never reached the error handler on
+        // the generic path below — and every page that loads employees sat on
+        // a skeleton forever whenever /api/employees failed. Same fix, same
+        // reason: setLoading(true) above is only safe if something clears it.
+        store.setLoading(false);
+        store.setError(error.message);
+      },
+    );
     unsubscribers.set(collectionName, unsub);
     return;
   }

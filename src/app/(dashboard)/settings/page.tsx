@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,25 +23,22 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useRBAC } from "@/hooks/use-rbac";
+import { visibleSections, resolveSection } from "@/lib/settings-sections";
 
 // ═══════════════════════════════════════════════════════════════
-// ADVANCED SETTINGS PANEL
-// Organization settings, security, notifications, branding,
-// integrations, modules, roles, audit, data management
+// SETTINGS
 // ═══════════════════════════════════════════════════════════════
+// Two audiences share this route. An administrator configures the
+// organisation; everyone else adjusts their own preferences. It used to show
+// the first to both — an employee opening it saw company details, the
+// org-wide security policy, the role matrix, data retention and billing, all
+// of it editable-looking. RBAC already draws the line (`settings.manage` is
+// admin-only, `settings.view` is universal); this page simply ignored it.
+//
+// Which sections each audience sees lives in lib/settings-sections.ts, so the
+// rule can be tested without rendering the page.
 
-interface SettingSection { id: string; label: string; icon: typeof Settings; description: string; }
-
-const SECTIONS: SettingSection[] = [
-  { id: "organization", label: "Organization", icon: Building2, description: "Company details, branding, and regional settings" },
-  { id: "security", label: "Security", icon: Shield, description: "Passwords, 2FA, sessions, and access controls" },
-  { id: "notifications", label: "Notifications", icon: Bell, description: "Email, push, and in-app notification preferences" },
-  { id: "modules", label: "Modules", icon: Zap, description: "Enable/disable HRMS modules and features" },
-  { id: "roles", label: "Roles & Permissions", icon: Key, description: "Role definitions and permission matrix" },
-  { id: "data", label: "Data Management", icon: Database, description: "Backup, export, retention, and cleanup" },
-  { id: "integrations", label: "Integrations", icon: Webhook, description: "Third-party service connections and APIs" },
-  { id: "billing", label: "Billing", icon: CreditCard, description: "Subscription, invoices, and payment methods" },
-];
 
 const MODULES_LIST = [
   { id: "employees", name: "Employee Management", enabled: true, description: "Core employee directory and profiles", core: true },
@@ -71,17 +68,6 @@ const ROLES = [
   { id: "employee", name: "Employee", count: 114, color: "from-emerald-500 to-green-600", permissions: 12 },
 ];
 
-const INTEGRATIONS = [
-  { name: "Google Workspace", status: "connected", icon: "🔵", type: "SSO", lastSync: "2 min ago" },
-  { name: "Slack", status: "connected", icon: "💬", type: "Communication", lastSync: "5 min ago" },
-  { name: "Razorpay", status: "connected", icon: "💳", type: "Payments", lastSync: "1 hr ago" },
-  { name: "Zoho Books", status: "disconnected", icon: "📑", type: "Accounting", lastSync: "Never" },
-  { name: "BambooHR", status: "disconnected", icon: "🎋", type: "HRIS", lastSync: "Never" },
-  { name: "Jira", status: "connected", icon: "📋", type: "Project Management", lastSync: "10 min ago" },
-  { name: "GitHub", status: "connected", icon: "🐙", type: "Development", lastSync: "30 min ago" },
-  { name: "Twilio", status: "disconnected", icon: "📱", type: "SMS", lastSync: "Never" },
-];
-
 const DATA_RETENTION = [
   { type: "Employee Records", retention: "7 years after exit", size: "245 MB", records: 145 },
   { type: "Payroll Data", retention: "10 years", size: "180 MB", records: 1728 },
@@ -95,7 +81,17 @@ const DATA_RETENTION = [
 const GRADIENTS = ["from-violet-500 to-purple-600","from-blue-500 to-cyan-500","from-emerald-500 to-green-600","from-amber-500 to-orange-500","from-pink-500 to-rose-600","from-teal-500 to-cyan-600","from-indigo-500 to-blue-600","from-red-500 to-orange-500"];
 
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState("organization");
+  const { can } = useRBAC();
+  const canManage = can("settings.manage");
+
+  // Employees and managers get the two sections that are actually about them:
+  // their own second factor, and their own notification preferences.
+  const sections = useMemo(() => visibleSections(canManage), [canManage]);
+
+  const [requestedSection, setRequestedSection] = useState("organization");
+  const activeSection = resolveSection(requestedSection, canManage);
+  const setActiveSection = setRequestedSection;
+
   const [modules, setModules] = useState(MODULES_LIST);
   const [showPassword, setShowPassword] = useState(false);
   const [orgSettings, setOrgSettings] = useState({
@@ -126,15 +122,22 @@ export default function SettingsPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between animate-slide-up">
-        <div><h1 className="text-2xl font-bold tracking-tight">Settings</h1><p className="text-muted-foreground text-sm mt-0.5">Organization configuration & preferences</p></div>
-        <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-md gap-2" onClick={() => toast.success("All settings saved!")}><Save className="h-4 w-4" />Save Changes</Button>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            {canManage ? "Organization configuration & preferences" : "Your preferences"}
+          </p>
+        </div>
+        {canManage && (
+          <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-md gap-2" onClick={() => toast.success("All settings saved!")}><Save className="h-4 w-4" />Save Changes</Button>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         {/* Section Navigation */}
         <Card className="h-fit">
           <CardContent className="p-2">
-            {SECTIONS.map(section => (
+            {sections.map(section => (
               <button key={section.id} className={cn("flex items-center gap-3 w-full rounded-lg px-3 py-2.5 text-left transition-all", activeSection === section.id ? "bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400" : "hover:bg-muted/50")} onClick={() => setActiveSection(section.id)}>
                 <section.icon className={cn("h-4 w-4 shrink-0", activeSection === section.id ? "text-violet-600" : "text-muted-foreground")} />
                 <div className="min-w-0"><p className="text-xs font-medium truncate">{section.label}</p><p className="text-[9px] text-muted-foreground truncate">{section.description}</p></div>
@@ -185,6 +188,8 @@ export default function SettingsPage() {
                   an organisation-wide policy; this one acts on the person
                   reading it, which is why it sits first and separate. */}
               <TwoFactorSettings />
+              {canManage && (
+              <>
               <Card><CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Shield className="h-4 w-4 text-red-500" />Organisation policy</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   {[
@@ -208,6 +213,8 @@ export default function SettingsPage() {
                   <div className="space-y-2"><Label>Lockout After (attempts)</Label><Input type="number" value={securitySettings.lockoutAttempts} onChange={e => setSecuritySettings(p => ({ ...p, lockoutAttempts: parseInt(e.target.value) || 5 }))} /></div>
                 </CardContent>
               </Card>
+              </>
+              )}
             </>
           )}
 
@@ -285,15 +292,27 @@ export default function SettingsPage() {
           {activeSection === "integrations" && (
             <>
             <Card><CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Webhook className="h-4 w-4 text-teal-500" />Connected Services</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {INTEGRATIONS.map(int => (
-                  <div key={int.name} className="flex items-center gap-4 rounded-lg border p-3 hover:shadow-sm transition-all">
-                    <span className="text-2xl">{int.icon}</span>
-                    <div className="flex-1"><div className="flex items-center gap-2"><p className="text-xs font-semibold">{int.name}</p><Badge variant="outline" className="text-[8px]">{int.type}</Badge></div><p className="text-[10px] text-muted-foreground">Last sync: {int.lastSync}</p></div>
-                    <Badge className={cn("text-[9px] border-0", int.status === "connected" ? "status-active" : "status-inactive")}>{int.status}</Badge>
-                    <Button variant="outline" size="sm" className="text-xs">{int.status === "connected" ? "Configure" : "Connect"}</Button>
+              <CardContent className="space-y-3">
+                {/* This listed Google Workspace, Slack, Razorpay, Jira and
+                    GitHub as connected, with sync times like "2 min ago".
+                    None of it was real — there is no integrations backend and
+                    nothing was ever connected. An administrator reading it
+                    would reasonably believe payroll was wired to a payment
+                    provider and that SSO was live. */}
+                <div className="rounded-lg border border-dashed p-4 flex gap-3 items-start">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold">No third-party integrations are configured</p>
+                    <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+                      Nothing is connected to an external service yet. Employee data does move
+                      between the Circuvent apps — see Cross-App Employee Sync below, which is live.
+                    </p>
                   </div>
-                ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Planned: SSO (Google Workspace, Microsoft Entra), chat notifications,
+                  payment providers, and accounting export.
+                </p>
               </CardContent>
             </Card>
 

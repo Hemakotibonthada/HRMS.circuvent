@@ -93,7 +93,11 @@ export default function ShiftsPage() {
       }).catch(() => store.setItems([]));
     }
     if (!empStore.initialized) startSync(COLLECTIONS.employees, empStore);
-  }, [initialized, store, empStore]);
+    // Neither store belongs in the deps: they are whole zustand state objects,
+    // and setLoading() above replaces `store`, so listing it re-triggers this
+    // effect forever. `initialized` is the real guard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized]);
 
   const filtered = useMemo(() => {
     let list = items;

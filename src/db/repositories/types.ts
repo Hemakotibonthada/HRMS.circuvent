@@ -49,7 +49,21 @@ export interface Repository<T, TCreate = Partial<T>, TUpdate = Partial<T>> {
   create(data: TCreate): Promise<T>;
   update(id: string, data: TUpdate): Promise<T>;
   remove(id: string): Promise<void>;
-  subscribe(onChange: (items: T[]) => void, query?: ListQuery): Unsubscribe;
+  /**
+   * Live updates. `onError` is called when a refresh fails *before* any data
+   * has been delivered — a failure after the first successful load is treated
+   * as transient, because the caller is still showing the last good list and
+   * replacing it with an error screen would be a downgrade.
+   *
+   * Implementations that cannot fail (or cannot report it) may omit it, but
+   * a caller that sets a loading flag before subscribing MUST pass one, or
+   * that flag never clears on failure.
+   */
+  subscribe(
+    onChange: (items: T[]) => void,
+    query?: ListQuery,
+    onError?: (error: Error) => void,
+  ): Unsubscribe;
 }
 
 /** Thrown when a repository call is rejected; carries an HTTP-shaped status. */

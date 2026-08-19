@@ -134,15 +134,20 @@ export function AppSidebar() {
                   <ChevronDown className="ml-auto h-4 w-4 text-muted-foreground" />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="w-56">
-                <DropdownMenuItem onClick={() => router.push("/settings")}>
+                <DropdownMenuItem onClick={() => router.push("/myprofile")}>
                   <User className="mr-2 h-4 w-4" /> Profile
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push("/settings")}>
                   <Settings className="mr-2 h-4 w-4" /> Settings
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/billing")}>
-                  <CreditCard className="mr-2 h-4 w-4" /> Billing
-                </DropdownMenuItem>
+                {/* Billing is an account-owner concern. It used to be offered to
+                    everyone, so an employee clicking it landed on subscription
+                    and payment details that are not theirs to see. */}
+                {rbac.isAdmin && (
+                  <DropdownMenuItem onClick={() => router.push("/billing")}>
+                    <CreditCard className="mr-2 h-4 w-4" /> Billing
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
                   <LogOut className="mr-2 h-4 w-4" /> Sign out

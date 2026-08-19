@@ -13,9 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UserPlus, Plus, Search, Clock, CheckCircle2, DollarSign, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useReferralStore, startSync } from "@/stores/unified-store";
+import { useReferralStore, startSync, stopSync } from "@/stores/unified-store";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
-import { genericService, COLLECTIONS } from "@/lib/collection-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 
 const STATUS_COLORS: Record<string, string> = {
   submitted: "status-pending",
@@ -30,10 +30,12 @@ export default function ReferralsPage() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("list");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!initialized) startSync(COLLECTIONS.referrals, store);
-  }, [initialized, store]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized]);
 
   const filtered = useMemo(() => {
     if (!search) return items;
@@ -42,7 +44,7 @@ export default function ReferralsPage() {
       (r) =>
         (r.referrerName || "").toLowerCase().includes(q) ||
         (r.candidateName || "").toLowerCase().includes(q) ||
-        (r.position || "").toLowerCase().includes(q)
+        (r.positionTitle || "").toLowerCase().includes(q)
     );
   }, [items, search]);
 
@@ -52,14 +54,14 @@ export default function ReferralsPage() {
   ).length;
   const totalBonus = items
     .filter((r) => r.status === "hired")
-    .reduce((s, r) => s + (r.bonus || 0), 0);
+    .reduce((s, r) => s + (r.bonusAmount || 0), 0);
   const conversionRate =
     items.length > 0 ? Math.round((hired / items.length) * 100) : 0;
 
   const positionBreakdown = useMemo(() => {
     const map: Record<string, number> = {};
     items.forEach((r) => {
-      map[r.position || "Other"] = (map[r.position || "Other"] || 0) + 1;
+      map[r.positionTitle || "Other"] = (map[r.positionTitle || "Other"] || 0) + 1;
     });
     return Object.entries(map)
       .map(([name, count]) => ({ name, count }))
@@ -68,21 +70,51 @@ export default function ReferralsPage() {
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const data = {
-      referrerName: fd.get("referrer") as string,
-      candidateName: fd.get("candidate") as string,
-      position: fd.get("position") as string,
-      status: "submitted",
-      bonus: 0,
-      referredDate: dateKeyInZone(new Date()),
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const optional = (key: string) => {
+      const value = (fd.get(key) as string | null)?.trim();
+      return value ? value : undefined;
     };
+
+    // Field names mirror submitSchema in /api/referrals. They previously did
+    // not — the form posted referrerName/position and never collected an email,
+    // so every submission failed validation and reported a generic error.
+    const payload = {
+      candidateName: (fd.get("candidateName") as string).trim(),
+      candidateEmail: (fd.get("candidateEmail") as string).trim(),
+      positionTitle: (fd.get("positionTitle") as string).trim(),
+      candidatePhone: optional("candidatePhone"),
+      relationship: optional("relationship"),
+      recommendation: optional("recommendation"),
+    };
+
+    setSubmitting(true);
     try {
-      await genericService(COLLECTIONS.referrals).create(data);
-      toast.success("Referral submitted!");
+      const response = await fetch("/api/referrals", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        // The route returns a specific reason — a duplicate candidate, a rate
+        // limit, a bad address. Showing "Failed to submit referral" for all of
+        // them left people re-submitting a form that could never succeed.
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || `Referral was rejected (${response.status})`);
+      }
+
+      toast.success("Referral submitted — we'll email you as it progresses.");
+      form.reset();
       setDialogOpen(false);
-    } catch {
-      toast.error("Failed to submit referral");
+      stopSync(COLLECTIONS.referrals);
+      startSync(COLLECTIONS.referrals, store);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to submit referral");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -156,9 +188,15 @@ export default function ReferralsPage() {
                     <UserPlus className="h-4 w-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{ref.candidateName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Referred by {ref.referrerName} &middot; {ref.position} &middot; {ref.referredDate}
+                    <p className="font-medium text-sm truncate">{ref.candidateName}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {[
+                        ref.referrerName ? `Referred by ${ref.referrerName}` : null,
+                        ref.positionTitle,
+                        ref.createdAt ? dateKeyInZone(new Date(ref.createdAt)) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
                   </div>
                   <Badge className={cn("text-xs", STATUS_COLORS[ref.status])}>{ref.status}</Badge>
@@ -210,13 +248,45 @@ export default function ReferralsPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>Refer a Candidate</DialogTitle></DialogHeader>
           <form onSubmit={handleCreate} className="space-y-3">
+            {/* No "your name" field: the API takes the referrer from the session
+                and refuses it from the body, so anything typed here was ignored
+                while implying you could refer on a colleague's behalf. */}
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Your Name</Label><Input name="referrer" required /></div>
-              <div><Label>Candidate Name</Label><Input name="candidate" required /></div>
+              <div>
+                <Label htmlFor="ref-name">Candidate name</Label>
+                <Input id="ref-name" name="candidateName" required minLength={2} maxLength={150} />
+              </div>
+              <div>
+                <Label htmlFor="ref-email">Candidate email</Label>
+                <Input id="ref-email" name="candidateEmail" type="email" required maxLength={320} />
+              </div>
             </div>
-            <div><Label>Position</Label><Input name="position" required /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="ref-role">Role</Label>
+                <Input id="ref-role" name="positionTitle" required minLength={2} maxLength={150} />
+              </div>
+              <div>
+                <Label htmlFor="ref-phone">Phone <span className="text-muted-foreground">(optional)</span></Label>
+                <Input id="ref-phone" name="candidatePhone" maxLength={32} />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="ref-rel">How do you know them? <span className="text-muted-foreground">(optional)</span></Label>
+              <Input id="ref-rel" name="relationship" maxLength={120} placeholder="Former colleague, university friend…" />
+            </div>
+            <div>
+              <Label htmlFor="ref-why">Why they&apos;d be a good fit <span className="text-muted-foreground">(optional)</span></Label>
+              <Input id="ref-why" name="recommendation" maxLength={2000} />
+            </div>
             <DialogFooter>
-              <Button type="submit" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white">Submit Referral</Button>
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="bg-gradient-to-r from-violet-500 to-purple-600 text-white"
+              >
+                {submitting ? "Submitting…" : "Submit Referral"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

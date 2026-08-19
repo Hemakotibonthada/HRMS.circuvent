@@ -113,7 +113,12 @@ export default function WellnessPage() {
         store.setItems(data as unknown as WellnessDoc[]);
       }).catch(() => { store.setItems([]); });
     }
-  }, [store]);
+    // `store` is deliberately not a dependency. It is the whole zustand state
+    // object, so setLoading() above replaces it — listing it here re-triggers
+    // this effect, which sets loading again, forever, firing a fetch each pass.
+    // The setters are stable, so calling them from this closure is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = useMemo(() => {
     let result = items;
