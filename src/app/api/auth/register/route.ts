@@ -15,9 +15,10 @@ import { z } from "zod";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { organizations, userRoles, users } from "@/db/schema/identity";
-import { employees, leavePolicies } from "@/db/schema/hrms";
+import { employees, holidays, leaveBalances, leavePolicies } from "@/db/schema/hrms";
 import { documentTemplates, referralPolicies } from "@/db/schema/talent";
-import { DEFAULT_LEAVE_POLICIES } from "@/lib/leave-provisioning";
+import { DEFAULT_LEAVE_POLICIES, provisionFor } from "@/lib/leave-provisioning";
+import { allHolidays } from "@/lib/ap-holidays";
 import { DEFAULT_REFERRAL_POLICIES } from "@/lib/referral-rules";
 import { TEMPLATE_CATALOG } from "@/lib/document-templates/catalog";
 import { extractTokens } from "@/lib/document-rules";
@@ -209,6 +210,7 @@ export async function POST(request: NextRequest) {
         sql`SELECT hrms.next_employee_code(${org.id}::uuid) AS code`
       );
       const employeeCode = (codeResult.rows[0] as { code?: string } | undefined)?.code ?? "CV-001";
+      const joinDate = new Date().toISOString().slice(0, 10);
       await tx.insert(employees).values({
         id: user.id,
         orgId: org.id,
@@ -222,9 +224,58 @@ export async function POST(request: NextRequest) {
         // column is how the staff directory came to list several people as
         // holding a job called Owner.
         designation: "Founder",
-        joinDate: new Date().toISOString().slice(0, 10),
+        joinDate,
         status: "active",
       });
+
+      // Leave balances, not just leave policies.
+      //
+      // A policy states an entitlement; a balance is what the leave screen
+      // reads and what an application is checked against. Seeding only the
+      // policies left a founder with nine leave types and nothing to draw on,
+      // so the first leave request came back "insufficient balance" — a
+      // complete, tested module reporting a correct answer to a question
+      // nobody had set up. This was found by registering a tenant and looking,
+      // rather than by reading the code, which had looked right for weeks.
+      const balances = provisionFor({
+        policies: DEFAULT_LEAVE_POLICIES,
+        joinDate,
+        year: new Date().getUTCFullYear(),
+      });
+
+      if (balances.length > 0) {
+        await tx.insert(leaveBalances).values(
+          balances.map((balance) => ({
+            orgId: org.id,
+            employeeId: user.id,
+            year: balance.year,
+            leaveType: balance.leaveType as never,
+            openingDays: String(balance.openingDays),
+            accruedDays: String(balance.accruedDays),
+            carryForwardDays: String(balance.carryForwardDays),
+          }))
+        );
+      }
+
+      // The public holiday calendar.
+      //
+      // Attendance and leave both read it: without it every gazetted holiday
+      // counts as a working day, so somebody is marked absent on a day the
+      // office was shut and a leave request spends days it should not.
+      //
+      // Only the dates that are certain — the Andhra Pradesh fixed set. The
+      // lunisolar festivals move each year and are deliberately not written;
+      // see src/lib/ap-holidays.ts.
+      await tx.insert(holidays).values(
+        allHolidays().map((holiday) => ({
+          orgId: org.id,
+          name: holiday.name,
+          holidayDate: holiday.date,
+          year: holiday.year,
+          isOptional: holiday.restricted,
+          description: holiday.description,
+        }))
+      );
     });
   } catch (error) {
     console.error("Registration failed:", error);

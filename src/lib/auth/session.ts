@@ -374,6 +374,7 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
     userId: row.id,
     orgId: row.org_id,
     email: row.email,
+    name: row.display_name,
     role,
     app,
     mfaVerified: mfaActive,
@@ -495,6 +496,7 @@ export async function signInWithSso(request: {
     userId: row.id,
     orgId: row.org_id,
     email: row.email,
+    name: row.display_name,
     role,
     app,
     mfaVerified: false,
@@ -548,6 +550,8 @@ interface IssueParams {
   userId: string;
   orgId: string;
   email: string;
+  /** Display name, carried into the token so /me can name the person. */
+  name?: string | null;
   role: string;
   app: AppId;
   mfaVerified: boolean;
@@ -584,6 +588,7 @@ async function issueSession(
     org: params.orgId,
     role: params.role,
     email: params.email,
+    name: params.name?.trim() || undefined,
     sid: sessionId,
     mfa: params.mfaVerified,
   });
@@ -628,7 +633,7 @@ export async function refreshSession(refreshToken: string): Promise<RefreshResul
 
   const profile = await withTenant({ orgId: found.orgId, superuser: true }, async (tx) => {
     const rows = await tx
-      .select({ email: users.email, status: users.status })
+      .select({ email: users.email, status: users.status, displayName: users.displayName })
       .from(users)
       .where(and(eq(users.id, found.userId), isNull(users.deletedAt)))
       .limit(1);
@@ -649,6 +654,7 @@ export async function refreshSession(refreshToken: string): Promise<RefreshResul
     userId: found.userId,
     orgId: found.orgId,
     email: profile.email,
+    name: profile.displayName,
     role,
     app,
     mfaVerified: !!found.mfaVerifiedAt,

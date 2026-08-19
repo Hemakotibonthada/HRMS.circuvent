@@ -38,6 +38,17 @@ export interface AccessClaims extends JWTPayload {
   org: string;
   role: string;
   email?: string;
+  /**
+   * Display name, so /api/auth/me can name the person without a database read.
+   *
+   * Carried in the token for the same reason `email` is: the session endpoint
+   * is called on every app mount and is deliberately free of round-trips. The
+   * cost is that a rename only shows after the next sign-in, which is a fair
+   * trade for a label. Without it the apps had no name at all — the Android
+   * profile card rendered a blank line and the greeting fell back to the part
+   * of the email before the @, so it said "Hello, priya".
+   */
+  name?: string;
   /** Session id, so a refresh can find its family without another lookup. */
   sid: string;
   /** True once TOTP has been satisfied for this session. */

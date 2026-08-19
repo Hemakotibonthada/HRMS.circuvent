@@ -89,14 +89,21 @@ export function countLeaveDays(startDate: string, endDate: string, isHalfDay: bo
   return days;
 }
 
+/**
+ * What the year granted, before anything was taken off it.
+ *
+ * Kept beside `availableFrom` and expressed in the same terms, because the two
+ * are shown together as "available of entitled" — computing them apart is how
+ * a screen ends up claiming someone has more days left than they were ever
+ * given.
+ */
+function entitledFrom(row: typeof leaveBalances.$inferSelect): number {
+  return Number(row.openingDays) + Number(row.accruedDays) + Number(row.carryForwardDays);
+}
+
 function availableFrom(row: typeof leaveBalances.$inferSelect): number {
   return (
-    Number(row.openingDays) +
-    Number(row.accruedDays) +
-    Number(row.carryForwardDays) -
-    Number(row.usedDays) -
-    Number(row.pendingDays) -
-    Number(row.lapsedDays)
+    entitledFrom(row) - Number(row.usedDays) - Number(row.pendingDays) - Number(row.lapsedDays)
   );
 }
 
@@ -471,6 +478,7 @@ export class NeonLeaveRepository implements LeaveRepository {
         pending: Number(r.pendingDays),
         carryForward: Number(r.carryForwardDays),
         lapsed: Number(r.lapsedDays),
+        entitled: entitledFrom(r),
         available: availableFrom(r),
       }));
     });

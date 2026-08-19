@@ -176,6 +176,14 @@ export interface LeaveBalanceRecord {
   pending: number;
   carryForward: number;
   lapsed: number;
+  /**
+   * opening + accrued + carryForward — what was granted, before deductions.
+   *
+   * The denominator the apps show as "5 of 12 days". It was never sent, and
+   * the Android client declared it with a default of 0, so kotlinx.serialization
+   * filled the gap silently and every balance read "5 of 0 days".
+   */
+  entitled: number;
   /** opening + accrued + carryForward − used − pending − lapsed. */
   available: number;
 }
