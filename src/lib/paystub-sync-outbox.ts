@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
 import { departments, employees, locations, paystubEmployeeSyncOutbox } from "@/db/schema/hrms";
 import { pushEmployeeToPaystub, type PaystubSyncSource } from "@/lib/paystub-client";
@@ -17,9 +17,46 @@ function publicError(error: unknown): string {
   return message.replace(/X-Service-Token[^\s,)]*/gi, "X-Service-Token [redacted]").slice(0, 500);
 }
 
+/**
+ * How long to wait before trying again, doubling each time to a ceiling.
+ *
+ * The ceiling is 1024 minutes (about 17 hours), set by the exponent cap; the
+ * `60 * 24` term can never be selected, because 1024 is already below it. Kept
+ * byte-identical to `retryDelayMinutes` in `onboarding-groups.ts` rather than
+ * tidied, because the two outboxes backing off in step is the property worth
+ * having, and a silent divergence between them is the kind of thing nobody
+ * notices until one is retrying every minute.
+ */
+export function paystubRetryDelayMinutes(attemptCount: number): number {
+  return Math.min(60 * 24, 2 ** Math.min(attemptCount, 10));
+}
+
 function retryAt(attemptCount: number): Date {
-  const minutes = Math.min(60 * 24, 2 ** Math.min(attemptCount, 10));
-  return new Date(Date.now() + minutes * 60_000);
+  return new Date(Date.now() + paystubRetryDelayMinutes(attemptCount) * 60_000);
+}
+
+/**
+ * What a sweep should do with a row it has picked up.
+ *
+ * Split out because the interesting case is not the happy one. A soft-deleted
+ * employee can never be pushed, and `attemptPaystubEmployeeSync` refuses it
+ * *before* recording an attempt — so the row keeps its long-past next-attempt
+ * time, is selected again by the very next sweep, and occupies the batch limit
+ * forever while making no progress. Deciding that here, in one pure function,
+ * is what makes it possible to prove it does not happen.
+ */
+export type OutboxRowAction =
+  | { kind: "attempt" }
+  | { kind: "retire"; reason: string };
+
+export function actionForOutboxRow(row: { deletedAt: Date | null }): OutboxRowAction {
+  if (row.deletedAt !== null) {
+    return {
+      kind: "retire",
+      reason: "The employee was deleted in HRMS before this reached Paystub.",
+    };
+  }
+  return { kind: "attempt" };
 }
 
 export async function queuePaystubEmployeeSync(
@@ -174,4 +211,85 @@ export async function queueAndAttemptPaystubEmployeeSync(
       employeeId,
     });
   }
+}
+
+export interface PaystubDrainResult {
+  attempted: number;
+  synced: number;
+  failed: number;
+  /** Rows whose employee has since been deleted, taken off the retry schedule. */
+  retired: number;
+}
+
+/**
+ * Retries every Paystub push that is due.
+ *
+ * This is what makes the outbox an outbox. `queueAndAttemptPaystubEmployeeSync`
+ * tries once when the employee is saved and, on failure, logs that "the intent
+ * remains in the outbox" — but nothing ever came back for it. The backoff
+ * columns were written on every failure and read by nobody, so a push that
+ * failed on a network blip at hire time stayed failed until somebody edited
+ * that employee again. For a leaver, nobody ever does.
+ *
+ * Due means a retry was actually scheduled and that time has passed. A null
+ * `nextAttemptAt` is deliberately *not* due: it is how both a completed row and
+ * a retired one say they want nothing further, so neither is picked up forever.
+ */
+export async function drainDuePaystubSyncs(
+  ctx: TenantContext,
+  limit = 50
+): Promise<PaystubDrainResult> {
+  const now = new Date();
+
+  const due = await withTenant(ctx, async (tx) =>
+    tx
+      .select({
+        employeeId: paystubEmployeeSyncOutbox.employeeId,
+        deletedAt: employees.deletedAt,
+      })
+      .from(paystubEmployeeSyncOutbox)
+      .leftJoin(employees, eq(employees.id, paystubEmployeeSyncOutbox.employeeId))
+      .where(
+        and(
+          eq(paystubEmployeeSyncOutbox.orgId, ctx.orgId),
+          inArray(paystubEmployeeSyncOutbox.status, ["pending", "failed"]),
+          isNotNull(paystubEmployeeSyncOutbox.nextAttemptAt),
+          lte(paystubEmployeeSyncOutbox.nextAttemptAt, now)
+        )
+      )
+      .limit(limit)
+  );
+
+  const result: PaystubDrainResult = { attempted: 0, synced: 0, failed: 0, retired: 0 };
+
+  for (const row of due) {
+    const action = actionForOutboxRow({ deletedAt: row.deletedAt ?? null });
+
+    if (action.kind === "retire") {
+      // Not marked succeeded, because it did not succeed; carries no next
+      // attempt, because it will not be tried again. (A hard delete cascades
+      // the row away and never reaches here.)
+      await withTenant(ctx, async (tx) => {
+        await tx
+          .update(paystubEmployeeSyncOutbox)
+          .set({
+            status: "failed",
+            lastError: action.reason,
+            nextAttemptAt: null,
+            lastAttemptAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(paystubEmployeeSyncOutbox.employeeId, row.employeeId));
+      });
+      result.retired++;
+      continue;
+    }
+
+    result.attempted++;
+    const attempt = await attemptPaystubEmployeeSync(ctx, row.employeeId);
+    if (attempt.ok) result.synced++;
+    else result.failed++;
+  }
+
+  return result;
 }

@@ -60,6 +60,19 @@ const PUBLIC_PREFIXES = [
   // by a session — the caller is Okta or Entra, which has no browser. Every
   // handler calls authenticateScim before touching data.
   "/api/scim",
+  // The scheduled sweep is called by Vercel's cron infrastructure, which has
+  // no cookie and no session. It authenticates itself: the handler compares
+  // `Authorization: Bearer $CRON_SECRET` in constant time and refuses every
+  // request outright when that variable is unset, so passing it through here
+  // is not an exemption from authentication.
+  //
+  // Worth stating plainly, because the failure is silent: without this entry
+  // the middleware answers 401 before the handler runs, having read the cron
+  // secret as an expired user access token. Vercel does not report a failing
+  // cron anywhere the application can see, so the sweep simply never happens
+  // and both outboxes stop draining — which is the exact outage the sweep was
+  // built to end.
+  "/api/cron",
   // ── discovery and link-preview surfaces ────────────────────────────────
   // Googlebot, Bingbot and every chat client that unfurls a link arrive with
   // no cookie and follow no redirects into a sign-in form. Gating these does
