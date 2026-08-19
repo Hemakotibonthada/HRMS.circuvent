@@ -19,7 +19,6 @@ import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
 import { canViewOthersSalary } from "@/lib/rbac";
 import {
-  EMPLOYMENT_TYPE_VALUES,
   normaliseEmploymentType,
   validateEmployeeFields,
 } from "@/lib/employee-rules";

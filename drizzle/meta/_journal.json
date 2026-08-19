@@ -218,6 +218,13 @@
       "when": 1787092403389,
       "tag": "0030_passkeys",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1787130000000,
+      "tag": "0031_employee_code_generator",
+      "breakpoints": true
     }
   ]
 }
