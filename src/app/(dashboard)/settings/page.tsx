@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { TwoFactorSettings } from "@/components/two-factor-settings";
+import { IntegrationsPanel } from "@/components/integrations-panel";
 import {
   Settings, Building2, Users, Shield, Bell, Palette, Globe,
   Lock, Mail, Key, Database, Clock, Calendar, Save, RotateCcw,
@@ -291,30 +292,7 @@ export default function SettingsPage() {
           {/* ─── Integrations ─── */}
           {activeSection === "integrations" && (
             <>
-            <Card><CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Webhook className="h-4 w-4 text-teal-500" />Connected Services</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {/* This listed Google Workspace, Slack, Razorpay, Jira and
-                    GitHub as connected, with sync times like "2 min ago".
-                    None of it was real — there is no integrations backend and
-                    nothing was ever connected. An administrator reading it
-                    would reasonably believe payroll was wired to a payment
-                    provider and that SSO was live. */}
-                <div className="rounded-lg border border-dashed p-4 flex gap-3 items-start">
-                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-semibold">No third-party integrations are configured</p>
-                    <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
-                      Nothing is connected to an external service yet. Employee data does move
-                      between the Circuvent apps — see Cross-App Employee Sync below, which is live.
-                    </p>
-                  </div>
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Planned: SSO (Google Workspace, Microsoft Entra), chat notifications,
-                  payment providers, and accounting export.
-                </p>
-              </CardContent>
-            </Card>
+            <IntegrationsPanel />
 
             {/* Cross-App Sync */}
             <Card className="mt-4">
