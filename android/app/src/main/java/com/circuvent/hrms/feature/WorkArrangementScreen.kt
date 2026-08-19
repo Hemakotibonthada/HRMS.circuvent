@@ -34,6 +34,7 @@ import com.circuvent.hrms.core.ui.PillTone
 import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.StatusPill
 import com.circuvent.hrms.core.ui.TextTone
+import com.circuvent.hrms.core.ui.rememberFormattedDate
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.WorkArrangementCreate
 import com.circuvent.hrms.data.WorkArrangementDto
@@ -59,16 +60,16 @@ private fun statusTone(status: String): PillTone = when (status) {
     else -> PillTone.WARNING
 }
 
-private val MONTHS = listOf(
-    "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-)
-
-private fun shortDate(iso: String): String {
-    if (iso.length < 10) return iso
-    val month = iso.substring(5, 7).toIntOrNull() ?: return iso
-    return "${iso.substring(8, 10).trimStart('0')} ${MONTHS.getOrElse(month) { "" }}"
-}
+/**
+ * Delegates to the app's single date formatter.
+ *
+ * Kept as a local name so the call sites below read the same as before, but it
+ * no longer has its own opinion: this screen used to write "31 Mar" while the
+ * directory wrote "31 March 2026" and the home screen printed raw ISO, so one
+ * date could appear three ways in one app.
+ */
+@Composable
+private fun shortDate(iso: String): String = rememberFormattedDate(iso)
 
 @Composable
 fun WorkArrangementScreen(container: AppContainer) {

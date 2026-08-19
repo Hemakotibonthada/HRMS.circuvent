@@ -1,6 +1,7 @@
 package com.circuvent.hrms
 
 import android.content.Context
+import com.circuvent.hrms.data.AppPreferences
 import com.circuvent.hrms.data.AppRepository
 import com.circuvent.hrms.data.auth.TokenStore
 import com.circuvent.hrms.data.net.ApiClient
@@ -22,6 +23,9 @@ class AppContainer(context: Context) {
     val tokens: TokenStore by lazy { TokenStore(appContext) }
 
     val queue: OfflineQueue by lazy { OfflineQueue(appContext) }
+
+    /** How the app should look. Not secrets, so not in the encrypted store. */
+    val preferences: AppPreferences by lazy { AppPreferences(appContext) }
 
     /**
      * Set when the client discovers the session is gone and cannot be

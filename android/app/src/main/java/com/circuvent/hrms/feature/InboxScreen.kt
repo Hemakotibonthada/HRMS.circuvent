@@ -42,6 +42,7 @@ import com.circuvent.hrms.core.ui.Glyph
 import com.circuvent.hrms.core.ui.SectionHeading
 import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.TextTone
+import com.circuvent.hrms.core.ui.formatIsoRangeText
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.AppContainer
 import com.circuvent.hrms.data.SessionUser
@@ -360,7 +361,11 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
                 }
 
                 Spacer(Modifier.height(Theme.spacing.md))
-                AppText(item.period, size = Theme.type.footnote, lineHeight = Theme.type.footnoteLine)
+                AppText(
+                    formatIsoRangeText(item.period),
+                    size = Theme.type.footnote,
+                    lineHeight = Theme.type.footnoteLine,
+                )
                 AppText(
                     item.detail,
                     size = Theme.type.caption,

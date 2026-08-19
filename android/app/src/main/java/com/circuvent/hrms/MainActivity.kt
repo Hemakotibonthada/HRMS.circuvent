@@ -30,9 +30,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.circuvent.hrms.core.design.CircuventTheme
+import com.circuvent.hrms.data.ThemeChoice
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppText
+import com.circuvent.hrms.core.ui.ProvideDateFormat
 import com.circuvent.hrms.feature.ApprovalsScreen
 import com.circuvent.hrms.feature.InboxScreen
 import com.circuvent.hrms.feature.WallScreen
@@ -92,7 +95,16 @@ class MainActivity : FragmentActivity() {
         val container = AppContainer(applicationContext)
 
         setContent {
-            CircuventTheme {
+            // Collected here, above the theme, so a change in Settings
+            // repaints the whole app rather than only the screen that set it.
+            val themeChoice by container.preferences.theme.collectAsState()
+            CircuventTheme(
+                darkTheme = when (themeChoice) {
+                    ThemeChoice.LIGHT -> false
+                    ThemeChoice.DARK -> true
+                    ThemeChoice.SYSTEM -> isSystemInDarkTheme()
+                },
+            ) {
                 val viewModel: AppViewModel = viewModel(
                     factory = object : ViewModelProvider.Factory {
                         @Suppress("UNCHECKED_CAST")
@@ -100,7 +112,14 @@ class MainActivity : FragmentActivity() {
                             AppViewModel(container) as T
                     }
                 )
-                AppRoot(container, viewModel)
+                // Provided once at the root so every screen writes dates the
+                // same way. Before this the app had three formats and several
+                // raw ISO strings, so one holiday could appear in two forms on
+                // two screens.
+                val dateFormat by container.preferences.dateFormat.collectAsState()
+                ProvideDateFormat(dateFormat) {
+                    AppRoot(container, viewModel)
+                }
             }
         }
     }

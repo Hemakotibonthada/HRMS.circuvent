@@ -36,6 +36,7 @@ import com.circuvent.hrms.core.ui.PillTone
 import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.StatusPill
 import com.circuvent.hrms.core.ui.TextTone
+import com.circuvent.hrms.core.ui.rememberFormattedDate
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.AnnouncementsResponse
 import com.circuvent.hrms.data.DirectoryResponse
@@ -65,6 +66,16 @@ private fun readableDate(iso: String): String {
     val day = iso.substring(8, 10).trimStart('0')
     return "$day ${MONTH_NAMES.getOrElse(month) { "" }} $year"
 }
+
+/**
+ * Delegates to the app's single date formatter.
+ *
+ * [readableDate] above is kept for the two non-composable call sites that build
+ * accessibility strings outside composition; everything drawn on screen goes
+ * through here so it follows the reader's chosen format.
+ */
+@Composable
+private fun preferredDate(iso: String): String = rememberFormattedDate(iso)
 
 /**
  * The staff directory.
@@ -200,7 +211,7 @@ fun AnnouncementsScreen(container: AppContainer) {
                             )
                             notice.publishedAt?.takeIf { it.length >= 10 }?.let {
                                 AppText(
-                                    readableDate(it.substring(0, 10)),
+                                    preferredDate(it.substring(0, 10)),
                                     tone = TextTone.MUTED,
                                     size = Theme.type.caption,
                                 )
@@ -268,7 +279,7 @@ fun HolidaysScreen(container: AppContainer) {
                                 Column(Modifier.weight(1f)) {
                                     AppText(holiday.name, weight = FontWeight.Medium)
                                     AppText(
-                                        readableDate(holiday.holidayDate),
+                                        preferredDate(holiday.holidayDate),
                                         tone = TextTone.MUTED,
                                         size = Theme.type.footnote,
                                     )

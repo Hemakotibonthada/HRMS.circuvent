@@ -268,6 +268,8 @@ fun SettingsScreen(container: AppContainer, viewModel: AppViewModel, user: Sessi
             }
         }
 
+        AppearanceSettings(container)
+
         AppCard {
             Row(
                 Modifier.fillMaxWidth(),

@@ -54,6 +54,7 @@ import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.StatusPill
 import com.circuvent.hrms.core.ui.PillTone
 import com.circuvent.hrms.core.ui.TextTone
+import com.circuvent.hrms.core.ui.rememberFormattedDate
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.SessionUser
 import com.circuvent.hrms.data.WallPostDto
@@ -237,7 +238,7 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
                         )
                         val subtitle = listOfNotNull(
                             post.department.takeIf { it.isNotBlank() },
-                            post.createdAt.take(10).takeIf { it.isNotBlank() },
+                            post.createdAt.takeIf { it.isNotBlank() }?.let { rememberFormattedDate(it) },
                         ).joinToString(" · ")
                         if (subtitle.isNotBlank()) {
                             AppText(

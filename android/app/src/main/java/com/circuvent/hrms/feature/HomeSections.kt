@@ -35,6 +35,8 @@ import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppText
 import com.circuvent.hrms.core.ui.Glyph
 import com.circuvent.hrms.core.ui.QuickAction
+import com.circuvent.hrms.core.ui.rememberFormattedDate
+import com.circuvent.hrms.core.ui.rememberFormattedRange
 import com.circuvent.hrms.core.ui.TextTone
 import com.circuvent.hrms.data.AnnouncementDto
 import com.circuvent.hrms.data.HolidayDto
@@ -209,7 +211,7 @@ fun HomeFeed(container: AppContainer, onNavigate: (String) -> Unit) {
                                     if (absence.today) {
                                         "Away today · ${absence.leaveType}"
                                     } else {
-                                        "${absence.startDate} to ${absence.endDate}"
+                                        rememberFormattedRange(absence.startDate, absence.endDate)
                                     },
                                     size = Theme.type.caption,
                                     lineHeight = Theme.type.captionLine,
@@ -287,9 +289,9 @@ fun HomeFeed(container: AppContainer, onNavigate: (String) -> Unit) {
                                     // claimed; somebody who reads it as a closure
                                     // does not come to work.
                                     if (holiday.isOptional) {
-                                        "${holiday.holidayDate} · Optional, must be claimed"
+                                        "${rememberFormattedDate(holiday.holidayDate)} · Optional, must be claimed"
                                     } else {
-                                        holiday.holidayDate
+                                        rememberFormattedDate(holiday.holidayDate)
                                     },
                                     size = Theme.type.caption,
                                     lineHeight = Theme.type.captionLine,
