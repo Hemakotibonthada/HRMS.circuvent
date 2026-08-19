@@ -69,9 +69,17 @@ android/local.properties
 android/.kotlin/
 android/*.jks
 android/*.keystore
+# The passwords for the above. Ignored for the same reason the key is: an
+# upload key plus its password is publishing rights, and git keeps a copy of a
+# secret for as long as the repository exists even after it is deleted.
+android/keystore.properties
 
 # Local dev server output, captured when exercising routes by hand.
 dev-server.log
+
+# Built app binaries, copied here for convenience. An .aab committed once stays
+# in the history forever, and it is rebuildable from source in five minutes.
+android/release-artifacts/
 
 # Emulator screenshots captured while testing by hand.
 android/shots/

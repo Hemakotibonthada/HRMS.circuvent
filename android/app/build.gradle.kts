@@ -31,6 +31,46 @@ fun apiBaseUrl(default: String): String {
     return System.getenv("API_BASE_URL")?.takeIf { it.isNotBlank() } ?: default
 }
 
+/**
+ * Release signing credentials, from a local file or from the environment.
+ *
+ * Never from version control. A signing key in the repository is a key every
+ * present and past contributor holds, and for an upload key that means anyone
+ * who has ever cloned the project can publish in your name. `keystore.properties`
+ * and `*.jks` are both ignored by git; CI passes the same four values as
+ * environment variables so no key file ever has to be committed to reach it.
+ *
+ * Returns null when nothing is configured, and the release build is then left
+ * unsigned rather than falling back to the debug key. A debug-signed release
+ * installs and runs perfectly, which is precisely why that mistake survives
+ * every local test and is only caught by Play, at upload.
+ */
+fun releaseKeystore(): Properties? {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) {
+        val loaded = Properties()
+        file.inputStream().use(loaded::load)
+        if (!loaded.getProperty("storeFile").isNullOrBlank()) return loaded
+    }
+
+    val storeFile = System.getenv("ANDROID_KEYSTORE_FILE")
+    val storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    val keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+    val keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+    if (storeFile.isNullOrBlank() || storePassword.isNullOrBlank() ||
+        keyAlias.isNullOrBlank() || keyPassword.isNullOrBlank()
+    ) {
+        return null
+    }
+
+    return Properties().apply {
+        setProperty("storeFile", storeFile)
+        setProperty("storePassword", storePassword)
+        setProperty("keyAlias", keyAlias)
+        setProperty("keyPassword", keyPassword)
+    }
+}
+
 android {
     namespace = "com.circuvent.hrms"
     compileSdk = 35
@@ -46,6 +86,31 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+    }
+
+    signingConfigs {
+        val credentials = releaseKeystore()
+        if (credentials == null) {
+            logger.lifecycle(
+                "No release signing configured. `assembleRelease` will produce an " +
+                    "unsigned APK, and Play will refuse it. See android/README-release.md."
+            )
+        } else {
+            create("release") {
+                storeFile = rootProject.file(credentials.getProperty("storeFile"))
+                storePassword = credentials.getProperty("storePassword")
+                keyAlias = credentials.getProperty("keyAlias")
+                keyPassword = credentials.getProperty("keyPassword")
+
+                // v1 is the old JAR signature, only read by Android 6 and
+                // earlier. minSdk is 26, so it buys nothing and costs the
+                // Janus vulnerability class that v2's whole-file signature
+                // exists to close.
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
     }
 
     buildTypes {
@@ -66,6 +131,7 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl("https://hrms.circuvent.com")}\"")
             manifestPlaceholders["usesCleartextTraffic"] = "false"
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
