@@ -303,6 +303,35 @@ export const paystubEmployeeSyncOutbox = hrms.table(
   ]
 );
 
+export const directoryGroupJoinOutbox = hrms.table(
+  "directory_group_join_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    /** The group's address at the identity provider — "all@circuvent.com". */
+    groupAddress: text("group_address").notNull(),
+    /** The address being added, as it was at the time the intent was recorded. */
+    memberEmail: text("member_email").notNull(),
+    status: text("status").notNull().default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    joinedAt: timestamp("joined_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("directory_group_join_outbox_member_key").on(t.orgId, t.employeeId, t.groupAddress),
+    index("directory_group_join_outbox_retry_idx").on(t.status, t.nextAttemptAt),
+  ]
+);
+
 export const employeeDocuments = hrms.table(
   "employee_documents",
   {

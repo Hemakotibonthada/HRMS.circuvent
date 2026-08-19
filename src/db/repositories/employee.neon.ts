@@ -12,7 +12,21 @@
 
 import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
-import { departments, employees, leaveBalances, leavePolicies } from "@/db/schema/hrms";
+import {
+  departments,
+  employees,
+  leaveBalances,
+  leavePolicies,
+} from "@/db/schema/hrms";
+import {
+  drainDueGroupJoins,
+  queueGroupJoins,
+} from "@/lib/directory-group-outbox";
+import {
+  autoJoinAddresses,
+  resolveGroupDomain,
+  shouldAutoJoin,
+} from "@/lib/onboarding-groups";
 import {
   DEFAULT_LEAVE_POLICIES,
   provisionFor,
@@ -112,23 +126,31 @@ export class NeonEmployeeRepository implements EmployeeRepository {
           ilike(employees.lastName, needle),
           ilike(employees.workEmail, needle),
           ilike(employees.designation, needle),
-          ilike(employees.employeeCode, needle)
-        )!
+          ilike(employees.employeeCode, needle),
+        )!,
       );
     }
 
     for (const [field, value] of Object.entries(q.filters ?? {})) {
-      if (value === undefined || value === null || value === "" || value === "all") continue;
+      if (
+        value === undefined ||
+        value === null ||
+        value === "" ||
+        value === "all"
+      )
+        continue;
       const column = FILTERABLE[field as keyof typeof FILTERABLE];
       // Ignoring an unknown filter would silently widen the result set, so it
       // is an error instead.
-      if (!column) throw new RepositoryError(`Unknown employee filter: ${field}`, 400);
+      if (!column)
+        throw new RepositoryError(`Unknown employee filter: ${field}`, 400);
       conditions.push(eq(column, value as never));
     }
 
     const sortField = (q.sortBy ?? "fullName") as SortableField;
     const sortColumn = SORTABLE[sortField];
-    if (!sortColumn) throw new RepositoryError(`Cannot sort employees by ${q.sortBy}`, 400);
+    if (!sortColumn)
+      throw new RepositoryError(`Cannot sort employees by ${q.sortBy}`, 400);
     const direction = q.sortDirection === "desc" ? desc : asc;
 
     return withTenant(this.ctx, async (tx) => {
@@ -151,7 +173,9 @@ export class NeonEmployeeRepository implements EmployeeRepository {
         .from(employees)
         .where(where);
 
-      const items = rows.map((r) => toRecord({ ...r.employee, departmentName: r.departmentName }));
+      const items = rows.map((r) =>
+        toRecord({ ...r.employee, departmentName: r.departmentName }),
+      );
 
       return {
         items,
@@ -173,7 +197,10 @@ export class NeonEmployeeRepository implements EmployeeRepository {
         .limit(1);
 
       if (rows.length === 0) return null;
-      return toRecord({ ...rows[0].employee, departmentName: rows[0].departmentName });
+      return toRecord({
+        ...rows[0].employee,
+        departmentName: rows[0].departmentName,
+      });
     });
   }
 
@@ -191,12 +218,12 @@ export class NeonEmployeeRepository implements EmployeeRepository {
         data.employeeCode ??
         (await (async () => {
           const result = await tx.execute(
-            sql`SELECT hrms.next_employee_code(${this.ctx.orgId}::uuid) AS code`
+            sql`SELECT hrms.next_employee_code(${this.ctx.orgId}::uuid) AS code`,
           );
           const next = (result.rows[0] as { code?: string } | undefined)?.code;
           if (!next) {
             throw new Error(
-              "hrms.next_employee_code returned nothing; migration 0030 may not be applied"
+              "hrms.next_employee_code returned nothing; migration 0030 may not be applied",
             );
           }
           return next;
@@ -236,13 +263,40 @@ export class NeonEmployeeRepository implements EmployeeRepository {
       // without balances is exactly the broken state being repaired.
       await this.provisionLeave(tx, row.id, data.joinDate);
 
-      await queuePaystubEmployeeSync(tx, this.ctx.orgId, row.id);
+      // Standard access, queued in the same transaction as the hire.
+      //
+      // Membership of all@<domain> is what grants an ordinary employee their
+      // access across the suite and puts them on the all-staff address.
+      // Groups live at the identity provider, not here — see the header of
+      // `directory-sdk.ts` — so this records the durable intent and the HTTP
+      // call happens after the transaction commits. A hire must not fail
+      // because auth.circuvent.com is unreachable, and a network round trip
+      // inside a transaction holds a connection open for as long as somebody
+      // else's server takes to answer.
+      await this.provisionGroups(tx, row.id, data.email, data.status);
 
+      await queuePaystubEmployeeSync(tx, this.ctx.orgId, row.id);
       return row;
     });
 
-    void queueAndAttemptPaystubEmployeeSync(this.ctx, row.id).catch((error: unknown) => {
-      console.warn("[paystub-sync] Could not run the immediate employee push attempt.", {
+    void queueAndAttemptPaystubEmployeeSync(this.ctx, row.id).catch(
+      (error: unknown) => {
+        console.warn(
+          "[paystub-sync] Could not run the immediate employee push attempt.",
+          {
+            orgId: this.ctx.orgId,
+            employeeId: row.id,
+            errorName: error instanceof Error ? error.name : "UnknownError",
+          },
+        );
+      },
+    );
+
+    // The common case, attempted immediately so a hire made at 9am is in the
+    // group by 9am. Failure here is not an error: the outbox row survives and
+    // the scheduled sweep re-drives it.
+    void drainDueGroupJoins(this.ctx).catch((error: unknown) => {
+      console.warn("[groups] Could not run the immediate group join attempt.", {
         orgId: this.ctx.orgId,
         employeeId: row.id,
         errorName: error instanceof Error ? error.name : "UnknownError",
@@ -250,6 +304,63 @@ export class NeonEmployeeRepository implements EmployeeRepository {
     });
 
     return toRecord(row);
+  }
+
+  /**
+   * Queues the new hire's membership of the groups that grant standard access.
+   *
+   * Deliberately tolerant, exactly as `provisionLeave` is: a hire must not
+   * fail because group provisioning did. A missing membership is recoverable
+   * by re-running it; a failed hire halfway through an onboarding flow is not.
+   */
+  private async provisionGroups(
+    tx: Parameters<Parameters<typeof withTenant>[1]>[0],
+    employeeId: string,
+    email: string,
+    status: string | undefined,
+  ): Promise<void> {
+    try {
+      if (!shouldAutoJoin({ email, status })) return;
+
+      // The hire's own work address decides the domain, so a company whose
+      // mail is on a different domain from its website still gets the right
+      // group. Falls back to the configured default when it cannot be read.
+      const domain = resolveGroupDomain(email);
+
+      // A SAVEPOINT, not a bare call, and this is what makes the try/catch
+      // around it mean anything.
+      //
+      // Postgres aborts the *whole* transaction on any error inside it: catching
+      // the exception in application code leaves the connection in a failed
+      // state, and every statement after it — the Paystub sync queue, the
+      // commit itself — fails with "current transaction is aborted". So a
+      // tolerant catch around a raw insert is not tolerant at all; it converts
+      // "group provisioning failed" into "the hire failed", which is precisely
+      // the outcome the catch was written to prevent.
+      //
+      // `tx.transaction()` issues a SAVEPOINT, so a failure here rolls back to
+      // this point and the outer transaction carries on. It matters today:
+      // until migration 0033 is applied the outbox table does not exist, and
+      // without this every hire would fail.
+      await tx.transaction(async (sp) => {
+        await queueGroupJoins(sp, {
+          orgId: this.ctx.orgId,
+          employeeId,
+          memberEmail: email,
+          groupAddresses: autoJoinAddresses(domain),
+        });
+      });
+    } catch (error) {
+      console.warn(
+        "[groups] Could not queue the new employee's group membership; the hire itself is unaffected.",
+        {
+          orgId: this.ctx.orgId,
+          employeeId,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+          errorMessage: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
   }
 
   /**
@@ -262,60 +373,73 @@ export class NeonEmployeeRepository implements EmployeeRepository {
    * Deliberately tolerant: a hire must not fail because leave provisioning did.
    * A missing balance is recoverable by re-provisioning; a failed hire in the
    * middle of an onboarding flow is not.
+   *
+   * Wrapped in a SAVEPOINT for that tolerance to be real. Postgres aborts the
+   * whole transaction on any error inside it, so catching the exception in
+   * application code without one leaves the connection failed and every later
+   * statement — the group queue, the Paystub sync, the commit — failing with
+   * "current transaction is aborted". The catch would then have converted
+   * "leave provisioning failed" into "the hire failed", which is the outcome
+   * it exists to prevent.
    */
   private async provisionLeave(
     tx: Parameters<Parameters<typeof withTenant>[1]>[0],
     employeeId: string,
-    joinDate: string
+    joinDate: string,
   ): Promise<void> {
     try {
-      const configured = await tx
-        .select({
-          leaveType: leavePolicies.leaveType,
-          label: leavePolicies.label,
-          annualQuotaDays: leavePolicies.annualQuotaDays,
-          isProRata: leavePolicies.isProRata,
-          carryForwardLimitDays: leavePolicies.carryForwardLimitDays,
-          isActive: leavePolicies.isActive,
-        })
-        .from(leavePolicies)
-        .where(eq(leavePolicies.isActive, true));
+      await tx.transaction(async (sp) => {
+        const configured = await sp
+          .select({
+            leaveType: leavePolicies.leaveType,
+            label: leavePolicies.label,
+            annualQuotaDays: leavePolicies.annualQuotaDays,
+            isProRata: leavePolicies.isProRata,
+            carryForwardLimitDays: leavePolicies.carryForwardLimitDays,
+            isActive: leavePolicies.isActive,
+          })
+          .from(leavePolicies)
+          .where(eq(leavePolicies.isActive, true));
 
-      const policies: LeavePolicy[] =
-        configured.length > 0
-          ? configured.map((p) => ({
-              leaveType: p.leaveType as LeavePolicy["leaveType"],
-              label: p.label,
-              annualQuotaDays: Number(p.annualQuotaDays),
-              isProRata: p.isProRata,
-              carryForwardLimitDays: Number(p.carryForwardLimitDays ?? 0),
-            }))
-          : [...DEFAULT_LEAVE_POLICIES];
+        const policies: LeavePolicy[] =
+          configured.length > 0
+            ? configured.map((p) => ({
+                leaveType: p.leaveType as LeavePolicy["leaveType"],
+                label: p.label,
+                annualQuotaDays: Number(p.annualQuotaDays),
+                isProRata: p.isProRata,
+                carryForwardLimitDays: Number(p.carryForwardLimitDays ?? 0),
+              }))
+            : [...DEFAULT_LEAVE_POLICIES];
 
-      // The year the person joins, not the calendar year here: a December hire
-      // recorded against next year gets a balance they cannot use yet.
-      const year = Number(joinDate.slice(0, 4)) || new Date().getFullYear();
+        // The year the person joins, not the calendar year here: a December hire
+        // recorded against next year gets a balance they cannot use yet.
+        const year = Number(joinDate.slice(0, 4)) || new Date().getFullYear();
 
-      const balances = provisionFor({ policies, joinDate, year });
-      if (balances.length === 0) return;
+        const balances = provisionFor({ policies, joinDate, year });
+        if (balances.length === 0) return;
 
-      await tx
-        .insert(leaveBalances)
-        .values(
-          balances.map((b) => ({
-            orgId: this.ctx.orgId,
-            employeeId,
-            year: b.year,
-            leaveType: b.leaveType as never,
-            openingDays: String(b.openingDays),
-            accruedDays: String(b.accruedDays),
-            carryForwardDays: String(b.carryForwardDays),
-          }))
-        )
-        // Re-hiring somebody, or a retry, must not collide.
-        .onConflictDoNothing();
+        await sp
+          .insert(leaveBalances)
+          .values(
+            balances.map((b) => ({
+              orgId: this.ctx.orgId,
+              employeeId,
+              year: b.year,
+              leaveType: b.leaveType as never,
+              openingDays: String(b.openingDays),
+              accruedDays: String(b.accruedDays),
+              carryForwardDays: String(b.carryForwardDays),
+            })),
+          )
+          // Re-hiring somebody, or a retry, must not collide.
+          .onConflictDoNothing();
+      });
     } catch (error) {
-      console.error(`[employees] Could not provision leave for ${employeeId}:`, error);
+      console.error(
+        `[employees] Could not provision leave for ${employeeId}:`,
+        error,
+      );
     }
   }
 
@@ -324,20 +448,32 @@ export class NeonEmployeeRepository implements EmployeeRepository {
       const [row] = await tx
         .update(employees)
         .set({
-          ...(data.firstName !== undefined ? { firstName: data.firstName } : {}),
+          ...(data.firstName !== undefined
+            ? { firstName: data.firstName }
+            : {}),
           ...(data.lastName !== undefined ? { lastName: data.lastName } : {}),
           ...(data.email !== undefined ? { workEmail: data.email } : {}),
           ...(data.phone !== undefined ? { phone: data.phone } : {}),
-          ...(data.departmentId !== undefined ? { departmentId: data.departmentId } : {}),
-          ...(data.designation !== undefined ? { designation: data.designation } : {}),
-          ...(data.reportingToId !== undefined ? { reportingToId: data.reportingToId } : {}),
+          ...(data.departmentId !== undefined
+            ? { departmentId: data.departmentId }
+            : {}),
+          ...(data.designation !== undefined
+            ? { designation: data.designation }
+            : {}),
+          ...(data.reportingToId !== undefined
+            ? { reportingToId: data.reportingToId }
+            : {}),
           ...(data.employmentType !== undefined
             ? { employmentType: data.employmentType as never }
             : {}),
-          ...(data.status !== undefined ? { status: data.status as never } : {}),
+          ...(data.status !== undefined
+            ? { status: data.status as never }
+            : {}),
           ...(data.joinDate !== undefined ? { joinDate: data.joinDate } : {}),
           ...(data.exitDate !== undefined ? { exitDate: data.exitDate } : {}),
-          ...(data.salary !== undefined ? { ctcMinor: toMinor(data.salary) } : {}),
+          ...(data.salary !== undefined
+            ? { ctcMinor: toMinor(data.salary) }
+            : {}),
           updatedAt: new Date(),
         })
         .where(and(eq(employees.id, id), isNull(employees.deletedAt)))
@@ -348,13 +484,18 @@ export class NeonEmployeeRepository implements EmployeeRepository {
       return row;
     });
 
-    void queueAndAttemptPaystubEmployeeSync(this.ctx, row.id).catch((error: unknown) => {
-      console.warn("[paystub-sync] Could not run the immediate employee push attempt.", {
-        orgId: this.ctx.orgId,
-        employeeId: row.id,
-        errorName: error instanceof Error ? error.name : "UnknownError",
-      });
-    });
+    void queueAndAttemptPaystubEmployeeSync(this.ctx, row.id).catch(
+      (error: unknown) => {
+        console.warn(
+          "[paystub-sync] Could not run the immediate employee push attempt.",
+          {
+            orgId: this.ctx.orgId,
+            employeeId: row.id,
+            errorName: error instanceof Error ? error.name : "UnknownError",
+          },
+        );
+      },
+    );
 
     return toRecord(row);
   }
@@ -383,7 +524,7 @@ export class NeonEmployeeRepository implements EmployeeRepository {
   subscribe(): Unsubscribe {
     throw new RepositoryError(
       "NeonEmployeeRepository does not support subscribe(); use HttpEmployeeRepository on the client",
-      501
+      501,
     );
   }
 
@@ -393,10 +534,17 @@ export class NeonEmployeeRepository implements EmployeeRepository {
         .select({ employee: employees, departmentName: departments.name })
         .from(employees)
         .leftJoin(departments, eq(departments.id, employees.departmentId))
-        .where(and(eq(employees.reportingToId, managerId), isNull(employees.deletedAt)))
+        .where(
+          and(
+            eq(employees.reportingToId, managerId),
+            isNull(employees.deletedAt),
+          ),
+        )
         .orderBy(asc(employees.firstName));
 
-      return rows.map((r) => toRecord({ ...r.employee, departmentName: r.departmentName }));
+      return rows.map((r) =>
+        toRecord({ ...r.employee, departmentName: r.departmentName }),
+      );
     });
   }
 

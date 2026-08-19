@@ -110,8 +110,7 @@ export async function groupMembers(address: string): Promise<string[] | null> {
  *
  * The everyday operation for the rest of the suite: a project, a meeting or a
  * channel is given a mix of people and groups and needs the people.
- */
-export async function expandToPeople(addresses: string[]): Promise<string[]> {
+ */export async function expandToPeople(addresses: string[]): Promise<string[]> {
   const unique = Array.from(
     new Set(addresses.map((a) => a.trim().toLowerCase()).filter(Boolean))
   );
@@ -155,4 +154,137 @@ export async function expandToPeople(addresses: string[]): Promise<string[]> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Writing to the directory
+// ─────────────────────────────────────────────────────────────
+//
+// Everything above reads and fails soft: an unreachable identity provider
+// yields an empty directory, because a mail client that cannot draw an avatar
+// is still a mail client. A write cannot be treated that way. "The new hire
+// was not added to All Employees" looks identical to success if it is
+// swallowed, and the symptom arrives days later as somebody who cannot sign
+// in to Mail and is not on the all-staff list.
+//
+// So these report failure honestly, and the caller — `directory-group-outbox.ts`
+// — holds a durable retry rather than pretending it worked.
+
+export interface DirectoryWriteResult {
+  ok: boolean;
+  /** True when the member was already there; still a success, but not a change. */
+  alreadyMember?: boolean;
+  error?: string;
+}
+
+/** Redacts the service token out of anything that might carry it into a log or a stored error. */
+function scrubToken(message: string): string {
+  return message
+    .replace(/X-Service-Token[^\s,)]*/gi, "X-Service-Token [redacted]")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
+    .slice(0, 500);
+}
+
+async function post<T>(path: string, body: unknown): Promise<{ ok: boolean; status: number; body: T | null; error?: string }> {
+  if (!SERVICE_TOKEN) {
+    return {
+      ok: false,
+      status: 0,
+      body: null,
+      error: "DIRECTORY_SERVICE_TOKEN is not set, so this deployment cannot write to the directory.",
+    };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(`${ISSUER}${path}`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(body),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    const parsed = (await res.json().catch(() => null)) as T | null;
+    if (!res.ok) {
+      const detail =
+        parsed && typeof parsed === "object" && "error" in parsed
+          ? String((parsed as { error: unknown }).error)
+          : `HTTP ${res.status}`;
+      return { ok: false, status: res.status, body: parsed, error: scrubToken(detail) };
+    }
+    return { ok: true, status: res.status, body: parsed };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      body: null,
+      error: scrubToken(error instanceof Error ? error.message : String(error)),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Adds one person to one group, by the group's address.
+ *
+ * Idempotent at the identity provider: adding somebody already in the group
+ * reports success with `alreadyMember`, so a retried outbox row settles rather
+ * than failing forever on the attempt that actually worked.
+ */
+export async function addGroupMember(
+  groupAddress: string,
+  memberEmail: string
+): Promise<DirectoryWriteResult> {
+  const result = await post<{ added?: boolean; alreadyMember?: boolean; error?: string }>(
+    "/api/groups/members",
+    { group: groupAddress.trim().toLowerCase(), email: memberEmail.trim().toLowerCase() }
+  );
+
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, alreadyMember: result.body?.alreadyMember === true };
+}
+
+/** Removes one person from one group. Used on offboarding. */
+export async function removeGroupMember(
+  groupAddress: string,
+  memberEmail: string
+): Promise<DirectoryWriteResult> {
+  const result = await post<{ removed?: boolean; error?: string }>("/api/groups/members/remove", {
+    group: groupAddress.trim().toLowerCase(),
+    email: memberEmail.trim().toLowerCase(),
+  });
+
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true };
+}
+
+export interface CreateGroupInput {
+  email: string;
+  name: string;
+  description?: string;
+  visibility?: "public" | "private";
+  joinPolicy?: "open" | "request" | "closed";
+}
+
+/**
+ * Creates a group at the identity provider, or reports the one already there.
+ *
+ * Called when an organisation is provisioned and by the groups screen. Not
+ * called from onboarding: a hire that quietly invented a group because one was
+ * missing would spread a typo across the company rather than surface it.
+ */
+export async function createDirectoryGroup(input: CreateGroupInput): Promise<DirectoryWriteResult> {
+  const result = await post<{ id?: string; existed?: boolean; error?: string }>("/api/groups", {
+    email: input.email.trim().toLowerCase(),
+    name: input.name.trim(),
+    description: input.description?.trim() ?? "",
+    visibility: input.visibility ?? "private",
+    joinPolicy: input.joinPolicy ?? "closed",
+  });
+
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, alreadyMember: result.body?.existed === true };
 }
