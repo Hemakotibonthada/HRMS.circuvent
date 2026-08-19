@@ -536,6 +536,92 @@ export const holidays = hrms.table(
   (t) => [index("holidays_org_year_idx").on(t.orgId, t.year)]
 );
 
+// ─── Income tax declarations ─────────────────────────────────
+
+/**
+ * What an employee declares they will invest, so TDS is deducted against their
+ * likely liability rather than their gross pay.
+ *
+ * One row per employee per financial year. The regime is stored here rather
+ * than on the employee, because it is a per-year choice: somebody may be better
+ * off under the old regime this year and the new one next.
+ *
+ * `proofWindowClosedAt` is the moment unproven claims stop counting. Payroll
+ * reads it rather than comparing dates itself, so that extending a deadline is
+ * one update and not a rule change in two places.
+ */
+export const itDeclarations = hrms.table(
+  "it_declarations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    /** Indian financial year, written as the year it begins: 2025 is 2025-26. */
+    financialYear: integer("financial_year").notNull(),
+    regime: text("regime").notNull().default("new"),
+    status: text("status").notNull().default("draft"),
+    /** Raises the 80D ceiling; asked once rather than inferred from a birthday. */
+    selfOrFamilyIsSenior: boolean("self_or_family_is_senior").notNull().default(false),
+    parentsAreSenior: boolean("parents_are_senior").notNull().default(false),
+    /** HRA inputs, kept beside the declaration they belong to. */
+    rentPaidMinor: bigint("rent_paid_minor", { mode: "bigint" }).notNull().default(0n),
+    metroCity: boolean("metro_city").notNull().default(false),
+    landlordPan: text("landlord_pan"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    proofWindowClosedAt: timestamp("proof_window_closed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("it_declarations_employee_year_key").on(t.employeeId, t.financialYear),
+    index("it_declarations_org_year_idx").on(t.orgId, t.financialYear),
+  ]
+);
+
+/**
+ * One claimed section within a declaration.
+ *
+ * `declaredMinor` is what the employee claimed and never changes on its own;
+ * `verifiedMinor` is what evidence supported. Payroll uses the declared figure
+ * while the window is open and the verified one after it shuts, which is why
+ * both are kept rather than one being overwritten — overwriting loses the
+ * record of what was originally claimed, and that is the first thing an audit
+ * asks for.
+ */
+export const itDeclarationItems = hrms.table(
+  "it_declaration_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    declarationId: uuid("declaration_id")
+      .notNull()
+      .references(() => itDeclarations.id, { onDelete: "cascade" }),
+    /** "80C", "80CCD(1B)", "24B" — as an employee and an auditor both know it. */
+    section: text("section").notNull(),
+    declaredMinor: bigint("declared_minor", { mode: "bigint" }).notNull().default(0n),
+    verifiedMinor: bigint("verified_minor", { mode: "bigint" }),
+    proofStatus: text("proof_status").notNull().default("awaiting"),
+    /** Where the uploaded evidence lives, if any. */
+    proofDocumentId: uuid("proof_document_id"),
+    reviewedById: uuid("reviewed_by_id").references(() => employees.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    /** Why a proof was refused. Required by the route when rejecting. */
+    reviewNote: text("review_note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("it_declaration_items_declaration_section_key").on(t.declarationId, t.section),
+    index("it_declaration_items_org_idx").on(t.orgId),
+  ]
+);
+
 // ─── Payroll ─────────────────────────────────────────────────
 
 export const salaryStructures = hrms.table(

@@ -225,6 +225,13 @@
       "when": 1787130000000,
       "tag": "0031_employee_code_generator",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787142109654,
+      "tag": "0032_it_declarations",
+      "breakpoints": true
     }
   ]
 }
