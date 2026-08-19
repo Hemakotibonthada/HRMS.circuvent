@@ -91,7 +91,7 @@ kotlin {
 
 android {
     namespace = "com.circuvent.hrms.shared"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26

@@ -73,14 +73,17 @@ fun releaseKeystore(): Properties? {
 
 android {
     namespace = "com.circuvent.hrms"
-    compileSdk = 35
+    // 36, not 35, because Play requires new apps to target Android 16 from
+    // 31 August 2026. An app submitted on 35 after that date is rejected, and
+    // the rejection arrives at the end of a review rather than at build time.
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.circuvent.hrms"
         // 26 covers about 97% of active devices and is the floor for the
         // Keystore behaviour EncryptedSharedPreferences relies on.
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
 
