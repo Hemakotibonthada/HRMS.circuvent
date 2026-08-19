@@ -263,8 +263,22 @@ export interface MeetingDoc extends BaseRecord {
 export const useMeetingStore = createDataStore<MeetingDoc>();
 
 // Holidays
+/**
+ * Matches what `GET /api/holidays` actually returns.
+ *
+ * It previously declared `date`, `day` and `type`, none of which the route
+ * has ever sent — the table's columns are `holidayDate`, `isOptional` and
+ * `year`. Because `BaseRecord` carries an index signature, the mismatch
+ * type-checked cleanly and failed only at render: blank dates in the list and
+ * every count except the total stuck at zero.
+ */
 export interface HolidayDoc extends BaseRecord {
-  name: string; date: string; day: string; type: string;
+  name: string;
+  holidayDate: string;
+  year: number;
+  isOptional: boolean;
+  description: string | null;
+  locationId: string | null;
 }
 export const useHolidayStore = createDataStore<HolidayDoc>();
 

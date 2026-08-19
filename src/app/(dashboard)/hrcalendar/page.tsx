@@ -10,13 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  CalendarDays, ChevronLeft, ChevronRight, Plus, Sun, Leaf,
-  Snowflake, PartyPopper, Flag, Clock, Users, AlertCircle,
+  CalendarDays, ChevronLeft, ChevronRight, Plus, Sun,
+  Snowflake, Flag, Clock, Users, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useHolidayStore, useLeaveStore, startSync, type HolidayDoc } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/collection-service";
+import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { clickable } from "@/lib/a11y/clickable";
 
@@ -25,16 +25,21 @@ import { clickable } from "@/lib/a11y/clickable";
 // ═══════════════════════════════════════════════════════════════
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const HOLIDAY_TYPES = ["Public", "Company", "Optional", "Regional"];
-const TYPE_COLORS: Record<string, string> = {
-  Public: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  Company: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",
+
+// `hrms.holidays` has no "type" column and never did — it has `isOptional`,
+// a gazetted closure versus a day drawn from a floating pool. This screen
+// used to read `h.type` and colour by "Public"/"Company"/"Regional", none of
+// which the API has ever sent, so every badge fell through to grey and the
+// legend counted zeros. The two kinds below are the two the data actually has.
+const KIND_COLORS: Record<string, string> = {
+  Gazetted: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
   Optional: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  Regional: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
 };
-const TYPE_ICONS: Record<string, typeof Sun> = {
-  Public: Flag, Company: PartyPopper, Optional: Sun, Regional: Leaf,
-};
+const KIND_ICONS: Record<string, typeof Sun> = { Gazetted: Flag, Optional: Sun };
+
+function kindOf(holiday: HolidayDoc): string {
+  return holiday.isOptional ? "Optional" : "Gazetted";
+}
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
@@ -50,7 +55,7 @@ export default function HRCalendarPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [tab, setTab] = useState("calendar");
-  const [form, setForm] = useState({ name: "", date: "", type: "Public" });
+  const [form, setForm] = useState({ name: "", date: "", isOptional: false });
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -66,7 +71,7 @@ export default function HRCalendarPage() {
   const holidayMap = useMemo(() => {
     const map = new Map<string, HolidayDoc[]>();
     holidayStore.items.forEach(h => {
-      const key = h.date?.slice(0, 10);
+      const key = h.holidayDate?.slice(0, 10);
       if (key) map.set(key, [...(map.get(key) || []), h]);
     });
     return map;
@@ -100,34 +105,47 @@ export default function HRCalendarPage() {
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
   const goToday = () => setCurrentDate(new Date());
 
+  // Compared as plain date strings rather than parsed: `holidayDate` is a
+  // calendar date, and `new Date("2026-01-26")` is UTC midnight, which reads
+  // as the 25th anywhere west of Greenwich.
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const todayIso = new Date().toISOString().slice(0, 10);
+
   const monthHolidays = useMemo(() =>
-    holidayStore.items.filter(h => {
-      const d = new Date(h.date);
-      return d.getMonth() === month && d.getFullYear() === year;
-    }).sort((a, b) => a.date.localeCompare(b.date)),
-  [holidayStore.items, month, year]);
+    holidayStore.items
+      .filter(h => (h.holidayDate || "").startsWith(monthPrefix))
+      .sort((a, b) => a.holidayDate.localeCompare(b.holidayDate)),
+  [holidayStore.items, monthPrefix]);
 
   const totalHolidays = holidayStore.items.length;
   const thisMonthCount = monthHolidays.length;
-  const upcomingCount = holidayStore.items.filter(h => new Date(h.date) >= new Date()).length;
+  const upcomingCount = holidayStore.items.filter(h => (h.holidayDate || "") >= todayIso).length;
   const typeCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    holidayStore.items.forEach(h => { counts[h.type] = (counts[h.type] || 0) + 1; });
+    holidayStore.items.forEach(h => { const k = kindOf(h); counts[k] = (counts[k] || 0) + 1; });
     return counts;
   }, [holidayStore.items]);
 
   const handleAdd = useCallback(async () => {
     if (!form.name || !form.date) { toast.error("Name and date are required"); return; }
-    const dayName = new Date(form.date).toLocaleDateString("en-US", { weekday: "long" });
     try {
-      await genericService(COLLECTIONS.holidays).create({
-        name: form.name, date: form.date, day: dayName, type: form.type,
+      const response = await fetch("/api/holidays", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: form.name, holidayDate: form.date, isOptional: form.isOptional }),
       });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error ?? "Failed to add holiday");
+      }
       toast.success(`Holiday "${form.name}" added`);
       setAddOpen(false);
-      setForm({ name: "", date: "", type: "Public" });
-    } catch { toast.error("Failed to add holiday"); }
-  }, [form]);
+      setForm({ name: "", date: "", isOptional: false });
+      startSync(COLLECTIONS.holidays, holidayStore);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add holiday");
+    }
+  }, [form, holidayStore]);
 
   const getDateKey = (day: number) =>
     `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -203,7 +221,7 @@ export default function HRCalendarPage() {
                   <span className={cn("text-xs font-medium", isToday && "bg-violet-500 text-white rounded-full px-1.5 py-0.5")}>{day}</span>
                   <div className="mt-1 space-y-0.5">
                     {holidays.slice(0, 2).map(h => (
-                      <div key={h.id} className={cn("text-[10px] px-1 rounded truncate", TYPE_COLORS[h.type] || "bg-gray-100")}>{h.name}</div>
+                      <div key={h.id} className={cn("text-[10px] px-1 rounded truncate", KIND_COLORS[kindOf(h)])}>{h.name}</div>
                     ))}
                     {holidays.length > 2 && <div className="text-[10px] text-muted-foreground">+{holidays.length - 2} more</div>}
                     {leaveCount > 0 && (
@@ -216,10 +234,10 @@ export default function HRCalendarPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            {Object.entries(TYPE_COLORS).map(([type, cls]) => (
-              <div key={type} className="flex items-center gap-1.5 text-xs">
+            {Object.entries(KIND_COLORS).map(([kind, cls]) => (
+              <div key={kind} className="flex items-center gap-1.5 text-xs">
                 <div className={cn("h-3 w-3 rounded", cls)} />
-                <span>{type} ({typeCounts[type] || 0})</span>
+                <span>{kind} ({typeCounts[kind] || 0})</span>
               </div>
             ))}
           </div>
@@ -231,18 +249,19 @@ export default function HRCalendarPage() {
           ) : (
             <div className="space-y-2">
               {monthHolidays.map(h => {
-                const Icon = TYPE_ICONS[h.type] || Flag;
+                const kind = kindOf(h);
+                const Icon = KIND_ICONS[kind];
                 return (
                   <Card key={h.id}>
                     <CardContent className="p-4 flex items-center gap-4">
-                      <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center", TYPE_COLORS[h.type] || "bg-gray-100")}>
+                      <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center", KIND_COLORS[kind])}>
                         <Icon className="h-5 w-5" />
                       </div>
                       <div className="flex-1">
                         <h3 className="font-semibold text-sm">{h.name}</h3>
-                        <p className="text-xs text-muted-foreground">{new Date(h.date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(`${h.holidayDate}T00:00:00Z`).toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" })}</p>
                       </div>
-                      <Badge className={cn("text-xs", TYPE_COLORS[h.type])}>{h.type}</Badge>
+                      <Badge className={cn("text-xs", KIND_COLORS[kind])}>{kind}</Badge>
                     </CardContent>
                   </Card>
                 );
@@ -264,7 +283,7 @@ export default function HRCalendarPage() {
               <div className="space-y-3">
                 {dayHolidays.length > 0 ? dayHolidays.map(h => (
                   <div key={h.id} className="flex items-center gap-3">
-                    <Badge className={cn("text-xs", TYPE_COLORS[h.type])}>{h.type}</Badge>
+                    <Badge className={cn("text-xs", KIND_COLORS[kindOf(h)])}>{kindOf(h)}</Badge>
                     <span className="text-sm font-medium">{h.name}</span>
                   </div>
                 )) : <p className="text-sm text-muted-foreground">No holidays on this day.</p>}
@@ -283,10 +302,13 @@ export default function HRCalendarPage() {
             <div><Label>Holiday Name</Label><Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Republic Day" /></div>
             <div><Label>Date</Label><Input type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} /></div>
             <div>
-              <Label>Type</Label>
-              <Select value={form.type} onValueChange={v => setForm(p => ({ ...p, type: v }))}>
+              <Label>Kind</Label>
+              <Select value={form.isOptional ? "optional" : "gazetted"} onValueChange={v => setForm(p => ({ ...p, isOptional: v === "optional" }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{HOLIDAY_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  <SelectItem value="gazetted">Gazetted — office closed</SelectItem>
+                  <SelectItem value="optional">Optional — chosen from a pool</SelectItem>
+                </SelectContent>
               </Select>
             </div>
           </div>
