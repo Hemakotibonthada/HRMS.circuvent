@@ -476,8 +476,34 @@ class AppRepository(private val api: ApiClient) {
     suspend fun teamPulse(): TeamPulseResponse =
         json.decodeFromString(api.get("/api/team/pulse"))
 
-    // ─── The company wall ────────────────────────────────────
+    // ─── Performance ─────────────────────────────────────────
 
+    /**
+     * Review cycles, each carrying this employee's goals.
+     *
+     * No `employeeId` is sent. The server defaults to the caller and refuses
+     * anybody else's unless the caller manages them, so passing one could only
+     * ever widen the request, never narrow it.
+     */
+    suspend fun reviewCycles(): List<ReviewCycleDto> =
+        json.decodeFromString<ReviewCyclesResponse>(api.get("/api/performance/cycles")).cycles
+
+    /**
+     * Records progress against a goal.
+     *
+     * The server refuses this for a goal that has children, because a parent's
+     * progress is computed from underneath it. That refusal is surfaced rather
+     * than swallowed: a slider that moves and then silently does nothing is
+     * worse than one that explains why it cannot.
+     */
+    suspend fun updateGoalProgress(goalId: String, update: GoalProgressUpdate) {
+        api.patch(
+            "/api/performance/goals/$goalId",
+            json.encodeToString(GoalProgressUpdate.serializer(), update),
+        )
+    }
+
+    // ─── The company wall ────────────────────────────────────
     /**
      * Posts on the company wall.
      *

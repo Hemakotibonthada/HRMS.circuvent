@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -377,6 +378,12 @@ private fun itemsFor(section: MeSection, go: (String) -> Unit): List<FeatureGrid
     )
 
     MeSection.GROWTH -> listOf(
+        FeatureGridItem(
+            "My goals",
+            "Record progress as it happens",
+            Glyph.Vector(Icons.Filled.TrackChanges),
+            AccentTone.Rose,
+        ) { go("goals") },
         FeatureGridItem(
             "Learning",
             "Courses assigned, and what you can start",
