@@ -23,6 +23,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "../src/db/client";
 import { DEFAULT_LEAVE_POLICIES, provisionFor, type LeavePolicy } from "../src/lib/leave-provisioning";
 import { DEFAULT_REFERRAL_POLICIES } from "../src/lib/referral-rules";
+import { allHolidays, MOVABLE_HOLIDAYS } from "../src/lib/india-holidays";
 
 const apply = process.argv.includes("--apply");
 
@@ -61,7 +62,11 @@ async function main() {
   console.log(`\n${orphans.length} user(s) with no employee record\n`);
 
   if (orphans.length === 0) {
-    console.log("Nothing to do.\n");
+    console.log("No missing employee records.\n");
+    // Each repair is independent, so an org that needs none of the first still
+    // needs the rest checked. Returning here made the whole script a no-op the
+    // moment the first step had nothing to do.
+    await provisionMissingBalances();
     return;
   }
 
@@ -149,7 +154,10 @@ async function provisionMissingBalances(): Promise<void> {
   });
 
   console.log(`${missing.length} employee(s) with no ${year} leave balance\n`);
-  if (missing.length === 0) return;
+  if (missing.length === 0) {
+    await provisionMissingReferralPolicies();
+    return;
+  }
 
   for (const employee of missing) {
     console.log(`  ${employee.work_email}`);
@@ -243,7 +251,10 @@ async function provisionMissingReferralPolicies(): Promise<void> {
   });
 
   console.log(`${orgs.length} organisation(s) with no referral policy\n`);
-  if (orgs.length === 0) return;
+  if (orgs.length === 0) {
+    await provisionMissingHolidays();
+    return;
+  }
 
   for (const org of orgs) console.log(`  ${org.name}`);
 
@@ -278,6 +289,85 @@ async function provisionMissingReferralPolicies(): Promise<void> {
   }
 
   console.log(`\n${created} of ${orgs.length} organisations given referral policies.\n`);
+
+  await provisionMissingHolidays();
+}
+
+/**
+ * Gives every organisation the fixed-date Indian holidays for 2026 to 2036.
+ *
+ * Only the dates that are certain: the three national gazetted holidays, plus
+ * the widely observed ones marked restricted so a tenant chooses rather than
+ * inherits them. The lunisolar and Islamic festivals are not written, because
+ * their dates are not knowable here and a wrong holiday is acted on by
+ * attendance and payroll — somebody marked absent on a day the office was
+ * shut.
+ *
+ * Idempotent on (org, date, name), so re-running does not duplicate a year and
+ * a tenant's own edits to a holiday it already has are left alone.
+ */
+async function provisionMissingHolidays(): Promise<void> {
+  const holidays = allHolidays();
+
+  const orgs = await withTenant({ orgId: "", superuser: true }, async (tx) => {
+    const r = await tx.execute(sql`
+      select o.id::text as org_id, o.name,
+             (select count(*)::text from hrms.holidays h
+               where h.org_id = o.id and h.year between 2026 and 2036) as existing
+        from identity.organizations o
+       where o.deleted_at is null
+       order by o.created_at
+    `);
+    return (r.rows ?? r) as unknown as { org_id: string; name: string; existing: string }[];
+  });
+
+  const needing = orgs.filter((o) => Number(o.existing) < holidays.length);
+
+  console.log(`${needing.length} organisation(s) missing 2026-2036 holidays\n`);
+  if (needing.length === 0) return;
+
+  for (const org of needing) {
+    console.log(`  ${org.name.padEnd(28)} has ${org.existing} of ${holidays.length}`);
+  }
+
+  if (!apply) {
+    console.log(`\nReport only. Re-run with --apply to create these.\n`);
+    return;
+  }
+
+  console.log("");
+  let written = 0;
+
+  for (const org of needing) {
+    try {
+      await withTenant({ orgId: org.org_id, superuser: true }, async (tx) => {
+        for (const holiday of holidays) {
+          await tx.execute(sql`
+            insert into hrms.holidays
+              (org_id, name, holiday_date, year, is_optional, description)
+            select ${org.org_id}::uuid, ${holiday.name}, ${holiday.date}::date,
+                   ${holiday.year}, ${holiday.restricted}, ${holiday.description}
+             where not exists (
+               select 1 from hrms.holidays h
+                where h.org_id = ${org.org_id}::uuid
+                  and h.holiday_date = ${holiday.date}::date
+                  and h.name = ${holiday.name}
+             )
+          `);
+        }
+      });
+      written++;
+      console.log(`  seeded  ${org.name}`);
+    } catch (error) {
+      console.log(`  FAILED  ${org.name} — ${(error as Error).message.slice(0, 110)}`);
+    }
+  }
+
+  console.log(`\n${written} of ${needing.length} organisations given holidays.`);
+  console.log(
+    `${MOVABLE_HOLIDAYS.length} festival dates per year still have to come from an ` +
+      `authoritative calendar — they are named in src/lib/india-holidays.ts.\n`
+  );
 }
 
 main()
