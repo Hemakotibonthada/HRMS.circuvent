@@ -12,9 +12,107 @@ import {
   allHolidays,
   canonicalName,
   fallsOnWeekend,
+  goodFriday,
+  easterSunday,
   holidaysFor,
   missingFor,
 } from "@/lib/ap-holidays";
+
+// ═══════════════════════════════════════════════════════════════
+// The one movable date that is genuinely computable
+// ═══════════════════════════════════════════════════════════════
+// Good Friday sat in the "cannot be stated" list beside Ugadi and Eid, which
+// treated a solved problem as an unsolvable one: a lunisolar date needs a
+// panchangam and an Islamic one needs a moon sighting, but Easter is defined
+// by a published algorithm that is exact for every Gregorian year.
+//
+// These are checked against the Church's own published dates. If the computus
+// were subtly wrong it would put a company holiday on the wrong day, which
+// attendance and payroll would then act on.
+
+describe("Easter, by the computus", () => {
+  const KNOWN: ReadonlyArray<[year: number, month: number, day: number]> = [
+    [2026, 4, 5],
+    [2027, 3, 28],
+    [2028, 4, 16],
+    [2029, 4, 1],
+    [2030, 4, 21],
+    [2031, 4, 13],
+    [2032, 3, 28],
+    [2033, 4, 17],
+    [2034, 4, 9],
+    [2035, 3, 25],
+    [2036, 4, 13],
+    [2037, 4, 5],
+    [2038, 4, 25],
+    [2039, 4, 10],
+    [2040, 4, 1],
+    [2041, 4, 21],
+  ];
+
+  it("matches the published date for every year in range", () => {
+    for (const [year, month, day] of KNOWN) {
+      expect(easterSunday(year), `Easter ${year}`).toEqual([month, day]);
+    }
+  });
+
+  it("puts Good Friday two days before Easter", () => {
+    expect(goodFriday(2026)).toBe("2026-04-03");
+    expect(goodFriday(2027)).toBe("2027-03-26");
+    expect(goodFriday(2038)).toBe("2038-04-23");
+  });
+
+  it("always lands Good Friday on a Friday", () => {
+    for (let year = SUPPORTED_YEARS.first; year <= SUPPORTED_YEARS.last; year++) {
+      const day = new Date(`${goodFriday(year)}T00:00:00Z`).getUTCDay();
+      expect(day, `${year} should be a Friday`).toBe(5);
+    }
+  });
+
+  it("includes Good Friday in the generated year", () => {
+    const names = holidaysFor(2026).map((h) => h.name);
+    expect(names).toContain("Good Friday");
+  });
+
+  it("merges rather than duplicates when it lands on a fixed holiday", () => {
+    // 2028 puts Good Friday on the 14th of April, which is already Ambedkar
+    // Jayanti. The office shuts once, so the calendar says so once.
+    const onThatDay = holidaysFor(2028).filter((h) => h.date === "2028-04-14");
+    expect(onThatDay).toHaveLength(1);
+    expect(onThatDay[0]!.name).toBe("Ambedkar Jayanti / Good Friday");
+  });
+
+  it("no longer lists Good Friday as a date somebody must supply", () => {
+    expect(missingFor(2026).map((h) => h.name)).not.toContain("Good Friday");
+  });
+});
+
+describe("the full sixteen-year range", () => {
+  it("generates every year from 2026 to 2041", () => {
+    expect(SUPPORTED_YEARS.first).toBe(2026);
+    expect(SUPPORTED_YEARS.last).toBe(2041);
+
+    const all = allHolidays();
+    const years = new Set(all.map((h) => h.year));
+    expect(years.size).toBe(16);
+    for (let year = 2026; year <= 2041; year++) expect(years.has(year)).toBe(true);
+  });
+
+  it("never emits the same date twice in a year", () => {
+    for (let year = SUPPORTED_YEARS.first; year <= SUPPORTED_YEARS.last; year++) {
+      const dates = holidaysFor(year).map((h) => h.date);
+      expect(new Set(dates).size, `${year} has a duplicate date`).toBe(dates.length);
+    }
+  });
+
+  it("keeps every generated date inside its own year", () => {
+    for (let year = SUPPORTED_YEARS.first; year <= SUPPORTED_YEARS.last; year++) {
+      for (const holiday of holidaysFor(year)) {
+        expect(holiday.date.startsWith(String(year)), `${holiday.name} ${holiday.date}`).toBe(true);
+      }
+    }
+  });
+});
 
 describe("alternate names for the same day", () => {
   it("resolves a north-Indian name to the Telugu one", () => {
@@ -163,15 +261,23 @@ describe("weekends", () => {
 });
 
 describe("generation", () => {
-  it("covers 2026 to 2036", () => {
+  it("covers 2026 to 2041", () => {
     const years = new Set(allHolidays().map((h) => h.year));
     expect(Math.min(...years)).toBe(2026);
-    expect(Math.max(...years)).toBe(2036);
-    expect(years.size).toBe(11);
+    expect(Math.max(...years)).toBe(2041);
+    expect(years.size).toBe(16);
   });
 
-  it("produces every fixed holiday for each year", () => {
-    expect(allHolidays()).toHaveLength(FIXED_HOLIDAYS.length * 11);
+  it("produces every fixed holiday for each year, plus Good Friday", () => {
+    // Good Friday is generated alongside the fixed set, except in a year where
+    // it collides with one of them and the two are merged into a single day.
+    const total = allHolidays().length;
+    const years = SUPPORTED_YEARS.last - SUPPORTED_YEARS.first + 1;
+    const merged = [...Array(years)].filter((_, i) => {
+      const year = SUPPORTED_YEARS.first + i;
+      return holidaysFor(year).length === FIXED_HOLIDAYS.length;
+    }).length;
+    expect(total).toBe(FIXED_HOLIDAYS.length * years + (years - merged));
   });
 
   it("returns them in date order", () => {
@@ -238,7 +344,11 @@ describe("what this module does not know", () => {
   });
 
   it("reports the gap for any supported year", () => {
-    expect(missingFor(2026)).toHaveLength(MOVABLE_HOLIDAYS.length);
-    expect(missingFor(2036).length).toBeGreaterThan(10);
+    // Good Friday is no longer in the gap: it is computed. What remains is the
+    // lunisolar and Islamic set, which genuinely cannot be stated here.
+    const stillUnknown = MOVABLE_HOLIDAYS.filter((h) => h.calendar !== "christian-computus");
+    expect(missingFor(2026)).toHaveLength(stillUnknown.length);
+    expect(missingFor(2041).length).toBeGreaterThan(10);
+    expect(missingFor(2041).every((h) => h.calendar !== "christian-computus")).toBe(true);
   });
 });

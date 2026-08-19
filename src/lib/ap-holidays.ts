@@ -299,6 +299,44 @@ export const MOVABLE_HOLIDAYS: readonly MovableHoliday[] = [
   },
 ] as const;
 
+/**
+ * Easter Sunday, by the anonymous Gregorian computus.
+ *
+ * This is the one entry in the movable set that is genuinely computable. A
+ * lunisolar festival date depends on a panchangam and an Islamic one on a moon
+ * sighting, so neither can be produced here without inventing it — but Easter
+ * is defined by an algorithm the Church publishes, and that algorithm is
+ * exact for every Gregorian year. Leaving Good Friday to be filled in by hand
+ * alongside Ugadi treated a solved problem as an unsolvable one.
+ *
+ * Returns the date as [month, day].
+ */
+export function easterSunday(year: number): [month: number, day: number] {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return [month, day];
+}
+
+/** Good Friday: the Friday before Easter, so two days earlier. */
+export function goodFriday(year: number): string {
+  const [month, day] = easterSunday(year);
+  const easter = new Date(Date.UTC(year, month - 1, day));
+  const friday = new Date(easter.getTime() - 2 * 86_400_000);
+  return friday.toISOString().slice(0, 10);
+}
+
 export interface GeneratedHoliday {
   name: string;
   teluguName?: string;
@@ -311,8 +349,17 @@ export interface GeneratedHoliday {
   onWeekend: boolean;
 }
 
-/** Years this module will generate for. */
-export const SUPPORTED_YEARS = { first: 2026, last: 2036 } as const;
+/**
+ * Years this module will generate for.
+ *
+ * The generation itself is rule-based and year-agnostic, so this range is a
+ * statement about what has been reasoned through rather than a limit of the
+ * arithmetic. Sankranti is the one to watch on extending it: the sun's entry
+ * into Makara drifts about a day per seventy years, so the 14th/15th January
+ * block holds comfortably across this range and would need revisiting long
+ * before it stops holding.
+ */
+export const SUPPORTED_YEARS = { first: 2026, last: 2041 } as const;
 
 function iso(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -344,7 +391,7 @@ export function fallsOnWeekend(date: string): boolean {
  * day off that nobody gets.
  */
 export function holidaysFor(year: number): GeneratedHoliday[] {
-  return FIXED_HOLIDAYS.map((holiday) => {
+  const fixed = FIXED_HOLIDAYS.map((holiday) => {
     const date = iso(year, holiday.month, holiday.day);
     return {
       name: holiday.name,
@@ -355,7 +402,36 @@ export function holidaysFor(year: number): GeneratedHoliday[] {
       description: holiday.description,
       onWeekend: fallsOnWeekend(date),
     };
-  }).sort((a, b) => a.date.localeCompare(b.date));
+  });
+
+  /*
+   * Good Friday is computed, not transcribed — see `easterSunday` for why this
+   * one movable date can be stated when the lunisolar and Islamic ones cannot.
+   *
+   * It can collide with a fixed holiday: in 2028 the computus puts it on the
+   * 14th of April, which is already Ambedkar Jayanti. The office shuts once,
+   * so the calendar gets one row naming both. Emitting two rows for one date
+   * would be double-counted by anything that asks how many holidays fall in a
+   * month — which is attendance, leave and payroll.
+   */
+  const friday = goodFriday(year);
+  const clash = fixed.find((holiday) => holiday.date === friday);
+  if (clash) {
+    clash.name = `${clash.name} / Good Friday`;
+    clash.description = `${clash.description} Good Friday falls on the same day this year.`;
+  } else {
+    fixed.push({
+      name: "Good Friday",
+      teluguName: undefined,
+      date: friday,
+      year,
+      restricted: false,
+      description: "The Friday before Easter, by the Gregorian computus.",
+      onWeekend: fallsOnWeekend(friday),
+    });
+  }
+
+  return fixed.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /** Every fixed holiday across the supported range. */
@@ -374,10 +450,12 @@ export function allHolidays(
  * A list that silently contains only the fixed dates looks complete and is not:
  * an employee planning around it would book leave on Ugadi or Dasara, which are
  * among the days Andhra Pradesh most reliably closes for. This is what lets the
- * screen say "15 festival dates still to be confirmed" rather than showing
- * eleven holidays as though that were the year.
+ * screen say "14 festival dates still to be confirmed" rather than showing
+ * twelve holidays as though that were the year.
+ *
+ * Good Friday is excluded because it is now generated — see `easterSunday`.
  */
 export function missingFor(year: number): MovableHoliday[] {
   void year;
-  return [...MOVABLE_HOLIDAYS];
+  return MOVABLE_HOLIDAYS.filter((holiday) => holiday.calendar !== "christian-computus");
 }
