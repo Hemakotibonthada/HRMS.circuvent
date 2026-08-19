@@ -12,11 +12,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -39,18 +39,24 @@ import com.circuvent.hrms.core.ui.TextTone
  * Five is the ceiling. A sixth is narrower than a thumb on a small phone and
  * the label under it stops fitting — at which point the icons go label-less and
  * become a guess, which is worst for the people who open the app least often.
- * Anything further down the list belongs behind Profile.
+ * Anything further down the list belongs behind Me.
+ *
+ * Shifts and Pay gave up their tabs to Inbox and Team. Both are still one tap
+ * away — Pay from the home shortcuts, Shifts from Me — whereas the two that
+ * replaced them had been buried three levels down, and approvals were sitting
+ * unseen for days because a manager had to know that a work-from-home request
+ * is filed somewhere other than a leave request in order to find it.
  */
 enum class Destination(
     val route: String,
     val label: String,
     val icon: ImageVector,
 ) {
-    TODAY("today", "Today", Icons.Filled.AccessTime),
+    TODAY("today", "Home", Icons.Filled.Home),
     LEAVE("leave", "Leave", Icons.Filled.CalendarMonth),
-    SHIFTS("shifts", "Shifts", Icons.Filled.Repeat),
-    PAY("payslips", "Pay", Icons.Filled.Description),
-    PROFILE("profile", "Profile", Icons.Filled.Person),
+    INBOX("inbox", "Inbox", Icons.Filled.Inbox),
+    TEAM("my-team", "Team", Icons.Filled.Groups),
+    PROFILE("profile", "Me", Icons.Filled.Person),
 }
 
 /** Height reserved for the bar, so scrolling content can clear it. */

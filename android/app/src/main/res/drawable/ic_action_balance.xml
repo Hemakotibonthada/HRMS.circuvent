@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Leave balance.
+
+  A gauge: a ring with a gap, and a marker sitting at the open end.
+
+  The first attempt drew a full ring and then a "consumed" wedge on top of it.
+  That works on paper and not on a phone: Icon() tints a whole drawable one
+  colour, so the wedge and the ring came out identical and the icon read as a
+  plain circle — indistinguishable from a loading spinner. Anything that has to
+  be understood through two tones cannot be an icon here.
+
+  So the quantity is carried by geometry instead. The ring is broken from about
+  one o'clock round to four, which reads as "part of it used" at 24dp, and the
+  marker at the open end keeps the gap from looking like a rendering fault.
+
+  Alpha is first: Android reads eight hex digits as #AARRGGBB, not #RRGGBBAA.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+
+    <!--
+      Stroked rather than built from two filled circles, so the gap is a real
+      break in the path instead of a shape laid over the top.
+    -->
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M17.9,5.6 A8.4,8.4 0 1 0 20.3,14.9" />
+
+    <!-- Marker at the open end. -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M19.9,4.1 m-1.75,0 a1.75,1.75 0 1 0 3.5,0 a1.75,1.75 0 1 0 -3.5,0" />
+</vector>

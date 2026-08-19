@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Work from home.
+
+  A roof over a screen. The roof alone reads as "home" and the screen alone as
+  "device"; together they say the thing the label cannot fit. Drawn from
+  rectangles and one triangle so it survives being tinted and scaled to 20dp.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+
+    <!-- Roof -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M12,2.6 L22.4,10.2 L21.2,11.8 L12,5 L2.8,11.8 L1.6,10.2 Z" />
+
+    <!-- Screen -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M6.4,12 h11.2 a1,1 0 0 1 1,1 v5.2 a1,1 0 0 1 -1,1 h-11.2 a1,1 0 0 1 -1,-1 v-5.2 a1,1 0 0 1 1,-1 z M7.2,13.6 v4 h9.6 v-4 z" />
+
+    <!-- Stand -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M4.6,20.4 h14.8 v1.4 h-14.8 z" />
+</vector>

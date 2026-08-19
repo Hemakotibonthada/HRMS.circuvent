@@ -57,7 +57,12 @@ import java.time.LocalDate
  * rather than after a round trip that ends in a refusal.
  */
 @Composable
-fun TodayScreen(container: AppContainer, viewModel: AppViewModel, user: SessionUser?) {
+fun TodayScreen(
+    container: AppContainer,
+    viewModel: AppViewModel,
+    user: SessionUser?,
+    onNavigate: (String) -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val locations = remember { LocationProvider(context) }
@@ -205,6 +210,8 @@ fun TodayScreen(container: AppContainer, viewModel: AppViewModel, user: SessionU
             AppText(greeting, tone = TextTone.MUTED)
         }
 
+        HomeShortcuts(onNavigate = onNavigate)
+
         AppCard {
             if (loading) {
                 // A placeholder the size of the heading it replaces, so the
@@ -301,6 +308,10 @@ fun TodayScreen(container: AppContainer, viewModel: AppViewModel, user: SessionU
                 },
             )
         }
+
+        // Last, and below the clock-in card, because none of it is why the app
+        // was opened. It loads separately and stays silent when it fails.
+        HomeFeed(container = container, onNavigate = onNavigate)
     }
 }
 

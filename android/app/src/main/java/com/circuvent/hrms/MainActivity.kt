@@ -34,6 +34,7 @@ import com.circuvent.hrms.core.design.CircuventTheme
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppText
 import com.circuvent.hrms.feature.ApprovalsScreen
+import com.circuvent.hrms.feature.InboxScreen
 import com.circuvent.hrms.feature.AssetsScreen
 import com.circuvent.hrms.feature.BenefitsScreen
 import com.circuvent.hrms.feature.CheckInsScreen
@@ -51,7 +52,6 @@ import com.circuvent.hrms.feature.WorkArrangementScreen
 import com.circuvent.hrms.feature.ReferScreen
 import com.circuvent.hrms.feature.ReferralsScreen
 import com.circuvent.hrms.feature.SwapsScreen
-import com.circuvent.hrms.feature.WorkflowInboxScreen
 import com.circuvent.hrms.feature.AppViewModel
 import com.circuvent.hrms.feature.AttendanceScreen
 import com.circuvent.hrms.feature.Destination
@@ -123,7 +123,6 @@ private object Routes {
     const val REFERRALS = "referrals"
     const val REFER = "referrals/new"
     const val CHECKINS = "check-ins"
-    const val INBOX = "inbox"
     const val SWAPS = "swaps"
     const val TAX = "tax"
     const val FORM16 = "tax/form16"
@@ -134,8 +133,13 @@ private object Routes {
     const val HOLIDAYS = "holidays"
     const val EXPENSES = "expenses"
     const val ID_CARD = "id-card"
-    const val MY_TEAM = "my-team"
     const val WORK_AWAY = "work-away"
+
+    // Former tabs. "inbox" and "my-team" are now tab routes and are registered
+    // from Destination instead, so they are deliberately absent here — a route
+    // registered twice in one NavHost throws at construction.
+    const val SHIFTS = "shifts"
+    const val PAYSLIPS = "payslips"
 
     /** Titles for the pushed screens; the tabs take theirs from Destination. */
     val titles = mapOf(
@@ -155,7 +159,6 @@ private object Routes {
         REFERRALS to "Referrals",
         REFER to "Refer someone",
         CHECKINS to "Check-ins",
-        INBOX to "Approvals inbox",
         SWAPS to "Shift swaps",
         TAX to "Tax declaration",
         FORM16 to "Form 16",
@@ -166,8 +169,9 @@ private object Routes {
         HOLIDAYS to "Holidays",
         EXPENSES to "Expenses",
         ID_CARD to "Identity card",
-        MY_TEAM to "My team",
         WORK_AWAY to "Work from home or on duty",
+        SHIFTS to "Shifts",
+        PAYSLIPS to "Payslips",
     )
 }
 
@@ -210,8 +214,7 @@ private fun SignedInApp(
 
     val title = when {
         route == null -> ""
-        onTab -> Destination.entries.first { it.route == route }
-            .let { if (it == Destination.PAY) "Payslips" else it.label }
+        onTab -> Destination.entries.first { it.route == route }.label
         else -> Routes.titles[route] ?: ""
     }
 
@@ -232,7 +235,7 @@ private fun SignedInApp(
             Box(Modifier.weight(1f)) {
                 NavHost(navController = nav, startDestination = Destination.TODAY.route) {
                     composable(Destination.TODAY.route) {
-                        TodayScreen(container, viewModel, state.user)
+                        TodayScreen(container, viewModel, state.user) { route -> nav.navigate(route) }
                     }
                     composable(Destination.LEAVE.route) {
                         LeaveScreen(
@@ -241,16 +244,24 @@ private fun SignedInApp(
                             onOpen = { id -> nav.navigate("leave/$id") },
                         )
                     }
-                    composable(Destination.SHIFTS.route) { ShiftsScreen(container) }
-                    composable(Destination.PAY.route) {
-                        PayslipsScreen(container) { id -> nav.navigate("payslips/$id") }
+                    composable(Destination.INBOX.route) {
+                        InboxScreen(container, state.user)
                     }
+                    composable(Destination.TEAM.route) { MyTeamScreen(container) }
                     composable(Destination.PROFILE.route) {
                         ProfileScreen(
                             viewModel = viewModel,
                             user = state.user,
                             onNavigate = { route -> nav.navigate(route) },
                         )
+                    }
+
+                    // Both lost their tabs to Inbox and Team. They stay
+                    // reachable as pushed screens — from the home shortcuts and
+                    // from Me — so existing links and deep links still resolve.
+                    composable(Routes.SHIFTS) { ShiftsScreen(container) }
+                    composable(Routes.PAYSLIPS) {
+                        PayslipsScreen(container) { id -> nav.navigate("payslips/$id") }
                     }
 
                     composable(Routes.LEAVE_APPLY) {
@@ -274,7 +285,6 @@ private fun SignedInApp(
                     composable(Routes.HOLIDAYS) { HolidaysScreen(container) }
                     composable(Routes.EXPENSES) { ExpensesScreen(container) }
                     composable(Routes.ID_CARD) { IdCardScreen(state.user) }
-                    composable(Routes.MY_TEAM) { MyTeamScreen(container) }
                     composable(Routes.WORK_AWAY) { WorkArrangementScreen(container) }
                     composable(Routes.APPROVALS) { ApprovalsScreen(container, state.user) }
                     composable(Routes.SETTINGS) { SettingsScreen(container, viewModel, state.user) }
@@ -321,7 +331,6 @@ private fun SignedInApp(
                         ReferScreen(container) { nav.popBackStack() }
                     }
                     composable(Routes.CHECKINS) { CheckInsScreen(container) }
-                    composable(Routes.INBOX) { WorkflowInboxScreen(container) }
                     composable(Routes.SWAPS) { SwapsScreen(container, state.user) }
                 }
             }

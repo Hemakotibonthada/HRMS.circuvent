@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Raise an expense.
+
+  A till receipt: the torn lower edge is the whole idea, because a plain
+  rectangle with lines is indistinguishable from the payslip icon at 20dp.
+  The zigzag is drawn as an explicit path so the tear is crisp at every density
+  rather than depending on how the rasteriser rounds a repeated shape.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M4.6,2 h14.8 v18.4 l-2.1,-1.5 l-2.1,1.5 l-2.1,-1.5 l-2.1,1.5 l-2.1,-1.5 l-2.1,1.5 l-2.1,-1.5 z M6.2,3.6 v13.9 l0.5,-0.36 l2.1,1.5 l2.1,-1.5 l2.1,1.5 l2.1,-1.5 l2.1,1.5 l0.6,-0.43 V3.6 Z" />
+
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M8,6.6 h8 v1.4 h-8 z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M8,9.6 h8 v1.4 h-8 z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M8,12.6 h4.8 v1.4 h-4.8 z" />
+</vector>
