@@ -507,6 +507,12 @@ fun ProfileScreen(
                 "A missed punch, or a day the reader did not record",
             ) { onNavigate("attendance/regularise") }
         }
+        item {
+            ProfileLink(
+                "Work from home or on duty",
+                "Ask to work somewhere else. This is not leave",
+            ) { onNavigate("work-away") }
+        }
         item { ProfileLink("My equipment", "Laptops and other assets issued to you") { onNavigate("assets") } }
         item { ProfileLink("Benefits", "Your cover, the plans on offer, and dependants") { onNavigate("benefits") } }
         item { ProfileLink("Check-ins", "Notes and agreed actions from your one-to-ones") { onNavigate("check-ins") } }

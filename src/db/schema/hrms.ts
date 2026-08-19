@@ -677,6 +677,51 @@ export const loanBenchmarkRates = hrms.table(
   ]
 );
 
+// ─── Working away from the office ────────────────────────────
+
+/**
+ * A request to work somewhere other than the usual place.
+ *
+ * Working from home and being on duty elsewhere are the same shape — a day or
+ * a range, a reason, and somebody's approval — so they are one table with a
+ * `kind`, rather than two tables that drift apart the first time one of them
+ * gains a field.
+ *
+ * They are deliberately **not** leave. An employee working from home is
+ * working: their attendance should show a present day, not a deducted balance,
+ * and modelling this as a leave type is how people end up losing a day's
+ * entitlement for turning up in their own front room.
+ */
+export const workArrangementRequests = hrms.table(
+  "work_arrangement_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    /** "wfh" or "on_duty". */
+    kind: text("kind").notNull(),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    reason: text("reason"),
+    /** Where the employee will be. Required for on-duty, optional for home. */
+    location: text("location"),
+    status: text("status").notNull().default("pending"),
+    decidedById: uuid("decided_by_id").references(() => employees.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decisionReason: text("decision_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("work_arrangement_employee_idx").on(t.employeeId, t.startDate),
+    index("work_arrangement_org_status_idx").on(t.orgId, t.status),
+  ]
+);
+
 // ─── Attendance regularisation ───────────────────────────────
 
 /**

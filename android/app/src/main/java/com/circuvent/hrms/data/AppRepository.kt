@@ -476,6 +476,40 @@ class AppRepository(private val api: ApiClient) {
     suspend fun teamPulse(): TeamPulseResponse =
         json.decodeFromString(api.get("/api/team/pulse"))
 
+    // ─── Working away from the office ────────────────────────
+
+    /**
+     * Requests to work from home or be on duty elsewhere.
+     *
+     * Deliberately separate from leave. A day worked from home is a day
+     * worked, and presenting it beside a leave balance invites somebody to
+     * think it costs them one.
+     */
+    suspend fun workArrangements(queue: Boolean = false): WorkArrangementsResponse =
+        json.decodeFromString(
+            api.get(
+                if (queue) "/api/work-arrangements?queue=1" else "/api/work-arrangements"
+            )
+        )
+
+    suspend fun requestWorkArrangement(create: WorkArrangementCreate) {
+        api.post(
+            "/api/work-arrangements",
+            json.encodeToString(WorkArrangementCreate.serializer(), create),
+        )
+    }
+
+    suspend fun decideWorkArrangement(id: String, status: String, reason: String? = null) {
+        api.patch(
+            "/api/work-arrangements",
+            buildJsonObject {
+                put("id", id)
+                put("status", status)
+                reason?.takeIf { it.isNotBlank() }?.let { put("reason", it) }
+            }.toString(),
+        )
+    }
+
     // ─── Loans and advances ──────────────────────────────────
 
     /**
