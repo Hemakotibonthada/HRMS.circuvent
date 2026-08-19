@@ -565,6 +565,118 @@ export const holidays = hrms.table(
   (t) => [index("holidays_org_year_idx").on(t.orgId, t.year)]
 );
 
+// ─── Employee loans and advances ─────────────────────────────
+
+/**
+ * Money lent to an employee and recovered from their pay.
+ *
+ * The interest rate stored here is what the *employer* charges, which is very
+ * often zero. That is not the same as the loan being free: the shortfall
+ * against SBI's rate is a taxable perquisite, and the benchmark it is measured
+ * against lives in `loanBenchmarkRates` because it is a published figure rather
+ * than a property of the loan.
+ */
+export const employeeLoans = hrms.table(
+  "employee_loans",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    /** "personal", "housing", "vehicle", "education", "medical", "salary_advance". */
+    loanType: text("loan_type").notNull(),
+    principalMinor: bigint("principal_minor", { mode: "bigint" }).notNull(),
+    /** What the employer charges, as a percentage per annum. Zero is common. */
+    interestRatePercent: numeric("interest_rate_percent", { precision: 6, scale: 3 })
+      .notNull()
+      .default("0"),
+    tenureMonths: integer("tenure_months").notNull(),
+    firstRecoveryMonth: integer("first_recovery_month").notNull(),
+    firstRecoveryYear: integer("first_recovery_year").notNull(),
+    purpose: text("purpose"),
+    status: text("status").notNull().default("pending"),
+    approvedById: uuid("approved_by_id").references(() => employees.id, { onDelete: "set null" }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("employee_loans_employee_idx").on(t.employeeId, t.status),
+    index("employee_loans_org_status_idx").on(t.orgId, t.status),
+  ]
+);
+
+/**
+ * What payroll actually recovered, month by month.
+ *
+ * Recorded rather than inferred from the schedule. A month of unpaid leave
+ * recovers nothing and a settlement may clear the balance in one go; a system
+ * that assumes the instalments were taken reports a loan closed while money is
+ * still outstanding.
+ */
+export const loanRepayments = hrms.table(
+  "loan_repayments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    loanId: uuid("loan_id")
+      .notNull()
+      .references(() => employeeLoans.id, { onDelete: "cascade" }),
+    periodMonth: integer("period_month").notNull(),
+    periodYear: integer("period_year").notNull(),
+    amountMinor: bigint("amount_minor", { mode: "bigint" }).notNull(),
+    /** "payroll", "lump_sum", "settlement". */
+    source: text("source").notNull().default("payroll"),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("loan_repayments_loan_period_key").on(t.loanId, t.periodYear, t.periodMonth),
+    index("loan_repayments_org_idx").on(t.orgId),
+  ]
+);
+
+/**
+ * The benchmark rate a concessional loan is measured against.
+ *
+ * Rule 3(7)(i) is specific: the rate charged by the State Bank of India **as on
+ * the first day of the relevant previous year**, for a loan of **the same
+ * purpose**. So it is keyed by financial year and loan type, and it is neither
+ * a property of the loan nor a single organisation-wide number.
+ *
+ * There is no default. The rate is published annually and a figure invented
+ * here would be wrong within the year and wrong silently, understating somebody's
+ * taxable income every month. Where no rate is configured the perquisite is
+ * reported as unknown rather than as zero.
+ */
+export const loanBenchmarkRates = hrms.table(
+  "loan_benchmark_rates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    financialYear: integer("financial_year").notNull(),
+    loanType: text("loan_type").notNull(),
+    ratePercent: numeric("rate_percent", { precision: 6, scale: 3 }).notNull(),
+    /** Where the figure came from, so it can be checked later. */
+    source: text("source"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("loan_benchmark_rates_org_year_type_key").on(
+      t.orgId,
+      t.financialYear,
+      t.loanType
+    ),
+  ]
+);
+
 // ─── Attendance regularisation ───────────────────────────────
 
 /**

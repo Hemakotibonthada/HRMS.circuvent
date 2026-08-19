@@ -433,6 +433,22 @@ class AppRepository(private val api: ApiClient) {
         )
     }
 
+    // ─── Loans and advances ──────────────────────────────────
+
+    /**
+     * The caller's loans, each with its schedule and true position.
+     *
+     * The position comes from what payroll actually recovered rather than from
+     * the schedule, so a month that recovered nothing is visible instead of
+     * being assumed away.
+     */
+    suspend fun loans(): LoansResponse =
+        json.decodeFromString(api.get("/api/loans"))
+
+    suspend fun requestLoan(request: LoanRequest) {
+        api.post("/api/loans", json.encodeToString(LoanRequest.serializer(), request))
+    }
+
     // ─── Attendance regularisation ───────────────────────────
 
     /**

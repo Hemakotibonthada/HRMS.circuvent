@@ -519,6 +519,12 @@ fun ProfileScreen(
         item {
             ProfileLink("Form 16", "Your annual TDS certificate") { onNavigate("tax/form16") }
         }
+        item {
+            ProfileLink(
+                "Loans and advances",
+                "What you have borrowed, and what is left to repay",
+            ) { onNavigate("loans") }
+        }
 
         item { ProfileSectionHeading("Grow") }
         item { ProfileLink("Learning", "Courses assigned to you, and what you can start") { onNavigate("learning") } }
