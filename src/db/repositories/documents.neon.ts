@@ -9,11 +9,12 @@
 // token in the emailed link, which is why that token is stored hashed and
 // compared in constant time.
 
+import { randomUUID } from "node:crypto";
 import { asc, desc, eq } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
 import { departments, employees } from "@/db/schema/hrms";
 import { applyCompanyLogo, resolveCompanyLogoUrl } from "@/lib/document-templates/branding";
-import { identityTokens, loadOrgIdentity } from "./org-identity";
+import { identityTokens, letterDefaultTokens, loadOrgIdentity, loadOrgLetterDefaults } from "./org-identity";
 import {
   documentSignatures,
   documentTemplates,
@@ -314,6 +315,31 @@ export class NeonDocumentsRepository {
         values = { ...(await this.employeeTokens(tx, request.employeeId)), ...values };
       }
 
+      // The organisation's standing answers, underneath everything else.
+      //
+      // Who signs a joining letter, where somebody reports and at what time
+      // are the same for every hire in a company but appear on no record, so
+      // every one of these letters used to fail with a list of unresolved
+      // tokens. Lowest precedence deliberately: a specific letter overrides
+      // any of them through `extraValues`, and an employee's own fields are
+      // more specific still.
+      values = { ...letterDefaultTokens(await loadOrgLetterDefaults(this.ctx)), ...values };
+
+      // The document's own id, decided here rather than by the insert.
+      //
+      // `document_reference` is a token: it has to exist before the body is
+      // rendered, and the body has to be final before its hash is taken. A
+      // reference derived from a counter would either need a sequence nobody
+      // has written or a count taken inside this transaction, which two
+      // concurrent issues would read identically and both use. Deriving it
+      // from the row's own identifier is unique by construction and needs no
+      // coordination — and quoting the year keeps it readable to whoever has
+      // to find the letter again.
+      const documentId = randomUUID();
+      values.document_reference =
+        values.document_reference ??
+        `HR/${new Date().getUTCFullYear()}/${documentId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+
       // A company registration number is required on a contract issued by a
       // company that has one, and does not exist for a partnership, a sole
       // proprietorship or a foreign entity. Requiring it unconditionally
@@ -367,6 +393,7 @@ export class NeonDocumentsRepository {
       const [document] = await tx
         .insert(generatedDocuments)
         .values({
+          id: documentId,
           orgId: this.ctx.orgId,
           templateId: template.id,
           templateVersion: template.version,
@@ -935,6 +962,24 @@ export class NeonDocumentsRepository {
 
     if (!row) throw new NotFoundError("Employee", employeeId);
 
+    // The reporting line, by name, when there is one.
+    //
+    // A separate lookup rather than a self-join on the select above: Drizzle
+    // needs an alias for the second reference to `employees`, and a manager
+    // who has left or was never set must leave the token unresolved rather
+    // than resolve to an empty string — a joining letter telling somebody to
+    // report to nobody is one HR has to reissue.
+    let reportingManager: string | undefined;
+    if (row.e.reportingToId) {
+      const [manager] = await tx
+        .select({ firstName: employees.firstName, lastName: employees.lastName })
+        .from(employees)
+        .where(eq(employees.id, row.e.reportingToId))
+        .limit(1);
+      const name = manager ? `${manager.firstName} ${manager.lastName}`.trim() : "";
+      reportingManager = name || undefined;
+    }
+
     const fullName = `${row.e.firstName} ${row.e.lastName}`.trim();
     const joinDate = formatLetterDate(row.e.joinDate);
 
@@ -948,6 +993,7 @@ export class NeonDocumentsRepository {
       position_title: row.e.designation ?? undefined,
       designation: row.e.designation ?? undefined,
       department: row.departmentName ?? undefined,
+      reporting_manager: reportingManager,
       join_date: joinDate,
       // The same day under the name the welcome email uses for it.
       start_date: joinDate,

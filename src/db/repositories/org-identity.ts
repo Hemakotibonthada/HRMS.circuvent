@@ -38,7 +38,60 @@ interface OrgSettings {
   registrationNumber?: string;
   supportEmail?: string;
   phone?: string;
+  letterDefaults?: OrgLetterDefaults;
 }
+
+/**
+ * The answers every letter needs and no record holds.
+ *
+ * A joining letter asks who signs it, where to report, at what time and what
+ * to bring. None of that is on the employee's row or the organisation's, so
+ * `generate()` refused every one of them with a list of ten unresolved tokens
+ * — correctly, because a letter that tells somebody to report to a blank
+ * address is worse than no letter. But it meant HR retyping the same ten
+ * answers for every hire, which nobody does twice: they stop issuing the
+ * letter.
+ *
+ * These are the same for every hire in a company, so they belong to the
+ * company. Anything set here is the lowest-precedence source: a specific
+ * letter can still override any of it through `extraValues`.
+ */
+export interface OrgLetterDefaults {
+  signatoryName?: string;
+  signatoryTitle?: string;
+  hrContactName?: string;
+  hrContactEmail?: string;
+  workLocation?: string;
+  officeLocation?: string;
+  reportingTime?: string;
+  startTime?: string;
+  dressCode?: string;
+  documentsToBring?: string;
+  firstDayPlan?: string;
+  dayOnePlan?: string;
+  probationMonths?: string;
+  probationNoticePeriod?: string;
+  policyAcknowledgements?: string;
+}
+
+/** The token name each default answers to, in the templates as written. */
+const LETTER_DEFAULT_TOKENS: Record<keyof OrgLetterDefaults, string> = {
+  signatoryName: "signatory_name",
+  signatoryTitle: "signatory_title",
+  hrContactName: "hr_contact_name",
+  hrContactEmail: "hr_contact_email",
+  workLocation: "work_location",
+  officeLocation: "office_location",
+  reportingTime: "reporting_time",
+  startTime: "start_time",
+  dressCode: "dress_code",
+  documentsToBring: "documents_to_bring",
+  firstDayPlan: "first_day_plan",
+  dayOnePlan: "day_one_schedule",
+  probationMonths: "probation_months",
+  probationNoticePeriod: "probation_notice_period",
+  policyAcknowledgements: "policy_acknowledgements",
+};
 
 export async function loadOrgIdentity(ctx: TenantContext): Promise<OrgIdentity | null> {
   return withTenant(ctx, async (tx) => {
@@ -104,4 +157,40 @@ export function identityTokens(identity: OrgIdentity): Record<string, string> {
   }
 
   return tokens;
+}
+
+/**
+ * The organisation's letter defaults, as document tokens.
+ *
+ * Blank values are dropped rather than returned empty, for the same reason
+ * `identityTokens` drops them: `validateTemplate` treats a present-but-empty
+ * token as satisfied, so a blank would render a joining letter naming no
+ * reporting address and no signatory instead of refusing to issue one.
+ */
+export function letterDefaultTokens(
+  defaults: OrgLetterDefaults | undefined
+): Record<string, string> {
+  if (!defaults) return {};
+
+  const tokens: Record<string, string> = {};
+  for (const [key, token] of Object.entries(LETTER_DEFAULT_TOKENS)) {
+    const value = defaults[key as keyof OrgLetterDefaults];
+    if (typeof value === "string" && value.trim()) tokens[token] = value.trim();
+  }
+  return tokens;
+}
+
+/** Reads just the letter defaults, for `generate()` and the settings screen. */
+export async function loadOrgLetterDefaults(
+  ctx: TenantContext
+): Promise<OrgLetterDefaults | undefined> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ settings: organizations.settings })
+      .from(organizations)
+      .where(eq(organizations.id, ctx.orgId))
+      .limit(1);
+
+    return ((row?.settings ?? {}) as OrgSettings).letterDefaults;
+  });
 }
