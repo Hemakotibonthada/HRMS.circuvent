@@ -92,6 +92,46 @@ than falling back to the debug key. That is deliberate — a debug-signed releas
 installs and runs perfectly on your desk, which is precisely why that mistake
 otherwise survives every local test.
 
+### Passkeys need the signing certificate published
+
+The app has a "Use a passkey" button and the whole ceremony behind it, and none
+of it can work until the *domain* says it trusts the *app*. That statement is
+Digital Asset Links, served from
+`https://<your-domain>/.well-known/assetlinks.json`, and this project serves it
+from configuration:
+
+| Variable | Value |
+|---|---|
+| `ASSETLINKS_SHA256` | SHA-256 certificate fingerprints, uppercase colon-separated hex. Comma-separate several. |
+| `ASSETLINKS_PACKAGE` | Optional. Defaults to `com.circuvent.hrms`. |
+
+**Use the Play app signing certificate, not the upload certificate.** They are
+different keys. Play re-signs every artifact after upload, so the certificate a
+phone actually sees is Play's; a file listing the upload certificate verifies
+against nothing and the passkey sheet simply opens and shuts. Play prints it
+under **Test and release → Setup → App signing**, as "SHA-256 certificate
+fingerprint".
+
+List both if you also sideload builds for testing — a locally built APK is
+signed by the upload key, so its fingerprint differs again. For reference, this
+project's upload certificate is:
+
+```
+2A:23:FA:CA:40:31:83:5E:83:0C:DA:1F:A4:33:EA:B3:31:DF:A1:06:EE:63:6B:19:9F:2F:93:F4:10:D5:D6:1B
+```
+
+Nothing else needs configuring: the server derives the
+`android:apk-key-hash:` origins it must accept from the same value, so the file
+and the origin allow-list cannot drift apart. With the variable unset the route
+answers 404 rather than publishing a relation that trusts nobody, and passkeys
+stay unavailable on Android — which is the honest state, not a broken one.
+
+Verify after deploying:
+
+```
+curl https://<your-domain>/.well-known/assetlinks.json
+```
+
 ---
 
 ## 4. Store listing

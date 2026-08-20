@@ -42,11 +42,46 @@ export function relyingParty(): RelyingParty {
   // Taken from configuration and never from the Host header. A relying party
   // id derived from an attacker-controlled header lets a credential be minted
   // for one domain and used against another.
-  const origins = [url, ...(process.env.PASSKEY_EXTRA_ORIGINS ?? "").split(",")]
+  //
+  // The Android origins are the same decision in a different dress. Credential
+  // Manager does not present an https origin — it presents
+  // `android:apk-key-hash:<base64url sha-256 of the signing certificate>`, so
+  // an allow-list of URLs alone rejects every passkey the app produces, and the
+  // reason it gives ("Origin is not allowed") names nothing an operator could
+  // act on. They are configured explicitly, from the same certificate listed in
+  // /.well-known/assetlinks.json, because the two have to agree: the file says
+  // which app the domain trusts, and this says which app's assertions it will
+  // verify. One without the other is a passkey button that cannot work.
+  const origins = [
+    url,
+    ...(process.env.PASSKEY_EXTRA_ORIGINS ?? "").split(","),
+    ...androidOrigins(),
+  ]
     .map((o) => o.trim())
     .filter(Boolean);
 
   return { id: process.env.PASSKEY_RP_ID?.trim() || host, name: "Circuvent HRMS", origins };
+}
+
+/**
+ * `android:apk-key-hash:` origins, derived from the same colon-hex certificate
+ * fingerprints that assetlinks.json publishes.
+ *
+ * Deriving them rather than asking for a second, differently-encoded copy of
+ * the same fact: the two encodings of one fingerprint drifting apart is a
+ * failure nobody would think to look for.
+ */
+export function androidOrigins(
+  env: Record<string, string | undefined> = process.env
+): string[] {
+  return (env.ASSETLINKS_SHA256 ?? "")
+    .split(",")
+    .map((f) => f.trim().toUpperCase())
+    .filter((f) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(f))
+    .map((f) => {
+      const bytes = Buffer.from(f.replace(/:/g, ""), "hex");
+      return `android:apk-key-hash:${bytes.toString("base64url")}`;
+    });
 }
 
 const pending = new Map<string, PendingChallenge>();
