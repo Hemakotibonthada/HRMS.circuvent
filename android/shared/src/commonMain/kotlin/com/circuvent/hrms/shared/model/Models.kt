@@ -479,3 +479,106 @@ data class LoanOverview(
     val outstandingMinor: Long = 0,
     val monthlyBasicMinor: Long? = null,
 )
+
+// ─── Performance ─────────────────────────────────────────────
+
+@Serializable
+data class ReviewCycle(
+    val id: String = "",
+    val name: String = "",
+    val status: String = "",
+    val startDate: String? = null,
+    val endDate: String? = null,
+)
+
+@Serializable
+data class Goal(
+    val id: String = "",
+    val title: String = "",
+    val description: String? = null,
+    val status: String = "",
+    /** 0-100. Refused on a parent goal, which computes from its children. */
+    val progressPercent: Int = 0,
+    val weightage: Int? = null,
+    val parentGoalId: String? = null,
+    val dueDate: String? = null,
+)
+
+// ─── Tax ─────────────────────────────────────────────────────
+
+@Serializable
+data class TaxDeclarationItem(
+    val section: String = "",
+    val label: String = "",
+    val declaredMinor: Long = 0,
+    val provedMinor: Long = 0,
+    val capMinor: Long? = null,
+)
+
+@Serializable
+data class TaxDeclaration(
+    val regime: String = "",
+    val financialYear: String = "",
+    val items: List<TaxDeclarationItem> = emptyList(),
+    val annualRentMinor: Long = 0,
+    val metroCity: Boolean = false,
+)
+
+// ─── Benefits, assets, learning, shifts ──────────────────────
+
+@Serializable
+data class BenefitPlan(
+    val id: String = "",
+    val name: String = "",
+    val category: String? = null,
+    val description: String? = null,
+    val employeeContributionMinor: Long? = null,
+)
+
+@Serializable
+data class BenefitEnrolment(
+    val id: String = "",
+    val planId: String = "",
+    val planName: String? = null,
+    val status: String = "",
+    val enrolledAt: String? = null,
+)
+
+@Serializable
+data class AssetItem(
+    val id: String = "",
+    val assetTag: String? = null,
+    val name: String = "",
+    val category: String? = null,
+    val status: String = "",
+    val assignedAt: String? = null,
+)
+
+@Serializable
+data class Course(
+    val id: String = "",
+    val title: String = "",
+    val description: String? = null,
+    val category: String? = null,
+    val durationMinutes: Int? = null,
+    val isMandatory: Boolean = false,
+)
+
+@Serializable
+data class Enrolment(
+    val id: String = "",
+    val courseId: String = "",
+    val courseTitle: String? = null,
+    val status: String = "",
+    val progressPercent: Int = 0,
+    val completedAt: String? = null,
+)
+
+@Serializable
+data class ShiftSwap(
+    val id: String = "",
+    val requesterName: String? = null,
+    val shiftDate: String = "",
+    val status: String = "pending",
+    val note: String? = null,
+)

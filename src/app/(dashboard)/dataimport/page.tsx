@@ -7,11 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Upload, Download, FileText, Table, Database, CheckCircle2,
@@ -22,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { DataEmptyState } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════
 // DATA IMPORT / EXPORT CENTER
@@ -32,16 +31,12 @@ import { toast } from "sonner";
 interface ImportTemplate {
   id: string; name: string; module: string; fields: number;
   icon: typeof Users; color: string; description: string;
-  requiredFields: string[]; optionalFields: string[];
-  sampleRows: number;
 }
 
 interface ExportConfig {
   id: string; name: string; module: string; fields: string[];
   format: "csv" | "xlsx" | "json" | "pdf";
   filters?: Record<string, string>;
-  lastExported?: string;
-  records?: number;
 }
 
 interface ImportJob {
@@ -52,14 +47,14 @@ interface ImportJob {
 }
 
 const IMPORT_TEMPLATES: ImportTemplate[] = [
-  { id: "T001", name: "Employee Master Data", module: "Employees", fields: 24, icon: Users, color: "from-violet-500 to-purple-600", description: "Import employee profiles with personal, employment, and contact details", requiredFields: ["First Name", "Last Name", "Email", "Employee ID", "Department", "Designation", "Joining Date"], optionalFields: ["Phone", "DOB", "Gender", "Blood Group", "Address", "Bank Details", "PAN", "Aadhaar", "Emergency Contact", "Manager", "Skills"], sampleRows: 5 },
-  { id: "T002", name: "Attendance Records", module: "Attendance", fields: 8, icon: Clock, color: "from-blue-500 to-cyan-500", description: "Bulk import attendance/clock-in data from biometric systems", requiredFields: ["Employee ID", "Date", "Clock In", "Clock Out"], optionalFields: ["Status", "Overtime", "Location", "Notes"], sampleRows: 100 },
-  { id: "T003", name: "Leave Balances", module: "Leave", fields: 6, icon: Calendar, color: "from-emerald-500 to-green-600", description: "Set initial leave balances for all employees", requiredFields: ["Employee ID", "Leave Type", "Total", "Used"], optionalFields: ["Carry Forward", "Adjustment"], sampleRows: 50 },
-  { id: "T004", name: "Payroll Data", module: "Payroll", fields: 18, icon: DollarSign, color: "from-amber-500 to-orange-500", description: "Import salary components and deductions for payroll processing", requiredFields: ["Employee ID", "Basic Pay", "HRA", "Month", "Year"], optionalFields: ["Special Allow", "Bonus", "PF", "PT", "TDS", "Loan", "LOP Days", "OT Hours"], sampleRows: 10 },
-  { id: "T005", name: "Department Structure", module: "Departments", fields: 7, icon: Building2, color: "from-pink-500 to-rose-600", description: "Import organizational department hierarchy", requiredFields: ["Name", "Code", "Head"], optionalFields: ["Parent Dept", "Location", "Budget", "Description"], sampleRows: 8 },
-  { id: "T006", name: "Asset Inventory", module: "Assets", fields: 12, icon: Package, color: "from-teal-500 to-cyan-600", description: "Bulk register hardware and software assets", requiredFields: ["Asset Name", "Type", "Serial Number", "Purchase Date", "Cost"], optionalFields: ["Brand", "Model", "Warranty", "Location", "Assigned To", "Condition", "Notes"], sampleRows: 20 },
-  { id: "T007", name: "Job Postings", module: "Recruitment", fields: 14, icon: Briefcase, color: "from-indigo-500 to-blue-600", description: "Import multiple job openings at once", requiredFields: ["Title", "Department", "Experience Min/Max", "Location"], optionalFields: ["Description", "Requirements", "Skills", "Salary Range", "Job Type", "Openings"], sampleRows: 5 },
-  { id: "T008", name: "Training Courses", module: "Training", fields: 10, icon: GraduationCap, color: "from-purple-500 to-violet-600", description: "Import course catalog from external LMS", requiredFields: ["Title", "Category", "Duration", "Level"], optionalFields: ["Instructor", "Description", "Skills", "Type", "Mandatory", "Cost"], sampleRows: 10 },
+  { id: "T001", name: "Employee Master Data", module: "Employees", fields: 24, icon: Users, color: "from-violet-500 to-purple-600", description: "Import employee profiles with personal, employment, and contact details" },
+  { id: "T002", name: "Attendance Records", module: "Attendance", fields: 8, icon: Clock, color: "from-blue-500 to-cyan-500", description: "Bulk import attendance/clock-in data from biometric systems" },
+  { id: "T003", name: "Leave Balances", module: "Leave", fields: 6, icon: Calendar, color: "from-emerald-500 to-green-600", description: "Set initial leave balances for all employees" },
+  { id: "T004", name: "Payroll Data", module: "Payroll", fields: 18, icon: DollarSign, color: "from-amber-500 to-orange-500", description: "Import salary components and deductions for payroll processing" },
+  { id: "T005", name: "Department Structure", module: "Departments", fields: 7, icon: Building2, color: "from-pink-500 to-rose-600", description: "Import organizational department hierarchy" },
+  { id: "T006", name: "Asset Inventory", module: "Assets", fields: 12, icon: Package, color: "from-teal-500 to-cyan-600", description: "Bulk register hardware and software assets" },
+  { id: "T007", name: "Job Postings", module: "Recruitment", fields: 14, icon: Briefcase, color: "from-indigo-500 to-blue-600", description: "Import multiple job openings at once" },
+  { id: "T008", name: "Training Courses", module: "Training", fields: 10, icon: GraduationCap, color: "from-purple-500 to-violet-600", description: "Import course catalog from external LMS" },
 ];
 
 const EXPORT_CONFIGS: ExportConfig[] = [
@@ -86,10 +81,8 @@ const GRADIENTS = ["from-violet-500 to-purple-600","from-blue-500 to-cyan-500","
 
 export default function DataImportExportPage() {
   const [tab, setTab] = useState("import");
-  const [selectedTemplate, setSelectedTemplate] = useState<ImportTemplate | null>(null);
   const [uploadStep, setUploadStep] = useState(0); // 0: select, 1: upload, 2: map, 3: validate, 4: complete
   const [selectedJob, setSelectedJob] = useState<ImportJob | null>(null);
-  const [exportFormat, setExportFormat] = useState("xlsx");
 
   return (
     <div className="p-6 space-y-6">
@@ -105,8 +98,13 @@ export default function DataImportExportPage() {
         {[
           { label: "Import Templates", value: IMPORT_TEMPLATES.length.toString(), icon: Upload, color: "from-violet-500 to-purple-600" },
           { label: "Export Configs", value: EXPORT_CONFIGS.length.toString(), icon: Download, color: "from-emerald-500 to-green-600" },
-          { label: "Total Records", value: "82K+", icon: Database, color: "from-blue-500 to-cyan-500" },
-          { label: "Last Import", value: "Mar 20", icon: Clock, color: "from-amber-500 to-orange-500" },
+          // These two used to be hardcoded ("82K+" total records, "Mar 20" last
+          // import) with no system behind either number. Deriving them from
+          // IMPORT_HISTORY means they can only ever report what was actually
+          // imported — right now that's nothing, since only the employee
+          // importer above is wired up and it doesn't write a record here yet.
+          { label: "Records Imported", value: IMPORT_HISTORY.reduce((sum, job) => sum + job.successRows, 0).toLocaleString(), icon: Database, color: "from-blue-500 to-cyan-500" },
+          { label: "Last Import", value: IMPORT_HISTORY[0]?.startedAt ?? "None yet", icon: Clock, color: "from-amber-500 to-orange-500" },
         ].map(s => (<Card key={s.label} className="group"><CardContent className="flex items-center gap-3 p-4"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${s.color} text-white shadow-md transition-transform group-hover:scale-110`}><s.icon className="h-5 w-5" /></div><div><p className="text-[10px] font-medium text-muted-foreground">{s.label}</p><p className="text-lg font-bold">{s.value}</p></div></CardContent></Card>))}
       </div>
 
@@ -147,19 +145,21 @@ export default function DataImportExportPage() {
 
         {/* EXPORT */}
         <TabsContent value="export" className="mt-4 space-y-2">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs text-muted-foreground">Download your HR data in various formats</p>
-            <Select value={exportFormat} onValueChange={setExportFormat}><SelectTrigger className="w-24 h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="xlsx">Excel</SelectItem><SelectItem value="csv">CSV</SelectItem><SelectItem value="json">JSON</SelectItem><SelectItem value="pdf">PDF</SelectItem></SelectContent></Select>
-          </div>
+          {/* No export backend exists yet. Every row here used to end in a button
+              that only called toast.success("Exporting ...") — no file was ever
+              generated — next to a format picker that fed into nothing, even in
+              that fake handler. Rather than fake a working export, each row is
+              disabled and says so. */}
+          <p className="text-xs text-muted-foreground mb-3">Export is not available yet. These are the configurations that would be offered once it is.</p>
           {EXPORT_CONFIGS.map((exp, i) => (
-            <Card key={exp.id} className="hover:shadow-sm transition-all group">
+            <Card key={exp.id} className="hover:shadow-sm transition-all">
               <CardContent className="p-4 flex items-center gap-4">
                 <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]} text-white shadow-md`}><FileSpreadsheet className="h-5 w-5" /></div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2"><h3 className="text-xs font-semibold">{exp.name}</h3><Badge variant="outline" className="text-[8px]">{exp.module}</Badge><Badge variant="outline" className="text-[8px] uppercase">{exp.format}</Badge></div>
-                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground"><span>{exp.fields.length} fields</span><span>{exp.records?.toLocaleString()} records</span>{exp.lastExported && <span>Last: {exp.lastExported}</span>}</div>
+                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground"><span>{exp.fields.length} fields</span></div>
                 </div>
-                <Button size="sm" className="text-xs gap-1 bg-gradient-to-r from-emerald-500 to-green-600 text-white border-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => toast.success(`Exporting ${exp.name}...`)}><Download className="h-3 w-3" />Export</Button>
+                <Button size="sm" variant="outline" className="text-xs gap-1" disabled>Not available yet</Button>
               </CardContent>
             </Card>
           ))}
@@ -167,50 +167,44 @@ export default function DataImportExportPage() {
 
         {/* HISTORY */}
         <TabsContent value="history" className="mt-4 space-y-2">
-          {IMPORT_HISTORY.map(job => {
-            const sc = STATUS_CONF[job.status];
-            const pct = job.totalRows > 0 ? Math.round((job.successRows / job.totalRows) * 100) : 0;
-            return (
-              <Card key={job.id} className={cn("hover:shadow-sm transition-all cursor-pointer", job.status === "failed" && "border-l-4 border-l-red-500", job.status === "partial" && "border-l-4 border-l-amber-500")} onClick={() => setSelectedJob(job)}>
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-md", job.status === "completed" ? "bg-gradient-to-br from-emerald-500 to-green-600" : job.status === "failed" ? "bg-gradient-to-br from-red-500 to-orange-500" : job.status === "partial" ? "bg-gradient-to-br from-amber-500 to-orange-500" : "bg-gradient-to-br from-blue-500 to-cyan-500")}>
-                    {job.status === "completed" ? <CheckCircle2 className="h-5 w-5" /> : job.status === "failed" ? <AlertTriangle className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2"><h3 className="text-xs font-semibold">{job.name}</h3><Badge className={cn("text-[8px] border-0", sc.className)}>{sc.label}</Badge><Badge variant="outline" className="text-[8px]">{job.module}</Badge></div>
-                    <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground"><span>{job.fileName} ({job.fileSize})</span><span>By {job.uploadedBy}</span><span>{job.startedAt}</span></div>
-                    <div className="mt-1.5 flex items-center gap-2"><Progress value={pct} className="h-1.5 flex-1" /><span className="text-[10px] font-medium">{job.successRows}/{job.totalRows} rows</span>{job.failedRows > 0 && <span className="text-[10px] text-red-600">{job.failedRows} failed</span>}</div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                </CardContent>
-              </Card>
-            );
-          })}
+          {IMPORT_HISTORY.length === 0 ? (
+            // Nothing writes to IMPORT_HISTORY yet — the employee importer above
+            // runs on its own and doesn't report a job back to this list. Saying
+            // so plainly is honest; a row of invented past imports (which is
+            // what used to render here) is not.
+            <DataEmptyState icon={Clock} title="No import jobs yet" description="The employee importer doesn't report back to this history yet, so there is nothing real to list here." />
+          ) : (
+            IMPORT_HISTORY.map(job => {
+              const sc = STATUS_CONF[job.status];
+              const pct = job.totalRows > 0 ? Math.round((job.successRows / job.totalRows) * 100) : 0;
+              return (
+                <Card key={job.id} className={cn("hover:shadow-sm transition-all cursor-pointer", job.status === "failed" && "border-l-4 border-l-red-500", job.status === "partial" && "border-l-4 border-l-amber-500")} onClick={() => setSelectedJob(job)}>
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-md", job.status === "completed" ? "bg-gradient-to-br from-emerald-500 to-green-600" : job.status === "failed" ? "bg-gradient-to-br from-red-500 to-orange-500" : job.status === "partial" ? "bg-gradient-to-br from-amber-500 to-orange-500" : "bg-gradient-to-br from-blue-500 to-cyan-500")}>
+                      {job.status === "completed" ? <CheckCircle2 className="h-5 w-5" /> : job.status === "failed" ? <AlertTriangle className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2"><h3 className="text-xs font-semibold">{job.name}</h3><Badge className={cn("text-[8px] border-0", sc.className)}>{sc.label}</Badge><Badge variant="outline" className="text-[8px]">{job.module}</Badge></div>
+                      <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground"><span>{job.fileName} ({job.fileSize})</span><span>By {job.uploadedBy}</span><span>{job.startedAt}</span></div>
+                      <div className="mt-1.5 flex items-center gap-2"><Progress value={pct} className="h-1.5 flex-1" /><span className="text-[10px] font-medium">{job.successRows}/{job.totalRows} rows</span>{job.failedRows > 0 && <span className="text-[10px] text-red-600">{job.failedRows} failed</span>}</div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
         </TabsContent>
       </Tabs>
 
-      {/* Template Detail Dialog */}
-      {selectedTemplate && (
-        <Dialog open={!!selectedTemplate} onOpenChange={() => setSelectedTemplate(null)}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle className="flex items-center gap-2"><Upload className="h-5 w-5 text-violet-500" />Import: {selectedTemplate.name}</DialogTitle></DialogHeader>
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">{selectedTemplate.description}</p>
-              <div className="grid grid-cols-2 gap-3 text-xs"><div><p className="font-semibold text-muted-foreground mb-1">Required Fields ({selectedTemplate.requiredFields.length})</p>{selectedTemplate.requiredFields.map(f => (<div key={f} className="flex items-center gap-1"><CheckCircle2 className="h-2.5 w-2.5 text-red-500" /><span>{f}</span></div>))}</div><div><p className="font-semibold text-muted-foreground mb-1">Optional Fields ({selectedTemplate.optionalFields.length})</p>{selectedTemplate.optionalFields.map(f => (<div key={f} className="flex items-center gap-1"><CheckCircle2 className="h-2.5 w-2.5 text-muted-foreground/40" /><span className="text-muted-foreground">{f}</span></div>))}</div></div>
-              <Separator />
-              <div className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer hover:bg-muted/50 transition-all">
-                <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm font-medium">Drop your file here or click to browse</p>
-                <p className="text-[10px] text-muted-foreground mt-1">Supports .csv, .xlsx, .xls (max 10MB)</p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 gap-1 text-xs" onClick={() => toast.success("Downloading sample...")}><Download className="h-3 w-3" />Download Sample ({selectedTemplate.sampleRows} rows)</Button>
-                <Button className="flex-1 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-1 text-xs" onClick={() => { toast.success("Import started!"); setSelectedTemplate(null); }}><Upload className="h-3 w-3" />Upload & Import</Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+      {/* A "Template Detail" dialog used to live here with "Download Sample" and
+          "Upload & Import" buttons that called toast.success() directly — no
+          file was read, nothing was uploaded, nothing was imported, it just
+          showed a green toast. It was also unreachable: nothing on the
+          template cards above ever set a template into state to open it, so it
+          was fake on top of being dead. Removed rather than patched — the one
+          real importer (Employees) already links to /employees/import above,
+          and the rest are honestly marked "Not available yet". */}
 
       {/* Job Detail Dialog */}
       {selectedJob && (

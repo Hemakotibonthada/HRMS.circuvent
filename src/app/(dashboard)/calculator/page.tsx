@@ -153,7 +153,10 @@ export default function SalaryCalculatorPage() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Calculator className="h-6 w-6 text-primary" />Salary & Tax Calculator</h1>
           <p className="text-muted-foreground text-sm mt-0.5">CTC breakdown, tax planning & take-home estimation</p>
         </div>
-        <Button variant="outline" className="gap-1.5"><Download className="h-4 w-4" />Export PDF</Button>
+        {/* No PDF generation exists behind this yet — it used to be a plain
+            button with no onClick at all, which looks identical to a working
+            export until someone clicks it. Disabling it says that up front. */}
+        <Button variant="outline" className="gap-1.5" disabled><Download className="h-4 w-4" />Export PDF (not available yet)</Button>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

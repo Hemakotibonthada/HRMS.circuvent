@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -136,6 +137,7 @@ const CATEGORIES = ["All", "Leave", "Payroll", "Policy", "IT", "Performance", "L
 const GRADIENTS = ["from-violet-500 to-purple-600","from-blue-500 to-cyan-500","from-emerald-500 to-green-600","from-amber-500 to-orange-500","from-pink-500 to-rose-600","from-teal-500 to-cyan-600"];
 
 export default function ChatbotPage() {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
@@ -227,8 +229,11 @@ export default function ChatbotPage() {
                       <div className={cn("text-sm whitespace-pre-wrap leading-relaxed", msg.role === "user" ? "text-white" : "")} dangerouslySetInnerHTML={{ __html: msg.content.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br/>") }} />
                       {/* Actions */}
                       {msg.actions && msg.actions.length > 0 && (
+                        // Each action already carries a real href (e.g. /leave, /holidays) —
+                        // it used to fire toast.success("Opening ...") and go nowhere, which
+                        // looked like a working link until you clicked it.
                         <div className="flex flex-wrap gap-1.5 mt-3">{msg.actions.map(action => (
-                          <Button key={action.label} size="sm" variant={msg.role === "user" ? "secondary" : "outline"} className="h-7 text-[10px] gap-1" onClick={() => toast.success(`Opening ${action.label}...`)}>{action.label}<ChevronRight className="h-2.5 w-2.5" /></Button>
+                          <Button key={action.label} size="sm" variant={msg.role === "user" ? "secondary" : "outline"} className="h-7 text-[10px] gap-1" onClick={() => router.push(action.href)}>{action.label}<ChevronRight className="h-2.5 w-2.5" /></Button>
                         ))}</div>
                       )}
                       {/* Sources */}

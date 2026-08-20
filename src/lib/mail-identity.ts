@@ -5,7 +5,16 @@
 // intern, and it has to survive them stopping being one.
 //
 //   intern     cvi-{handle}@circuvent.com
+//   vendor     v-{handle}@circuvent.com
 //   permanent  {handle}@circuvent.com
+//
+// Vendor addresses are issued by Mail.circuvent, not here — a vendor is a
+// company that takes our SaaS, not somebody HR employs, so there is no
+// employee record behind one and nothing in this app creates them. They are
+// named in this module anyway, for two reasons that both matter: nothing here
+// may mistake `v-acme@circuvent.com` for a colleague's address, and no
+// employee may be issued a handle starting with `v-`, which would tell every
+// recipient they are one of our vendors.
 //
 // The handle is chosen by the person themselves when they create their
 // mailbox after accepting an offer — not generated here, and not assigned by
@@ -42,6 +51,28 @@ export const COMPANY_MAIL_DOMAIN = (process.env.COMPANY_MAIL_DOMAIN ?? "circuven
  * hyphen would make `cvirahul@` look like an intern address.
  */
 export const INTERN_ADDRESS_PREFIX = "cvi-";
+
+/**
+ * The prefix a vendor's address carries.
+ *
+ * Mail.circuvent issues these; this app only needs to recognise them. A
+ * vendor is a company taking our SaaS, so there is no employee record behind
+ * one — which is exactly why an employee must never be able to choose a
+ * handle starting with it.
+ */
+export const VENDOR_ADDRESS_PREFIX = "v-";
+
+/**
+ * Every prefix that means something, longest first.
+ *
+ * Longest first so a prefix that is a prefix of another cannot shadow it.
+ * `cvi-` and `v-` share no leading character today; the ordering is what stops
+ * that from becoming a silent bug if a third is ever added.
+ */
+export const MEANINGFUL_ADDRESS_PREFIXES: readonly string[] = [
+  INTERN_ADDRESS_PREFIX,
+  VENDOR_ADDRESS_PREFIX,
+].sort((a, b) => b.length - a.length);
 
 /**
  * What a handle may be, before any prefix is applied.
@@ -157,6 +188,15 @@ export function normaliseHandle(raw: string, kind: MailIdentityKind = "permanent
       `Do not include "${INTERN_ADDRESS_PREFIX}" yourself — it is added automatically while you are an intern, and removed when you are made permanent.`
     );
   }
+  if (handle.startsWith(VENDOR_ADDRESS_PREFIX)) {
+    // Nobody employed here may take a vendor's shape. `v-acme@circuvent.com`
+    // tells every recipient that the sender is one of our vendors, and an
+    // employee who could choose that handle would be issued an address that
+    // vouches for them as one.
+    throw new MailHandleError(
+      `A name cannot start with "${VENDOR_ADDRESS_PREFIX}": that prefix is reserved for vendors and is added automatically for them.`
+    );
+  }
   if (RESERVED_HANDLES.has(handle)) {
     throw new MailHandleError("That name is reserved for a shared or system mailbox. Please choose another.");
   }
@@ -185,6 +225,23 @@ export function addressFor(handle: string, kind: MailIdentityKind): string {
 /** True when this address carries the intern prefix. */
 export function isInternAddress(email: string): boolean {
   return localPartOf(email).startsWith(INTERN_ADDRESS_PREFIX);
+}
+
+/**
+ * True when this address belongs to a vendor rather than a colleague.
+ *
+ * Used wherever this app would otherwise treat any `@circuvent.com` address
+ * as staff — a vendor is a customer company, not somebody on the payroll or
+ * in the directory.
+ */
+export function isVendorAddress(email: string): boolean {
+  return localPartOf(email).startsWith(VENDOR_ADDRESS_PREFIX);
+}
+
+/** True when the address belongs to somebody employed here, of any kind. */
+export function isStaffAddress(email: string): boolean {
+  if (domainOf(email) !== COMPANY_MAIL_DOMAIN) return false;
+  return !isVendorAddress(email);
 }
 
 /** The part before the @, lower-cased. Empty when there isn't one. */
