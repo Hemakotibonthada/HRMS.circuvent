@@ -150,11 +150,14 @@ visible angle brackets.
 
 Widening the renderer to trust tokens ending in `_html` would have reopened
 exactly the hole the escaping closes. Instead, the offer letter was rewritten
-as a main letter plus six lettered annexures and an acceptance page — the
+as a main letter plus ten lettered annexures and an acceptance page — the
 structure a genuine offer of this length is actually built from, not one long
 scroll of headings — with the parts that vary as plain tokens, and the fixed
 markup (the policy clauses, the retirals wording, the acceptance paragraph)
-written directly into the template:
+written directly into the template. The result runs to seventeen pages once
+rendered, which is a consequence of covering what a real Indian offer of
+employment actually contains, not a padding target: nothing below repeats a
+clause or inflates whitespace to get there.
 
 - The **main letter** carries the reference number, the candidate's postal
   address, the subject, position/grade/business unit, gross annual salary
@@ -188,24 +191,69 @@ written directly into the template:
   Annexure A in the actual statute: the EPF Act 1952 for provident fund, the
   Payment of Gratuity Act 1972 for gratuity (and its five-year vesting), the
   ESI Act 1948 for the threshold-dependent row above, the Maternity Benefit
-  Act 1961 as amended in 2017, the Payment of Bonus Act 1965, and
-  professional tax and TDS under the Income Tax Act 1961.
-- **Annexure C — Terms and conditions** is thirty numbered clauses —
-  probation, working hours, leave, transfer, no alternative employment, IP
-  assignment, confidentiality surviving termination, non-solicitation,
-  background verification and the consequence of a discrepancy, notice
-  period, retirement age, disciplinary process and termination for cause
+  Act 1961 as amended in 2017, the Payment of Bonus Act 1965, professional
+  tax and TDS under the Income Tax Act 1961 (with the old/new regime choice),
+  and, for the States that operate one, the labour welfare fund.
+- **Annexure C — Terms and conditions** is thirty-six numbered clauses,
+  opening with a **Definitions and interpretation** section (so "CTC",
+  "basic salary", "immediate family" and the rest are pinned down once
+  rather than re-explained on first use) — probation, working hours, leave,
+  transfer, no alternative employment, a pointer to Annexure G for IP and
+  confidentiality rather than restating them, non-solicitation, background
+  verification and the consequence of a discrepancy, notice period,
+  retirement age, disciplinary process, termination for cause, deductions
+  from salary under the Payment of Wages Act 1936, unauthorised absence, and
+  four boilerplate clauses a contract of this length actually needs — force
+  majeure, waiver, assignment, and counterparts and electronic acceptance —
   among them.
 - **Annexure D — Code of conduct and workplace policy** covers anti-
-  harassment under the POSH Act 2013 (naming the Internal Committee), anti-
-  bribery, conflict of interest and information security.
+  harassment under the POSH Act 2013 (naming the Internal Committee),
+  anti-bribery, conflict of interest, information security, public
+  statements, integrity, non-discrimination, insider information, substance
+  misuse, and raising a concern through the whistleblowing channel.
 - **Annexure E — Data protection** states what personal data is processed,
   why, for how long, and the employee's rights under the DPDP Act 2023.
 - **Annexure F — Joining checklist** lists the documents to produce on day
   one and the formalities to complete before joining.
+- **Annexure G — Confidentiality and intellectual property** is the full,
+  litigated version of what Annexure C's clauses 11 and 12 only point to: what
+  counts as confidential, what does not, and the assignment of IP created
+  during employment. It is the longest annexure, deliberately — this is the
+  clause a departing employee's next employer's lawyer actually reads.
+- **Annexure H — Leave, holidays and attendance** states the entitlement that
+  Annexure C's clause 6 used to gesture at as "the leave policy" without ever
+  stating a number: earned, casual and sick leave, how each accrues, and the
+  public holiday list.
+- **Annexure I — Company assets, information systems and acceptable use**
+  covers what Annexure C's clauses on discipline and salary deductions used
+  to leave implicit: what equipment and system access you actually get, what
+  counts as acceptable use of it, that its use may be monitored, how to
+  report an incident, and that Annexure C's deduction and disciplinary
+  clauses already cover unreturned equipment and a badly-handled incident
+  respectively — this annexure says so explicitly rather than leaving a
+  candidate to infer it.
+- **Annexure J — Grievance redressal and disciplinary procedure** gives the
+  actual multi-step process — raising a grievance, how it is heard, the
+  right of appeal, and how a disciplinary matter is investigated and
+  decided — that Annexure C's clauses 19 and 20 only name; it also points
+  back to the Internal Committee in Annexure D for a harassment complaint,
+  so a candidate reading either annexure lands on the same one process
+  rather than two different-sounding descriptions of it.
 - The **acceptance page** is a signature-and-date block that names every
   annexure by letter, so a candidate's signature is on a document that
-  identifies exactly what they agreed to, not a vague "the above."
+  identifies exactly what they agreed to, not a vague "the above." It is,
+  and must remain, the last section before the closing `</html>` — an
+  annexure spliced in after it is an annexure a candidate could argue they
+  never agreed to, because their signature sits above it.
+
+Annexures G and H, and the acceptance page, are assembled from
+`src/lib/document-templates/offer-annexures.ts` rather than written inline in
+`catalog.ts` — see "One letterhead, two seeding scripts" below for why that
+file exists and what it used to also contain. Annexures I and J were added
+afterward, directly to `catalog.ts`, once the letter needed to say more than
+the original eight annexures did; they are not sourced from
+`offer-annexures.ts` because neither annexure existed anywhere before, so
+there was no duplicate to extract from.
 
 An **Internship Offer Letter** follows an equivalent structure, correctly cut
 down for what an internship actually is: a stipend in place of a salary, a
@@ -220,7 +268,10 @@ section is honest about the statutory position: PF, ESI and gratuity do not
 apply to the stipend as paid, but would apply prospectively if the
 relationship were ever recharacterised as employment — a claim an internship
 letter should be able to survive being read literally, not one that hopes
-nobody checks.
+nobody checks. It does not run to fifteen pages, and should not: a training
+placement with a fixed end date genuinely has less to say than a permanent
+offer of employment, and padding it to match would be the same defect as
+padding the offer letter, just in the other direction.
 
 Nothing that was legitimately part of the original letter was lost, and the
 injection surface is gone.
@@ -269,6 +320,91 @@ actually received depended on which row had most recently been re-seeded or
 edited, not on any choice anyone made. `catalog.ts`'s version was kept because
 `intern-documents.ts`'s own token set was already aligned to it.
 
+### The offer letter's own duplicate: `offer-annexures.ts`
+
+A second kind of duplication turned up inside the offer letter alone, not
+between the two sources above: `src/lib/document-templates/offer-annexures.ts`
+carried a second, independently drafted set of seven blocks — a second terms-
+and-conditions annexure, a second statutory-benefits annexure, a second code-
+of-conduct annexure, a second data-protection annexure, a confidentiality-and-
+IP annexure, a leave-and-attendance annexure, and an acceptance page — spliced
+into `catalog.ts`'s `OFFER_LETTER` template as one combined `OFFER_ANNEXURES`
+string inserted **after** the candidate's signature block. That position is
+worse than the duplication itself: an annexure a candidate has already signed
+past is not obviously part of what they agreed to, and a second "Annexure 3"
+under a letter that already has an "Annexure B" covering the identical statute
+is exactly the kind of disagreement between two clauses on one subject that
+gets construed against the drafter, which is us.
+
+Four of the seven blocks were deleted outright, once a clause-by-clause
+comparison against the inline Annexures B/C/D/E confirmed real duplication in
+every case, with the inline versions consistently the more precise ones (they
+cite specific sections — Income Tax Act section 192 and 115BAC, POSH Act
+sections 4 and 16 — where the deleted blocks named only the Act). Nothing in
+them was thrown away silently: the handful of facts they carried that the
+inline annexures genuinely lacked — the labour welfare fund deduction, a
+deductions-from-salary clause under the Payment of Wages Act 1936, an
+unauthorised-absence clause, and five code-of-conduct items (integrity,
+non-discrimination, insider information, substance misuse, raising a concern)
+— were folded into the inline annexures directly, so each fact now exists
+exactly once in the letter instead of zero or two times.
+
+The remaining three blocks were genuinely additive rather than duplicative,
+and were kept, correctly lettered and correctly positioned:
+
+- A full **confidentiality-and-intellectual-property** annexure, now
+  **Annexure G** — the inline letter had only two brief clauses on this
+  (Annexure C's clauses 11 and 12), which now point to Annexure G instead of
+  restating it at half the length.
+- A full **leave-and-attendance** annexure, now **Annexure H** — the inline
+  letter committed the company to "the leave policy" (Annexure C's clause 6)
+  without ever stating an entitlement.
+- The **acceptance page** itself, now genuinely the last section of the
+  letter, replacing a weaker inline acceptance block that named only six of
+  the (now ten) annexures.
+
+`offer-annexures.ts` still exists as a separate file, exporting only these
+three blocks, because their combined clause text is long enough that it does
+not belong in the same file as the document catalogue itself — a person
+adding a fourteenth template to `catalog.ts` should not have to scroll past an
+intellectual-property annexure to find where to add it. `catalog.test.ts`
+asserts the structural properties this defect broke — each annexure letter
+appears exactly once, no numeric "Annexure 1"/"Annexure 2" heading survives,
+and the acceptance page is the true last section with nothing after it — so a
+future regression of the same kind fails the test suite rather than waiting
+for someone to read all seventeen pages by hand.
+
+### The second expansion: Annexures I and J
+
+The de-duplication above landed the offer letter at eight annexures and, at
+the time, fifteen pages. A later instruction raised the bar again — "more
+than fifteen pages", but "legitimate is the operative word... reach the
+length by covering what is genuinely missing" — so the next question was not
+"how do we get longer" but "what does a real offer of this length still not
+say".
+
+Two things: Annexure C's disciplinary and deduction clauses referred to
+company equipment and to an incident without ever stating what equipment you
+get, what you may do with it, or how an incident gets reported — and
+Annexure C's grievance and disciplinary clauses named a process without
+describing its steps. Writing those two things down is **Annexure I**
+(company assets, information systems and acceptable use) and **Annexure J**
+(grievance redressal and disciplinary procedure); both cross-reference the
+specific Annexure C clause numbers they expand on, so the two annexures and
+the summary clauses agree with each other rather than describing the same
+process twice in different words. A short **Definitions and interpretation**
+section was added at the top of Annexure C for the same reason a
+formally-drafted contract of this length has one — "CTC", "basic salary" and
+"immediate family" are used throughout the letter and are worth pinning down
+once — and Annexure B's health-insurance, loan and flexible-benefit
+paragraphs were extended with the claims process, the loan-interest
+perquisite treatment under Income Tax Rule 3(7)(i), and the tax treatment of
+each flexible-benefit option respectively, because "the company provides
+health insurance" is a fact and "here is how a claim actually gets paid" is
+the fact a candidate deciding whether to accept this offer is more likely to
+need. None of this repeats a clause already in the letter; all of it is
+statute- or policy-grounded, not invented to fill space.
+
 ---
 
 ## Tests
@@ -300,6 +436,23 @@ edited, not on any choice anyone made. `catalog.ts`'s version was kept because
   happen to add up. The annual figure is never `calculateSalaryStructure`'s
   own `ctc` field, which also folds in the group insurance premium this
   letter discloses separately in Annexure B.
+- **the offer letter's own structure**, guarding specifically against the
+  `offer-annexures.ts` defect described above recurring: each of Annexure A
+  through J appears exactly once and no numeric "Annexure 1"/"Annexure 2"
+  heading survives; the acceptance page is strictly after every annexure and
+  nothing follows it; Annexure C is one 36-clause list, not a second terms
+  annexure, its four boilerplate-completing clauses (force majeure, waiver,
+  assignment, counterparts and electronic acceptance) are present alongside
+  the two clauses folded in from the deleted duplicates (deductions from
+  salary, unauthorised absence); Annexure I's and Annexure J's cross-
+  references to specific Annexure C clause numbers are present and correct;
+  and the labour-welfare-fund paragraph and the five additional code-of-
+  conduct sections that were folded in from the deleted blocks are present in
+  Annexures B and D respectively;
+- **Annexure C's Definitions and interpretation section** sits before clause
+  1, not inside the numbered list, and the 36-clause count stays 36 with it
+  present — the defined terms use `<em>`, not `<strong>`, specifically so a
+  glossary entry is never miscounted as a clause by the assertion above.
 
 `branding.test.ts` covers the logo mechanism directly: `isAbsoluteHttpUrl`
 accepts `http(s)` and rejects `cid:`, `javascript:`, relative paths and

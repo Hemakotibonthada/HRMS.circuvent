@@ -510,3 +510,180 @@ describe("offer letters match their engagement type", () => {
     }
   });
 });
+
+// The offer letter used to carry a second, independently-numbered set of
+// annexures spliced in by `offer-annexures.ts` after the candidate's own
+// signature block -- a stray import, not a deliberate design, and one that
+// is trivial to reintroduce by accident (a merge, a half-finished edit, a
+// file silently reverted to an older revision) because nothing short of
+// reading the whole rendered letter end to end would show it. These tests
+// assert the structural invariants that failure mode broke, so a regression
+// fails the suite instead of waiting for someone to count annexures by hand.
+describe("the offer letter's annexures are lettered exactly once each, in order", () => {
+  const offerBody = templateByType("offer_letter")!.body;
+  const annexureLetters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+
+  it("has exactly one heading for each annexure A through J, and no leftover numeric annexure", () => {
+    for (const letter of annexureLetters) {
+      const matches = offerBody.match(new RegExp(`<h2>Annexure ${letter}\\b`, "g")) ?? [];
+      expect(matches).toHaveLength(1);
+    }
+    // The deleted blocks in the old offer-annexures.ts numbered themselves
+    // "Annexure 1" through "Annexure 7", independently of the letter scheme
+    // catalog.ts actually uses. A digit straight after the word "Annexure" in
+    // a rendered heading can therefore only be that duplication come back.
+    expect(offerBody).not.toMatch(/<h2>Annexure \d/);
+  });
+
+  it("puts the acceptance page after every annexure, and nothing after the acceptance page", () => {
+    const acceptanceIndex = offerBody.indexOf("<h2>Acceptance</h2>");
+    expect(acceptanceIndex).toBeGreaterThan(-1);
+
+    for (const letter of annexureLetters) {
+      const annexureIndex = offerBody.indexOf(`<h2>Annexure ${letter}`);
+      expect(annexureIndex).toBeGreaterThan(-1);
+      expect(acceptanceIndex).toBeGreaterThan(annexureIndex);
+    }
+
+    // A candidate cannot meaningfully be bound by a clause that only appears
+    // below the line they signed, so no further heading -- and no further
+    // annexure of any kind -- may follow the acceptance page.
+    expect(offerBody.indexOf("<h2>", acceptanceIndex + 1)).toBe(-1);
+  });
+
+  it("carries Annexure C as one 36-clause list, not a second terms-and-conditions annexure", () => {
+    const start = offerBody.indexOf("<h2>Annexure C");
+    const end = offerBody.indexOf("<h2>Annexure D");
+    const section = offerBody.slice(start, end);
+
+    expect(section.match(/<li><strong>/g) ?? []).toHaveLength(36);
+    // These two clauses only existed, before this restructuring, inside the
+    // deleted duplicate annexure; their presence here confirms the fact they
+    // carried was folded into the real annexure rather than thrown away.
+    expect(section).toContain("Deductions from salary");
+    expect(section).toContain("Unauthorised absence");
+  });
+
+  it("opens Annexure C with a Definitions and interpretation section that sits before clause 1, not inside the numbered list", () => {
+    const start = offerBody.indexOf("<h2>Annexure C");
+    const end = offerBody.indexOf("<h2>Annexure D");
+    const section = offerBody.slice(start, end);
+
+    const definitionsIndex = section.indexOf("Definitions and interpretation");
+    const probationIndex = section.indexOf("<strong>Probation.</strong>");
+    expect(definitionsIndex).toBeGreaterThan(-1);
+    expect(probationIndex).toBeGreaterThan(-1);
+    // Clause 1 must still be Probation: the glossary is a preface, not a
+    // renumbering of the clauses that clauses 19, 20, 21 and 31 are
+    // cross-referenced by exact number from Annexures I and J.
+    expect(definitionsIndex).toBeLessThan(probationIndex);
+
+    for (const term of ["\"the Company\"", "\"CTC\"", "\"basic salary\"", "\"immediate family\""]) {
+      expect(section).toContain(term);
+    }
+    // The glossary uses <em>, deliberately not <strong>, so it is never
+    // miscounted by the 36-clause assertion above: a glossary entry is not a
+    // clause, and a test that cannot tell the two apart would pass even if a
+    // future edit quietly turned every defined term into a 37th clause.
+    expect(section.match(/<li><strong>/g) ?? []).toHaveLength(36);
+  });
+
+  it("carries the labour welfare fund and the five additional conduct sections folded in from the deleted duplicate", () => {
+    const bStart = offerBody.indexOf("<h2>Annexure B");
+    const bEnd = offerBody.indexOf("<h2>Annexure C");
+    expect(offerBody.slice(bStart, bEnd)).toContain("Labour welfare fund");
+
+    const dStart = offerBody.indexOf("<h2>Annexure D");
+    const dEnd = offerBody.indexOf("<h2>Annexure E");
+    const conduct = offerBody.slice(dStart, dEnd);
+    for (const title of ["Integrity", "Non-discrimination", "Insider information", "Substance misuse", "Raising a concern"]) {
+      expect(conduct).toContain(title);
+    }
+  });
+
+  it("carries four genuinely new boilerplate clauses in Annexure C, none of them a second Notices clause", () => {
+    const start = offerBody.indexOf("<h2>Annexure C");
+    const end = offerBody.indexOf("<h2>Annexure D");
+    const section = offerBody.slice(start, end);
+
+    for (const title of ["Force majeure", "Waiver", "Assignment", "Counterparts and electronic acceptance"]) {
+      expect(section.match(new RegExp(`<strong>${title}\\.`, "g")) ?? []).toHaveLength(1);
+    }
+    // "Notices" was extended in place with a deemed-service rule rather than
+    // repeated as a second clause; a second match here would mean the offer
+    // now tells a candidate two different things about how notice is served.
+    expect(section.match(/<strong>Notices\./g) ?? []).toHaveLength(1);
+    expect(section).toContain("treated as received five working days after posting");
+  });
+
+  it("carries Annexure I with equipment, access, acceptable-use, monitoring and return-of-property sections, correctly cross-referenced", () => {
+    const start = offerBody.indexOf("<h2>Annexure I");
+    const end = offerBody.indexOf("<h2>Annexure J");
+    expect(start).toBeGreaterThan(-1);
+    const section = offerBody.slice(start, end);
+
+    for (const title of [
+      "Equipment issued to you",
+      "Systems access",
+      "Acceptable use",
+      "Monitoring",
+      "Reporting an incident",
+      "Equipment for remote and hybrid working",
+      "Return of company property",
+    ]) {
+      expect(section).toContain(title);
+    }
+    // Clause 19 is "Disciplinary process" and clause 31 is "Deductions from
+    // salary" in the current 36-clause Annexure C; a stale number here would
+    // point a candidate at the wrong clause in a signed document.
+    expect(section).toContain("disciplinary matter under clause 19 of Annexure C");
+    expect(section).toContain("Clause 31 of Annexure C");
+    expect(section).toContain("already allows the company to deduct the value of anything you do not return");
+  });
+
+  it("carries Annexure J with a real multi-step grievance and disciplinary procedure, correctly cross-referenced", () => {
+    const start = offerBody.indexOf("<h2>Annexure J");
+    const end = offerBody.indexOf("<h2>Acceptance");
+    expect(start).toBeGreaterThan(-1);
+    const section = offerBody.slice(start, end);
+
+    for (const title of [
+      "Raising a grievance",
+      "How a grievance is handled",
+      "Appeal",
+      "Disciplinary process",
+      "What this procedure does not cover",
+    ]) {
+      expect(section).toContain(title);
+    }
+    // Clause 20 is "Grievance redressal" and clause 21 is "Termination for
+    // cause"; this Annexure exists specifically to spell out what those two
+    // one-sentence clauses in Annexure C point at, so the numbers must match.
+    expect(section).toContain("Clause 20 of Annexure C tells you");
+    expect(section).toContain("Clause 19 of Annexure C states the principle");
+    expect(section).toContain("termination for cause under clause 21 of Annexure C");
+    // Harassment has its own statutory route and must not be folded into the
+    // general grievance procedure here. The source wraps this sentence onto
+    // two lines, and HTML collapses that whitespace on render, so compare
+    // against the collapsed form rather than an exact substring.
+    expect(section.replace(/\s+/g, " ")).toContain("Internal Committee described in Annexure D");
+  });
+
+  it("expands Annexure B's other benefits into four named sections without dropping their tokens", () => {
+    const bStart = offerBody.indexOf("<h2>Annexure B");
+    const bEnd = offerBody.indexOf("<h2>Annexure C");
+    const section = offerBody.slice(bStart, bEnd);
+
+    for (const title of ["Health insurance", "Loans and advances", "Professional memberships", "Flexible benefits"]) {
+      expect(section).toContain(title);
+    }
+    for (const token of [
+      "{{health_insurance_summary}}",
+      "{{loan_policy_summary}}",
+      "{{professional_membership_summary}}",
+      "{{flexible_benefit_pool}}",
+    ]) {
+      expect(section).toContain(token);
+    }
+  });
+});

@@ -106,7 +106,7 @@ import {
   row,
   table,
 } from "./letter-kit.mjs";
-import { OFFER_TERMS_AND_CONDITIONS, OFFER_CONFIDENTIALITY_IP, OFFER_LEAVE_AND_ATTENDANCE, OFFER_ACCEPTANCE } from "./offer-annexures";
+import { OFFER_CONFIDENTIALITY_IP, OFFER_LEAVE_AND_ATTENDANCE, OFFER_ACCEPTANCE } from "./offer-annexures";
 
 export { COMPANY_TOKENS };
 
@@ -139,7 +139,7 @@ export interface TemplateSeed {
 // candidate block, the salary, the deadline — that this candidate needs to
 // read first and read fastest.
 //
-// Eight annexures, each answering one question a signed offer has to answer
+// Ten annexures, each answering one question a signed offer has to answer
 // somewhere:
 //   A — Compensation:        what does each rupee of the CTC become?
 //   B — Statutory benefits:  which Act requires which deduction, and how much?
@@ -149,6 +149,8 @@ export interface TemplateSeed {
 //   F — Joining checklist:   what must physically arrive on day one?
 //   G — Confidentiality and IP: what happens to information and inventions during and after?
 //   H — Leave and attendance:  what entitlement does "the leave policy" in clause 6 actually mean?
+//   I — Company assets and acceptable use: what may you do with what the company gives you to work with?
+//   J — Grievance and discipline:  how is a concern raised, and how is one investigated?
 // followed by a candidate acceptance page that names every annexure by
 // letter, so "I accept" cannot later be read as accepting only the page it
 // is printed on.
@@ -233,8 +235,10 @@ ${letterhead(
             <li><strong>Annexure F — Joining checklist.</strong> What to bring, and what to complete, on your date of joining.</li>
             <li><strong>Annexure G — Confidentiality and intellectual property.</strong> What you may not disclose, and who owns what you create.</li>
             <li><strong>Annexure H — Leave, holidays and attendance.</strong> The entitlement behind "the leave policy" referred to in Annexure C.</li>
+            <li><strong>Annexure I — Company assets, information systems and acceptable use.</strong> What you may do with the equipment, systems and access the company gives you.</li>
+            <li><strong>Annexure J — Grievance redressal and disciplinary procedure.</strong> How a concern is raised and heard, and how a disciplinary matter is investigated and decided.</li>
           </ul>
-          <p>Please read all eight before you sign the acceptance page at the end of this offer.</p>
+          <p>Please read all ten before you sign the acceptance page at the end of this offer.</p>
         </div>
       </div>
 
@@ -453,12 +457,58 @@ ${letterhead(
       <div class="section">
         <p class="section-title">Other benefits</p>
         <div class="section-body">
-          <ul class="bullet">
-            <li><strong>Health insurance:</strong> {{health_insurance_summary}}</li>
-            <li><strong>Loans:</strong> {{loan_policy_summary}}</li>
-            <li><strong>Professional memberships:</strong> {{professional_membership_summary}}</li>
-            <li><strong>Flexible benefits:</strong> {{flexible_benefit_pool}}</li>
-          </ul>
+          <p class="subsection-title">Health insurance</p>
+          <p>
+            {{health_insurance_summary}} The company pays the premium for this cover in full; it is
+            not a deduction from your salary and is not part of the cost-to-company figure in
+            Annexure A, because it is a benefit rather than a component of pay you could otherwise
+            draw as cash.
+          </p>
+          <p>
+            Treatment at a hospital in the insurer's network is cashless, on production of the
+            e-card issued to you after enrolment; treatment outside the network is settled by
+            reimbursement on the claim documents the insurer's policy specifies, generally within
+            the window that policy sets from the date of discharge. A condition that existed
+            before you joined this cover is not excluded on that ground alone in a group policy of
+            this kind, unlike an individual policy you might buy for yourself, and maternity
+            cover, where the policy provides one, follows the sub-limit stated in the policy
+            document issued to you on enrolment rather than the family sum insured in full.
+          </p>
+          <p class="subsection-title">Loans and advances</p>
+          <p>
+            {{loan_policy_summary}} Any loan or advance the company extends to you is recovered
+            from your salary on the schedule agreed when it is sanctioned, and the outstanding
+            balance becomes payable in full from your final settlement if your employment ends
+            before it is repaid.
+          </p>
+          <p>
+            Where the rate of interest, if any, this Annexure applies is below the rate the State
+            Bank of India charges on a loan of the same kind and tenure, the difference is a
+            perquisite in your hands under Rule 3(7)(i) of the Income Tax Rules, 1962, and is
+            added to your taxable salary for the purpose of the deduction Annexure B describes;
+            this changes the income tax computed on the loan, not the instalment recovered from
+            your salary under the loan itself.
+          </p>
+          <p class="subsection-title">Professional memberships</p>
+          <p>
+            {{professional_membership_summary}} Membership reimbursed under this paragraph must be
+            in a body relevant to your role; the company's approval before you enrol is a condition
+            of reimbursement, not a formality after the fact.
+          </p>
+          <p class="subsection-title">Flexible benefits</p>
+          <p>
+            {{flexible_benefit_pool}} You may allocate this pool across the options the company's
+            flexible benefit policy in force at the time offers; an allocation you do not make by
+            the date that policy sets is paid as taxable salary rather than carried forward.
+          </p>
+          <p>
+            Each option within the pool carries its own tax treatment under the Income Tax Act,
+            1961 — a meal card and fuel reimbursement are exempt up to the limit Rule 3 of the
+            Income Tax Rules, 1962 sets on production of bills, while a telephone reimbursement is
+            exempt only to the extent it is for official use — and the company applies that
+            treatment automatically based on the option you choose, rather than taxing the whole
+            pool as salary and leaving you to claim it back.
+          </p>
         </div>
       </div>
 
@@ -471,6 +521,35 @@ ${letterhead(
       </div>
 
       <h2>Annexure C — Terms and conditions</h2>
+
+      <div class="section">
+        <p class="section-title">Definitions and interpretation</p>
+        <div class="section-body">
+          <p>
+            The clauses that follow use several terms consistently, and this Annexure defines them
+            once here rather than re-explaining each on first use:
+          </p>
+          <ul class="bullet">
+            <li><em>"the Company"</em> means {{company_name}}, and, where the context of a clause is transfer, secondment or a group-wide policy, includes its holding company and subsidiaries.</li>
+            <li><em>"you" / "your"</em> means the candidate to whom this offer is addressed and, once this offer is accepted, the employee.</li>
+            <li><em>"this offer"</em> means the main letter above together with every Annexure to it; an Annexure is part of the offer, not a separate document, and carries the same force as the main letter.</li>
+            <li><em>"CTC"</em> means cost to company: the gross annual figure stated in the main letter and itemised in Annexure A, inclusive of every component and retiral the company pays or provides on your account, before any deduction.</li>
+            <li><em>"basic salary"</em> means the fixed component in row (A) of Annexure A that statutory contributions — provident fund and gratuity among them — are calculated against, and does not include any allowance, benefit or variable pay.</li>
+            <li><em>"confidential information"</em> has the meaning given to it in Annexure G, and includes information belonging to a customer, supplier or candidate that the company holds under an obligation of confidence to that third party.</li>
+            <li><em>"working day"</em> means a day that is not a weekly off or a holiday under the list the company notifies for your work location each year.</li>
+            <li><em>"financial year"</em> means the year beginning 1 April and ending the following 31 March, the year the Income Tax Act, 1961 and the labour statutes named in Annexure B themselves use.</li>
+            <li><em>"immediate family"</em> means your spouse, dependent children and dependent parents, the group the company's group health insurance and gratuity nomination both use unless a specific policy states a narrower or wider group.</li>
+            <li><em>"in writing"</em> includes email to the address either party has notified to the other, and does not require a signed paper document unless a specific clause below says otherwise.</li>
+          </ul>
+          <p>
+            A heading in this Annexure is for convenience of reference only and does not limit or
+            expand the clause it introduces; where a clause below cites a specific statute, that
+            citation identifies the law actually intended, and is not a label the company can
+            change the meaning of by later pointing to a different Act.
+          </p>
+        </div>
+      </div>
+
       <div class="section">
         <div class="section-body">
           <ol class="numbered">
@@ -500,12 +579,16 @@ ${letterhead(
             <li><strong>Letter of appointment.</strong> A detailed letter of appointment, confirming these terms and adding those specific to your role, will follow on your date of joining.</li>
             <li><strong>Company rules.</strong> Your employment is governed by the company's rules, policies and codes of conduct in force from time to time, including those in Annexure D, which the company may amend at its discretion.</li>
             <li><strong>Data privacy.</strong> The company processes your personal data as described in Annexure E, and by accepting this offer you acknowledge that processing.</li>
-            <li><strong>Notices.</strong> A notice under this offer is validly given if sent in writing to the address or email either of us has most recently given the other in writing.</li>
+            <li><strong>Notices.</strong> A notice under this offer is validly given if sent in writing to the address or email either of us has most recently given the other in writing; a notice sent by post to that address is treated as received five working days after posting, and one sent by email is treated as received when sent, unless the sender receives a delivery failure notification.</li>
             <li><strong>Governing law and jurisdiction.</strong> This offer, and your employment under it, is governed by the laws of India, and the courts having jurisdiction over the company's registered office at {{company_address}} have exclusive jurisdiction over any dispute arising from it.</li>
             <li><strong>Entire agreement.</strong> This offer, its annexures and the letter of appointment that follows it together record the entire agreement between you and the company on the subject; anything said or promised during the selection process that is not written here does not bind the company.</li>
             <li><strong>Severability and amendment.</strong> If any clause in this offer is found unenforceable, the rest continues to apply, and no amendment to this offer binds either of us unless it is in writing and signed by both.</li>
             <li><strong>Deductions from salary.</strong> The company may deduct from your salary any sum you owe it, including overpaid salary, the value of an unreturned company asset, an outstanding advance, and salary in lieu of notice not served under clause 7 or clause 8; deductions are made in accordance with the Payment of Wages Act 1936, and where that Act requires your consent, the company will obtain it.</li>
             <li><strong>Unauthorised absence.</strong> Absence without approval or explanation for eight consecutive working days is treated as abandonment of employment, after the company has written to your last known address and given you seven days to respond; absence is not treated as abandonment where you are unable to make contact for reasons beyond your control.</li>
+            <li><strong>Force majeure.</strong> Neither of us is liable for a failure to perform an obligation under this offer, other than an obligation to pay money already earned, where that failure is caused by an event beyond that party's reasonable control.</li>
+            <li><strong>Waiver.</strong> A failure or delay by the company in enforcing any term of this offer is not a waiver of it, and does not prevent the company from enforcing that term later.</li>
+            <li><strong>Assignment.</strong> You may not assign or transfer any right or obligation under this offer; the company may assign this offer to a successor that carries on its business or the part of it in which you are employed, without needing your separate consent.</li>
+            <li><strong>Counterparts and electronic acceptance.</strong> This offer may be accepted by signing and returning the acceptance page in physical or electronic form, including by the electronic signature process described on the acceptance page, and that acceptance is as binding as a wet-ink signature on paper.</li>
           </ol>
         </div>
       </div>
@@ -713,14 +796,110 @@ ${letterhead(
         </div>
       </div>
 
-      <h2>Annexure G — Terms and conditions of employment</h2>
-${OFFER_TERMS_AND_CONDITIONS}
-
-      <h2>Annexure H — Confidentiality and intellectual property</h2>
+      <h2>Annexure G — Confidentiality and intellectual property</h2>
 ${OFFER_CONFIDENTIALITY_IP}
 
-      <h2>Annexure I — Leave, holidays and attendance</h2>
+      <h2>Annexure H — Leave, holidays and attendance</h2>
 ${OFFER_LEAVE_AND_ATTENDANCE}
+
+      <h2>Annexure I — Company assets, information systems and acceptable use</h2>
+      <div class="section">
+        <div class="section-body">
+          <p class="section-title">Equipment issued to you</p>
+          <p>
+            Any laptop, mobile device, SIM, access card, software licence or other equipment the
+            company issues to you remains the company's property throughout your employment. You
+            are responsible for its safekeeping and for using it only for purposes connected with
+            your role; loss or damage caused by your negligence may be recovered from you.
+          </p>
+          <p class="section-title">Systems access</p>
+          <p>
+            Your access to the company's email, network, applications and any system holding
+            company or candidate data is granted for the duration of your employment and for the
+            purpose of performing your role. Access is provisioned on joining and withdrawn on the
+            date your employment ends, or earlier if the company suspends you or you go on leave
+            for an extended period.
+          </p>
+          <p class="section-title">Acceptable use</p>
+          <p>
+            Company systems and equipment are provided for work; incidental personal use is
+            permitted where it does not interfere with your duties, breach any policy referred to
+            in clause 26 of Annexure C, or expose the company to legal or security risk. You will
+            not use company systems to access, store or transmit unlawful content, to run a
+            personal business, or to install software the company has not approved.
+          </p>
+          <p class="section-title">Monitoring</p>
+          <p>
+            The company may monitor use of its systems and equipment, including email and
+            internet access, to the extent permitted by law and by the data protection notice at
+            Annexure E, for security, legal compliance and business continuity. Monitoring is not
+            used to intrude on your personal life beyond what those purposes require.
+          </p>
+          <p class="section-title">Reporting an incident</p>
+          <p>
+            You must report a lost or stolen device, a suspected security breach, or unauthorised
+            access to a company system to the information security team as soon as you become
+            aware of it, and no later than twenty-four hours afterward; a delay in reporting that
+            makes the incident worse is itself treated as a disciplinary matter under clause 19 of Annexure C.
+          </p>
+          <p class="section-title">Equipment for remote and hybrid working</p>
+          <p>
+            Where your work mode under this offer includes working away from a company location,
+            equipment issued to support that arrangement is covered by this Annexure exactly as it
+            would be at a company location, and the company's information security requirements
+            apply to your home network and workspace to the same standard.
+          </p>
+          <p class="section-title">Return of company property</p>
+          <p>
+            You must return every item covered by this Annexure on the date your employment ends,
+            or earlier if the company asks; Clause 31 of Annexure C already allows the company to deduct the value of anything you do not return from your final settlement, and this
+            Annexure does not create a second, different entitlement to do so.
+          </p>
+        </div>
+      </div>
+
+      <h2>Annexure J — Grievance redressal and disciplinary procedure</h2>
+      <div class="section">
+        <div class="section-body">
+          <p class="section-title">Raising a grievance</p>
+          <p>
+            Clause 20 of Annexure C tells you that a concern about your employment is addressed
+            through this procedure. You may raise a grievance in writing with your reporting
+            manager or, where the grievance concerns your reporting manager, with the human
+            resources function directly; a grievance concerning harassment is raised with the
+            Internal Committee described in Annexure D instead of through this general procedure.
+          </p>
+          <p class="section-title">How a grievance is handled</p>
+          <p>
+            The person you raise a grievance with acknowledges it within three working days, hears
+            you before deciding anything, and responds in writing within fifteen working days
+            stating what was found and what, if anything, will change. Where a grievance requires
+            longer to investigate properly, you are told why and given a revised date.
+          </p>
+          <p class="section-title">Appeal</p>
+          <p>
+            If you are not satisfied with the response, you may appeal in writing within seven
+            working days of receiving it to the next level of management above the person who
+            decided it; that appeal is the final stage of this procedure.
+          </p>
+          <p class="section-title">Disciplinary process</p>
+          <p>
+            Clause 19 of Annexure C states the principle that a concern about your conduct is put
+            to you in writing and you are given a fair opportunity to respond before any action is
+            taken. This Annexure adds the mechanics: you may be accompanied by a colleague at any
+            meeting called under this procedure, the outcome is confirmed to you in writing, and
+            where the outcome is termination for cause under clause 21 of Annexure C, the letter
+            confirming it states the specific finding that justifies it.
+          </p>
+          <p class="section-title">What this procedure does not cover</p>
+          <p>
+            This procedure does not extend your notice period, does not apply to a decision not to
+            confirm you at the end of probation, and does not apply where the company withdraws
+            this offer or ends your employment during probation, both of which are governed by
+            Annexure C directly rather than by this procedure.
+          </p>
+        </div>
+      </div>
 
       <h2>Acceptance</h2>
 ${OFFER_ACCEPTANCE}

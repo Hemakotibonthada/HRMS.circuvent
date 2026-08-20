@@ -704,9 +704,15 @@ async function main() {
       const bytes = await toPdf(template.name, person.label, withLogo);
       const file = path.join(dir, `${safe(template.name)}.pdf`);
       fs.writeFileSync(file, bytes);
-      report.push({ person: person.label, template: template.name, missing });
+      // Re-opening the file we just wrote, rather than trusting a page count
+      // computed while it was assembled, is deliberate: it is the same file
+      // a reviewer double-clicks on the Desktop, so its page count is whatever
+      // that PDF's own page tree says, not whatever this process believes.
+      const pageCount = (await PDFDocument.load(bytes)).getPageCount();
+      report.push({ person: person.label, template: template.name, missing, pageCount });
       console.log(
         `  ${missing.length === 0 ? "ok  " : "TOK "} ${template.name}` +
+        ` (${pageCount} page${pageCount === 1 ? "" : "s"})` +
         (missing.length ? `  <- unfilled: ${missing.join(", ")}` : "")
       );
     }
@@ -714,6 +720,7 @@ async function main() {
   }
 
   const unfilled = report.filter((r) => r.missing.length > 0);
+  const offerLetters = report.filter((r) => /offer/i.test(r.template));
   const summary = [
     "CIRCUVENT - SAMPLE LETTERS AND CERTIFICATES",
     "",
@@ -723,6 +730,10 @@ async function main() {
     "Rendered for review from the same sources the application seeds from:",
     "  src/lib/document-templates/catalog.ts",
     "  scripts/seed-letter-templates.mjs",
+    "",
+    "Offer-letter page counts (the founder's 15+ page bar applies to the",
+    "full employee offer, not the internship offer):",
+    ...offerLetters.map((r) => `  ${r.person} - ${r.template}: ${r.pageCount} pages`),
     "",
     unfilled.length === 0
       ? "Every placeholder was substituted."
