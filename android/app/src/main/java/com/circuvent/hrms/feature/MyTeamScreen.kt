@@ -14,9 +14,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppText
@@ -42,16 +46,12 @@ import com.circuvent.hrms.data.TeamPulseResponse
 // and "away on the 27th" are different questions, and a list that answers both
 // at once answers neither at a glance.
 
-private val MONTHS_SHORT = listOf(
-    "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-)
-
+@Composable
 private fun dayAndMonth(iso: String): String {
     if (iso.length < 10) return iso
     val month = iso.substring(5, 7).toIntOrNull() ?: return iso
     val day = iso.substring(8, 10).trimStart('0')
-    return "$day ${MONTHS_SHORT.getOrElse(month) { "" }}"
+    return "$day ${stringArrayResource(R.array.month_abbreviations).getOrNull(month - 1) ?: ""}"
 }
 
 private fun leaveLabel(type: String): String =
@@ -90,18 +90,16 @@ fun MyTeamScreen(container: AppContainer) {
                         data.anniversaries.isEmpty()
                     ) {
                         EmptyState(
-                            title = "No team yet",
-                            description =
-                                "Once you have colleagues who share a manager with you, who is " +
-                                    "away and whose birthday is coming up appear here.",
+                            title = stringResource(R.string.myteam_empty_title),
+                            description = stringResource(R.string.myteam_empty_description),
                         )
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
-                            SectionLabel("Away today")
+                            SectionLabel(stringResource(R.string.myteam_away_today_section_label))
                             if (awayToday.isEmpty()) {
                                 AppCard {
                                     AppText(
-                                        "Everyone is in.",
+                                        stringResource(R.string.myteam_everyone_in_label),
                                         tone = TextTone.MUTED,
                                         size = Theme.type.footnote,
                                     )
@@ -109,8 +107,11 @@ fun MyTeamScreen(container: AppContainer) {
                             } else {
                                 awayToday.forEach { absence ->
                                     AppCard(
-                                        contentDescription =
-                                            "${absence.name} is away today on ${leaveLabel(absence.leaveType)}",
+                                        contentDescription = stringResource(
+                                            R.string.myteam_away_content_description,
+                                            absence.name,
+                                            leaveLabel(absence.leaveType),
+                                        ),
                                     ) {
                                         Row(
                                             Modifier.fillMaxWidth(),
@@ -120,7 +121,7 @@ fun MyTeamScreen(container: AppContainer) {
                                             Column(Modifier.weight(1f)) {
                                                 AppText(absence.name, weight = FontWeight.Medium)
                                                 AppText(
-                                                    "back on ${dayAndMonth(absence.endDate)}",
+                                                    stringResource(R.string.myteam_back_on_template, dayAndMonth(absence.endDate)),
                                                     tone = TextTone.MUTED,
                                                     size = Theme.type.caption,
                                                 )
@@ -132,7 +133,7 @@ fun MyTeamScreen(container: AppContainer) {
                             }
 
                             if (awaySoon.isNotEmpty()) {
-                                SectionLabel("Away this week")
+                                SectionLabel(stringResource(R.string.myteam_away_this_week_section_label))
                                 awaySoon.forEach { absence ->
                                     AppCard {
                                         Row(
@@ -152,11 +153,14 @@ fun MyTeamScreen(container: AppContainer) {
                             }
 
                             if (data.birthdays.isNotEmpty()) {
-                                SectionLabel("Birthdays")
+                                SectionLabel(stringResource(R.string.myteam_birthdays_section_label))
                                 data.birthdays.forEach { birthday ->
                                     AppCard(
-                                        contentDescription =
-                                            "${birthday.name}'s birthday, ${dayAndMonth(birthday.on)}",
+                                        contentDescription = stringResource(
+                                            R.string.myteam_birthday_content_description,
+                                            birthday.name,
+                                            dayAndMonth(birthday.on),
+                                        ),
                                     ) {
                                         Row(
                                             Modifier.fillMaxWidth(),
@@ -174,7 +178,7 @@ fun MyTeamScreen(container: AppContainer) {
                                                 }
                                             }
                                             if (birthday.isToday) {
-                                                StatusPill("Today", PillTone.SUCCESS)
+                                                StatusPill(stringResource(R.string.myteam_today_label), PillTone.SUCCESS)
                                             } else {
                                                 AppText(
                                                     dayAndMonth(birthday.on),
@@ -188,11 +192,18 @@ fun MyTeamScreen(container: AppContainer) {
                             }
 
                             if (data.anniversaries.isNotEmpty()) {
-                                SectionLabel("Work anniversaries")
+                                SectionLabel(stringResource(R.string.myteam_anniversaries_section_label))
                                 data.anniversaries.forEach { anniversary ->
                                     AppCard(
-                                        contentDescription =
-                                            "${anniversary.name}, ${anniversary.years} years",
+                                        contentDescription = stringResource(
+                                            R.string.myteam_anniversary_content_description,
+                                            anniversary.name,
+                                            pluralStringResource(
+                                                R.plurals.home_anniversary_years,
+                                                anniversary.years,
+                                                anniversary.years,
+                                            ),
+                                        ),
                                     ) {
                                         Row(
                                             Modifier.fillMaxWidth(),
@@ -202,14 +213,17 @@ fun MyTeamScreen(container: AppContainer) {
                                             Column(Modifier.weight(1f)) {
                                                 AppText(anniversary.name, weight = FontWeight.Medium)
                                                 AppText(
-                                                    "${anniversary.years} year" +
-                                                        if (anniversary.years == 1) "" else "s",
+                                                    pluralStringResource(
+                                                        R.plurals.home_anniversary_years,
+                                                        anniversary.years,
+                                                        anniversary.years,
+                                                    ),
                                                     tone = TextTone.MUTED,
                                                     size = Theme.type.caption,
                                                 )
                                             }
                                             if (anniversary.isToday) {
-                                                StatusPill("Today", PillTone.SUCCESS)
+                                                StatusPill(stringResource(R.string.myteam_today_label), PillTone.SUCCESS)
                                             } else {
                                                 AppText(
                                                     dayAndMonth(anniversary.on),

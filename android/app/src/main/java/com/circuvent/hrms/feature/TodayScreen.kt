@@ -21,9 +21,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -36,6 +39,7 @@ import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.TextTone
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.LocationProvider
+import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Base64
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -92,6 +96,20 @@ fun TodayScreen(
     // the one outcome worth designing against here.
     var policy by remember { mutableStateOf(AttendancePolicyDto()) }
 
+    val cameraPermissionNeededTitle = stringResource(R.string.today_camera_permission_needed_title)
+    val cameraPermissionNeededDescription = stringResource(R.string.today_camera_permission_needed_description)
+    val locationPermissionNeededTitle = stringResource(R.string.today_location_permission_needed_title)
+    val locationPermissionNeededDescription = stringResource(R.string.today_location_permission_needed_description)
+    val offlineTitle = stringResource(R.string.today_offline_title)
+    val offlineDescription = stringResource(R.string.today_offline_description)
+    val locationOffTitle = stringResource(R.string.today_location_off_title)
+    val locationOffDescription = stringResource(R.string.today_location_off_description)
+    val noLocationFixTitle = stringResource(R.string.today_no_location_fix_title)
+    val notAtWorkTitle = stringResource(R.string.today_not_at_work_title)
+    val photoNotTakenTitle = stringResource(R.string.today_photo_not_taken_title)
+    val photoNotTakenDescriptionTemplate = stringResource(R.string.today_photo_not_taken_description_template)
+    val genericErrorTitle = stringResource(R.string.today_generic_error_title)
+
     fun cameraGranted(): Boolean =
         ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
@@ -102,9 +120,8 @@ fun TodayScreen(
         if (!granted) {
             message = Triple(
                 BannerTone.ERROR,
-                "Camera permission is needed",
-                "Your employer requires a photograph with each punch. Grant it in Settings " +
-                    "and try again.",
+                cameraPermissionNeededTitle,
+                cameraPermissionNeededDescription,
             )
         }
     }
@@ -115,8 +132,8 @@ fun TodayScreen(
         if (granted.values.none { it }) {
             message = Triple(
                 BannerTone.ERROR,
-                "Location permission is needed",
-                "Your employer checks that a clock-in happened at a work location. Grant it in Settings and try again.",
+                locationPermissionNeededTitle,
+                locationPermissionNeededDescription,
             )
         }
     }
@@ -131,8 +148,8 @@ fun TodayScreen(
             if (e is com.circuvent.hrms.data.net.OfflineException) {
                 message = Triple(
                     BannerTone.INFO,
-                    "You are offline",
-                    "Your clock-in will be sent when you reconnect.",
+                    offlineTitle,
+                    offlineDescription,
                 )
             }
         } finally {
@@ -172,13 +189,13 @@ fun TodayScreen(
                     is LocationProvider.Result.Disabled -> {
                         message = Triple(
                             BannerTone.ERROR,
-                            "Location is switched off",
-                            "Turn location on in your device settings and try again.",
+                            locationOffTitle,
+                            locationOffDescription,
                         )
                         return@launch
                     }
                     is LocationProvider.Result.Unavailable -> {
-                        message = Triple(BannerTone.ERROR, "No location fix", located.message)
+                        message = Triple(BannerTone.ERROR, noLocationFixTitle, located.message)
                         return@launch
                     }
                     is LocationProvider.Result.Located -> {
@@ -197,7 +214,7 @@ fun TodayScreen(
                         )
 
                         if (!verdict.allowed) {
-                            message = Triple(BannerTone.ERROR, "You are not at work", verdict.message)
+                            message = Triple(BannerTone.ERROR, notAtWorkTitle, verdict.message)
                             return@launch
                         }
 
@@ -217,8 +234,8 @@ fun TodayScreen(
                                 is PunchCamera.Result.Failed -> {
                                     message = Triple(
                                         BannerTone.ERROR,
-                                        "The photograph was not taken",
-                                        "${shot.message} Your employer requires one with each punch.",
+                                        photoNotTakenTitle,
+                                        photoNotTakenDescriptionTemplate.format(shot.message),
                                     )
                                     return@launch
                                 }
@@ -233,14 +250,14 @@ fun TodayScreen(
                             }
                         }
 
-                        submitPunch(container, viewModel, direction, located.position, user, selfie)?.let {
+                        submitPunch(container, viewModel, direction, located.position, user, selfie, context)?.let {
                             message = it
                         }
                         load()
                     }
                 }
             } catch (e: Exception) {
-                message = Triple(BannerTone.ERROR, "That did not work", e.message)
+                message = Triple(BannerTone.ERROR, genericErrorTitle, e.message)
             } finally {
                 busy = false
                 viewModel.refreshQueueCounts()
@@ -268,12 +285,13 @@ fun TodayScreen(
         // The email's local part is real information the session already
         // carries, so it is used when there is no name; and when there is
         // neither, the line is dropped rather than shown empty.
-        val greeting = remember(user) {
+        val greetingTemplate = stringResource(R.string.today_greeting_template)
+        val greeting = remember(user, greetingTemplate) {
             val name = user?.firstName?.trim().orEmpty()
             val fallback = user?.email?.substringBefore('@')?.trim().orEmpty()
             when {
-                name.isNotEmpty() -> "Hello, $name"
-                fallback.isNotEmpty() -> "Hello, $fallback"
+                name.isNotEmpty() -> greetingTemplate.format(name)
+                fallback.isNotEmpty() -> greetingTemplate.format(fallback)
                 else -> ""
             }
         }
@@ -293,9 +311,9 @@ fun TodayScreen(
             } else {
                 AppText(
                     when {
-                        finished -> "Day complete"
-                        clockedIn -> "You are clocked in"
-                        else -> "Not clocked in"
+                        finished -> stringResource(R.string.today_day_complete_label)
+                        clockedIn -> stringResource(R.string.today_clocked_in_label)
+                        else -> stringResource(R.string.today_not_clocked_in_label)
                     },
                     size = Theme.type.title2,
                     lineHeight = Theme.type.title2Line,
@@ -311,14 +329,14 @@ fun TodayScreen(
                     .padding(top = Theme.spacing.lg),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Field("In", record?.clockInAt?.let { ShiftRules.formatClock(it) } ?: "—", onHero = true)
-                Field("Out", record?.clockOutAt?.let { ShiftRules.formatClock(it) } ?: "—", onHero = true)
-                Field("Worked", record?.workedMinutes?.let { ShiftRules.formatDuration(it) } ?: "—", onHero = true)
+                Field(stringResource(R.string.today_field_in_label), record?.clockInAt?.let { ShiftRules.formatClock(it) } ?: "—", onHero = true)
+                Field(stringResource(R.string.today_field_out_label), record?.clockOutAt?.let { ShiftRules.formatClock(it) } ?: "—", onHero = true)
+                Field(stringResource(R.string.today_worked_label), record?.workedMinutes?.let { ShiftRules.formatDuration(it) } ?: "—", onHero = true)
             }
 
             if (record?.requiresLocationReview == true) {
                 AppText(
-                    "Your manager will check today's location. Nothing is needed from you.",
+                    stringResource(R.string.today_location_review_notice),
                     size = Theme.type.footnote,
                     lineHeight = Theme.type.footnoteLine,
                     tone = TextTone.WARNING,
@@ -331,7 +349,7 @@ fun TodayScreen(
                 // the device needs to know it has not reached the server — that
                 // is the difference between "I clocked in" and "I can prove it".
                 AppText(
-                    if (pending == 1) "1 action waiting to be sent" else "$pending actions waiting to be sent",
+                    pluralStringResource(R.plurals.today_pending_actions, pending, pending),
                     size = Theme.type.footnote,
                     lineHeight = Theme.type.footnoteLine,
                     tone = TextTone.MUTED,
@@ -348,7 +366,7 @@ fun TodayScreen(
                 policy.notice?.let { notice ->
                     Banner(
                         tone = BannerTone.INFO,
-                        title = "A photograph is taken with each punch",
+                        title = stringResource(R.string.today_photo_notice_title),
                         description = notice,
                     )
                 }
@@ -360,14 +378,14 @@ fun TodayScreen(
                 // already says "Day complete" and shows both times.
                 if (!finished) {
                     AppButton(
-                        label = if (clockedIn) "Clock out" else "Clock in",
+                        label = if (clockedIn) stringResource(R.string.today_clock_out_action) else stringResource(R.string.today_clock_in_action),
                         onClick = { punch(if (clockedIn) "out" else "in") },
                         variant = ButtonVariant.ON_HERO,
                         busy = busy,
                         contentDescription = if (clockedIn) {
-                            "Records the end of your working day using your current location"
+                            stringResource(R.string.today_clock_out_content_description)
                         } else {
-                            "Records the start of your working day using your current location"
+                            stringResource(R.string.today_clock_in_content_description)
                         },
                         modifier = Modifier.padding(top = Theme.spacing.xl),
                     )
@@ -386,11 +404,7 @@ fun TodayScreen(
             // avoid.
             Banner(
                 tone = BannerTone.ERROR,
-                title = if (quarantined.size == 1) {
-                    "1 action was refused and will not be retried"
-                } else {
-                    "${quarantined.size} actions were refused and will not be retried"
-                },
+                title = pluralStringResource(R.plurals.today_quarantined_actions, quarantined.size, quarantined.size),
                 action = {
                     Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                         quarantined.forEach { operation ->
@@ -413,25 +427,25 @@ private fun QuarantinedRow(operation: OfflineQueue.Operation, viewModel: AppView
 
     Column {
         AppText(
-            "$name — ${operation.lastError ?: "no reason given"}",
+            "$name — ${operation.lastError ?: stringResource(R.string.today_quarantined_no_reason_fallback)}",
             size = Theme.type.caption,
             lineHeight = Theme.type.captionLine,
             tone = TextTone.DANGER,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
             AppButton(
-                label = "Try again",
+                label = stringResource(R.string.today_try_again_action),
                 onClick = { viewModel.retry(operation.id) },
                 variant = ButtonVariant.GHOST,
                 fullWidth = false,
-                contentDescription = "Try $name again",
+                contentDescription = stringResource(R.string.today_try_again_content_description, name),
             )
             AppButton(
-                label = "Discard",
+                label = stringResource(R.string.today_discard_action),
                 onClick = { viewModel.discard(operation.id) },
                 variant = ButtonVariant.GHOST,
                 fullWidth = false,
-                contentDescription = "Discard $name permanently",
+                contentDescription = stringResource(R.string.today_discard_content_description, name),
             )
         }
     }
@@ -483,6 +497,7 @@ private suspend fun submitPunch(
     position: Geofence.Coordinates,
     user: SessionUser?,
     selfie: PunchSelfie?,
+    context: Context,
 ): Triple<BannerTone, String, String?>? {
     val payload = buildJsonObject {
         put("action", direction)
@@ -525,26 +540,30 @@ private suspend fun submitPunch(
     return try {
         container.repository.sendQueued(kind, payload, id)
         container.queue.markSent(id)
-        Triple(BannerTone.SUCCESS, if (direction == "in") "Clocked in" else "Clocked out", null)
+        Triple(
+            BannerTone.SUCCESS,
+            if (direction == "in") context.getString(R.string.today_clocked_in_success) else context.getString(R.string.today_clocked_out_success),
+            null,
+        )
     } catch (e: com.circuvent.hrms.data.net.OfflineException) {
         container.queue.markFailed(id, null, e.message)
         Triple(
             BannerTone.INFO,
-            "Saved on this device",
-            "It will be sent when you have a connection.",
+            context.getString(R.string.today_saved_on_device_title),
+            context.getString(R.string.today_saved_offline_description),
         )
     } catch (e: com.circuvent.hrms.data.net.ApiException) {
         container.queue.markFailed(id, e.status, e.message)
         when (container.queue.outcomeOf(id)) {
             OfflineQueue.Status.QUARANTINED -> Triple(
                 BannerTone.ERROR,
-                "This could not be recorded",
-                "Please speak to your manager or HR.",
+                context.getString(R.string.today_not_recorded_title),
+                context.getString(R.string.today_not_recorded_description),
             )
             else -> Triple(
                 BannerTone.INFO,
-                "Saved on this device",
-                "It will be retried automatically.",
+                context.getString(R.string.today_saved_on_device_title),
+                context.getString(R.string.today_saved_retry_description),
             )
         }
     }

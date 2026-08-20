@@ -35,9 +35,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.AccentTone
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.design.colors
@@ -89,6 +92,11 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
 
     val scope = rememberCoroutineScope()
 
+    val wallLoadFailedTitle = stringResource(R.string.wall_load_failed_title)
+    val writeSomethingFirst = stringResource(R.string.wall_draft_too_short)
+    val postFailedTitle = stringResource(R.string.wall_post_failed_title)
+    val likeFailedTitle = stringResource(R.string.wall_like_failed_title)
+
     suspend fun load() {
         try {
             // Newest first. The store returns insertion order, which puts the
@@ -96,7 +104,7 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
             posts = container.repository.wallPosts().sortedByDescending { it.createdAt }
             error = null
         } catch (e: Throwable) {
-            error = "The wall could not be loaded" to e.message
+            error = wallLoadFailedTitle to e.message
         } finally {
             loading = false
         }
@@ -113,7 +121,7 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
 
     fun publish() {
         if (draft.trim().length < 3) {
-            draftError = "Write something first."
+            draftError = writeSomethingFirst
             return
         }
         draftError = null
@@ -136,7 +144,7 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
                 composing = false
                 load()
             } catch (e: Exception) {
-                error = "That post was not published" to e.message
+                error = postFailedTitle to e.message
             } finally {
                 publishing = false
             }
@@ -161,7 +169,7 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
                     }
                 }
             } catch (e: Exception) {
-                error = "That like was not saved" to e.message
+                error = likeFailedTitle to e.message
             } finally {
                 busyId = null
             }
@@ -183,7 +191,7 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
                     OutlinedTextField(
                         value = draft,
                         onValueChange = { draft = it.take(2000); draftError = null },
-                        label = { Text("Share something with the company") },
+                        label = { Text(stringResource(R.string.wall_draft_label)) },
                         supportingText = { draftError?.let { Text(it) } },
                         isError = draftError != null,
                         minLines = 3,
@@ -193,13 +201,13 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
                     Spacer(Modifier.height(Theme.spacing.sm))
                     Row(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                         AppButton(
-                            label = "Post",
+                            label = stringResource(R.string.wall_post_action),
                             onClick = ::publish,
                             fullWidth = false,
                             busy = publishing,
                         )
                         AppButton(
-                            label = "Cancel",
+                            label = stringResource(R.string.expenses_cancel_action),
                             onClick = { composing = false; draft = ""; draftError = null },
                             variant = ButtonVariant.GHOST,
                             fullWidth = false,
@@ -207,9 +215,9 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
                     }
                 } else {
                     AppButton(
-                        label = "Share something",
+                        label = stringResource(R.string.wall_share_something_action),
                         onClick = { composing = true },
-                        contentDescription = "Write a post for the company wall",
+                        contentDescription = stringResource(R.string.wall_share_something_content_description),
                     )
                 }
             }
@@ -219,9 +227,8 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
             when {
                 loading -> SkeletonRows(count = 3, rowHeight = 150.dp)
                 posts.isEmpty() && error == null -> EmptyState(
-                    title = "Nothing on the wall yet",
-                    description = "Welcomes, thank-yous and news from around the company " +
-                        "appear here. Yours can be the first.",
+                    title = stringResource(R.string.wall_empty_title),
+                    description = stringResource(R.string.wall_empty_description),
                 )
             }
         }
@@ -233,7 +240,7 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
                     Spacer(Modifier.width(Theme.spacing.md))
                     Column(Modifier.weight(1f)) {
                         AppText(
-                            post.author.ifBlank { "Someone" },
+                            post.author.ifBlank { stringResource(R.string.wall_unknown_author_fallback) },
                             weight = FontWeight.SemiBold,
                         )
                         val subtitle = listOfNotNull(
@@ -270,15 +277,15 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
                 Spacer(Modifier.height(Theme.spacing.md))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AppButton(
-                        label = if (post.likes == 1) "1 like" else "${post.likes} likes",
+                        label = pluralStringResource(R.plurals.wall_like_count, post.likes, post.likes),
                         onClick = { toggleLike(post) },
                         variant = if (post.liked) ButtonVariant.SECONDARY else ButtonVariant.GHOST,
                         fullWidth = false,
                         busy = busyId == post.id,
                         contentDescription = if (post.liked) {
-                            "Remove your like from ${post.author}'s post"
+                            stringResource(R.string.wall_remove_like_content_description, post.author)
                         } else {
-                            "Like ${post.author}'s post"
+                            stringResource(R.string.wall_add_like_content_description, post.author)
                         },
                     )
 
@@ -294,7 +301,7 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
                         )
                         Spacer(Modifier.width(Theme.spacing.xs))
                         AppText(
-                            if (post.comments == 1) "1 comment" else "${post.comments} comments",
+                            pluralStringResource(R.plurals.wall_comment_count, post.comments, post.comments),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
                             tone = TextTone.MUTED,
@@ -307,10 +314,11 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
 }
 
 /** The badge a post carries, or null for an ordinary one. */
+@Composable
 private fun kindOf(type: String): Pair<String, PillTone>? = when (type) {
-    "achievement" -> "Achievement" to PillTone.SUCCESS
-    "welcome" -> "Welcome" to PillTone.INFO
-    "announcement" -> "Announcement" to PillTone.WARNING
+    "achievement" -> stringResource(R.string.wall_kind_achievement) to PillTone.SUCCESS
+    "welcome" -> stringResource(R.string.wall_kind_welcome) to PillTone.INFO
+    "announcement" -> stringResource(R.string.wall_kind_announcement) to PillTone.WARNING
     else -> null
 }
 

@@ -27,11 +27,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppText
@@ -68,9 +70,21 @@ fun SignInScreen(viewModel: AppViewModel) {
     val context = LocalContext.current
     val passkeys = remember(context) { PasskeyManager(context) }
 
+    val missingFieldsTitle = stringResource(R.string.signin_missing_fields_title)
+    val noConnectionTitle = stringResource(R.string.signin_no_connection_title)
+    val noConnectionDescription = stringResource(R.string.signin_no_connection_description)
+    val genericErrorTitle = stringResource(R.string.signin_generic_error_title)
+    val unexpectedErrorTitle = stringResource(R.string.signin_unexpected_error_title)
+    val unexpectedErrorDescription = stringResource(R.string.signin_unexpected_error_description)
+    val passkeyUnexpectedResponseDescription = stringResource(R.string.signin_passkey_unexpected_response_description)
+    val noPasskeyTitle = stringResource(R.string.signin_no_passkey_title)
+    val noPasskeyDescription = stringResource(R.string.signin_no_passkey_description)
+    val passkeyNoConnectionDescription = stringResource(R.string.signin_passkey_no_connection_description)
+    val passkeyGenericErrorDescription = stringResource(R.string.signin_passkey_generic_error_description)
+
     fun submit() {
         if (email.isBlank() || password.isEmpty()) {
-            error = "Enter your email address and password" to null
+            error = missingFieldsTitle to null
             return
         }
 
@@ -84,14 +98,13 @@ fun SignInScreen(viewModel: AppViewModel) {
                 // password" when the real problem is a dead connection sends
                 // people to the reset flow for no reason — and a reset needs
                 // the network too.
-                error = "No connection" to
-                    "Check your signal and try again. Your password is not the problem."
+                error = noConnectionTitle to noConnectionDescription
             } catch (e: ApiException) {
                 if (e.body?.contains("mfaRequired") == true) {
                     needsCode = true
                     error = null
                 } else {
-                    error = "That did not work" to e.message
+                    error = genericErrorTitle to e.message
                 }
             } catch (e: Exception) {
                 // Logged, not just shown. A generic catch that reports
@@ -101,7 +114,7 @@ fun SignInScreen(viewModel: AppViewModel) {
                 // returned 200 from the server and this branch swallowed the
                 // reason why the app disagreed.
                 Log.e("SignIn", "Sign-in failed after a successful request", e)
-                error = "Something went wrong" to "Please try again."
+                error = unexpectedErrorTitle to unexpectedErrorDescription
             } finally {
                 busy = false
             }
@@ -124,14 +137,14 @@ fun SignInScreen(viewModel: AppViewModel) {
         verticalArrangement = Arrangement.Center,
     ) {
         AppText(
-            "Circuvent HR",
+            stringResource(R.string.signin_app_title),
             size = Theme.type.title1,
             lineHeight = Theme.type.title1Line,
             weight = FontWeight.Bold,
             heading = true,
         )
         AppText(
-            "Sign in with your work account",
+            stringResource(R.string.signin_subtitle),
             tone = TextTone.MUTED,
             modifier = Modifier.padding(top = Theme.spacing.xs, bottom = Theme.spacing.xxl),
         )
@@ -148,7 +161,7 @@ fun SignInScreen(viewModel: AppViewModel) {
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Work email") },
+            label = { Text(stringResource(R.string.signin_email_label)) },
             singleLine = true,
             enabled = !busy,
             keyboardOptions = KeyboardOptions(
@@ -164,7 +177,7 @@ fun SignInScreen(viewModel: AppViewModel) {
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password") },
+            label = { Text(stringResource(R.string.signin_password_label)) },
             singleLine = true,
             enabled = !busy,
             visualTransformation =
@@ -178,7 +191,11 @@ fun SignInScreen(viewModel: AppViewModel) {
                     Icon(
                         imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                         contentDescription =
-                            if (passwordVisible) "Hide password" else "Show password",
+                            if (passwordVisible) {
+                                stringResource(R.string.signin_hide_password_content_description)
+                            } else {
+                                stringResource(R.string.signin_show_password_content_description)
+                            },
                     )
                 }
             },
@@ -202,8 +219,8 @@ fun SignInScreen(viewModel: AppViewModel) {
             OutlinedTextField(
                 value = totpCode,
                 onValueChange = { totpCode = it.filter(Char::isDigit).take(6) },
-                label = { Text("Authentication code") },
-                supportingText = { Text("The six-digit code from your authenticator app") },
+                label = { Text(stringResource(R.string.signin_totp_label)) },
+                supportingText = { Text(stringResource(R.string.signin_totp_hint)) },
                 singleLine = true,
                 enabled = !busy,
                 keyboardOptions = KeyboardOptions(
@@ -218,10 +235,10 @@ fun SignInScreen(viewModel: AppViewModel) {
         }
 
         AppButton(
-            label = "Sign in",
+            label = stringResource(R.string.signin_submit_action),
             onClick = ::submit,
             busy = busy,
-            contentDescription = "Sign in to Circuvent HR",
+            contentDescription = stringResource(R.string.signin_submit_content_description),
             modifier = Modifier.padding(top = Theme.spacing.lg),
         )
 
@@ -232,7 +249,7 @@ fun SignInScreen(viewModel: AppViewModel) {
         // only offers one strands them. Once a passkey exists this is the
         // shorter path — no password to phish, and nothing to type.
         AppButton(
-            label = "Use a passkey",
+            label = stringResource(R.string.signin_passkey_action),
             onClick = {
                 busy = true
                 error = null
@@ -243,8 +260,7 @@ fun SignInScreen(viewModel: AppViewModel) {
                             is PasskeyManager.Outcome.Success -> {
                                 val assertion = passkeys.flattenAssertion(outcome.responseJson)
                                 if (assertion == null) {
-                                    error = "That did not work" to
-                                        "Your device returned something unexpected."
+                                    error = genericErrorTitle to passkeyUnexpectedResponseDescription
                                 } else {
                                     viewModel.signInWithPasskey(assertion)
                                 }
@@ -252,25 +268,24 @@ fun SignInScreen(viewModel: AppViewModel) {
                             // Dismissing the sheet is a decision, not a failure.
                             PasskeyManager.Outcome.Cancelled -> Unit
                             PasskeyManager.Outcome.NoneEnrolled -> {
-                                error = "No passkey on this device" to
-                                    "Sign in with your password once, then add a passkey from your profile."
+                                error = noPasskeyTitle to noPasskeyDescription
                             }
                             is PasskeyManager.Outcome.Failed -> {
-                                error = "That did not work" to outcome.message
+                                error = genericErrorTitle to outcome.message
                             }
                         }
                     } catch (e: OfflineException) {
-                        error = "No connection" to "Check your signal and try again."
+                        error = noConnectionTitle to passkeyNoConnectionDescription
                     } catch (e: Exception) {
                         Log.e("SignIn", "Passkey sign-in failed", e)
-                        error = "That did not work" to "Please try your password."
+                        error = genericErrorTitle to passkeyGenericErrorDescription
                     } finally {
                         busy = false
                     }
                 }
             },
             busy = false,
-            contentDescription = "Sign in using a passkey on this device",
+            contentDescription = stringResource(R.string.signin_passkey_content_description),
             modifier = Modifier.padding(top = Theme.spacing.sm),
         )
     }

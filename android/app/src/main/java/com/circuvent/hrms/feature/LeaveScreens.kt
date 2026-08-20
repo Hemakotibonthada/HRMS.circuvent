@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -39,6 +41,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.MinTouchTarget
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
@@ -65,9 +68,21 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.time.LocalDate
 
-private val LEAVE_TYPES = listOf(
+private val LEAVE_TYPE_CODES = listOf(
     "casual", "sick", "earned", "maternity", "paternity", "bereavement", "unpaid",
 )
+
+@Composable
+private fun leaveTypeLabel(type: String): String = when (type) {
+    "casual" -> stringResource(R.string.leave_type_casual_label)
+    "sick" -> stringResource(R.string.leave_type_sick_label)
+    "earned" -> stringResource(R.string.leave_type_earned_label)
+    "maternity" -> stringResource(R.string.leave_type_maternity_label)
+    "paternity" -> stringResource(R.string.leave_type_paternity_label)
+    "bereavement" -> stringResource(R.string.leave_type_bereavement_label)
+    "unpaid" -> stringResource(R.string.leave_type_unpaid_label)
+    else -> type.replaceFirstChar { it.uppercase() }
+}
 
 /**
  * Apply for leave.
@@ -124,6 +139,12 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
     val draft = LeaveRules.Draft(leaveType, startDate, endDate, isHalfDay, reason)
     val cost = LeaveRules.totalDays(draft)
 
+    val savedOnDeviceTitle = stringResource(R.string.leave_apply_saved_on_device_title)
+    val savedOfflineDescription = stringResource(R.string.leave_apply_saved_offline_description)
+    val savedRetryDescription = stringResource(R.string.leave_apply_saved_retry_description)
+    val notSubmittedTitle = stringResource(R.string.leave_apply_not_submitted_title)
+    val notSubmittedDescription = stringResource(R.string.leave_apply_not_submitted_description)
+
     val summary = remember(startDate, endDate, isHalfDay, closedDays) {
         val start = runCatching { LocalDate.parse(startDate) }.getOrNull()
         val end = runCatching { LocalDate.parse(endDate) }.getOrNull()
@@ -172,8 +193,8 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
                 container.queue.markFailed(id, null, e.message)
                 Triple(
                     BannerTone.INFO,
-                    "Saved on this device",
-                    "It will be submitted when you have a connection.",
+                    savedOnDeviceTitle,
+                    savedOfflineDescription,
                 )
             } catch (e: com.circuvent.hrms.data.net.ApiException) {
                 container.queue.markFailed(id, e.status, e.message)
@@ -182,11 +203,11 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
                     // new request and no explanation for why.
                     Triple(
                         BannerTone.ERROR,
-                        "This request was not submitted",
-                        "It will not be retried. Check the dates and your balance, or speak to HR.",
+                        notSubmittedTitle,
+                        notSubmittedDescription,
                     )
                 } else {
-                    Triple(BannerTone.INFO, "Saved on this device", "It will be retried.")
+                    Triple(BannerTone.INFO, savedOnDeviceTitle, savedRetryDescription)
                 }
             } finally {
                 busy = false
@@ -206,7 +227,7 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
             Banner(tone = tone, title = title, description = description)
         }
 
-        AppText("Leave type", size = Theme.type.footnote, lineHeight = Theme.type.footnoteLine, weight = FontWeight.Medium)
+        AppText(stringResource(R.string.leave_apply_type_label), size = Theme.type.footnote, lineHeight = Theme.type.footnoteLine, weight = FontWeight.Medium)
 
         // A row of chips rather than a dropdown. Seven options fit, and a
         // native picker on Android is a modal that hides the rest of the form
@@ -215,12 +236,13 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
             horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm),
             verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm),
         ) {
-            LEAVE_TYPES.forEach { type ->
+            LEAVE_TYPE_CODES.forEach { type ->
+                val label = leaveTypeLabel(type)
                 Chip(
-                    label = type.replaceFirstChar { it.uppercase() },
+                    label = label,
                     selected = leaveType == type,
                     enabled = !busy,
-                    contentDescription = "${type.replaceFirstChar { it.uppercase() }} leave",
+                    contentDescription = stringResource(R.string.leave_type_with_leave_suffix, label),
                 ) { leaveType = type }
             }
         }
@@ -291,7 +313,7 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
             if (s.hasNonWorkingDays) {
                 Banner(
                     tone = BannerTone.WARNING,
-                    title = "This includes days nobody works",
+                    title = stringResource(R.string.leave_apply_non_working_days_title),
                     description = LeaveCost.describe(s),
                 )
             } else {
@@ -309,7 +331,8 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AppText("Half day")
+            val halfDayLabel = stringResource(R.string.leave_apply_half_day_label)
+            AppText(halfDayLabel)
             AppSwitch(
                 checked = isHalfDay,
                 onCheckedChange = {
@@ -317,7 +340,7 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
                     if (it) endDate = startDate
                 },
                 enabled = !busy,
-                modifier = Modifier.semantics { contentDescription = "Half day" },
+                modifier = Modifier.semantics { contentDescription = halfDayLabel },
             )
         }
 
@@ -325,7 +348,7 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
             // Shown before submitting, because the number of days is the thing
             // that comes off the balance and the one people get wrong.
             AppText(
-                "This will use $cost ${if (cost == 1.0) "day" else "days"} of your balance.",
+                pluralStringResource(R.plurals.leave_apply_cost_days, if (cost == 1.0) 1 else 2, cost),
                 size = Theme.type.footnote,
                 lineHeight = Theme.type.footnoteLine,
                 tone = TextTone.MUTED,
@@ -335,7 +358,7 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
         OutlinedTextField(
             value = reason,
             onValueChange = { reason = it.take(1000) },
-            label = { Text("Reason") },
+            label = { Text(stringResource(R.string.leave_apply_reason_field_label)) },
             supportingText = { errors[LeaveRules.Field.REASON]?.let { Text(it) } },
             isError = errors.containsKey(LeaveRules.Field.REASON),
             minLines = 3,
@@ -343,8 +366,8 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
             modifier = Modifier.fillMaxWidth(),
         )
 
-        AppButton("Submit request", ::submit, busy = busy)
-        AppButton("Cancel", onDone, variant = ButtonVariant.GHOST, enabled = !busy)
+        AppButton(stringResource(R.string.leave_apply_submit_action), ::submit, busy = busy)
+        AppButton(stringResource(R.string.expenses_cancel_action), onDone, variant = ButtonVariant.GHOST, enabled = !busy)
     }
 }
 
@@ -418,8 +441,8 @@ fun LeaveDetailScreen(container: AppContainer, requestId: String) {
                 val request = current.value
                 if (request == null) {
                     EmptyState(
-                        title = "This request could not be found",
-                        description = "It may have been cancelled, or it belongs to someone else.",
+                        title = stringResource(R.string.leave_detail_not_found_title),
+                        description = stringResource(R.string.leave_detail_not_found_description),
                     )
                 } else {
                     Row(
@@ -428,7 +451,10 @@ fun LeaveDetailScreen(container: AppContainer, requestId: String) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         AppText(
-                            "${request.leaveType.replaceFirstChar { it.uppercase() }} leave",
+                            stringResource(
+                                R.string.leave_type_with_leave_suffix,
+                                request.leaveType.replaceFirstChar { it.uppercase() },
+                            ),
                             size = Theme.type.title2,
                             lineHeight = Theme.type.title2Line,
                             weight = FontWeight.Bold,
@@ -446,13 +472,21 @@ fun LeaveDetailScreen(container: AppContainer, requestId: String) {
                     }
 
                     AppCard {
-                        DetailRow("From", request.startDate)
-                        DetailRow("To", request.endDate)
+                        DetailRow(stringResource(R.string.leave_detail_from_label), request.startDate)
+                        DetailRow(stringResource(R.string.leave_detail_to_label), request.endDate)
                         DetailRow(
-                            "Days",
-                            if (request.isHalfDay) "Half day" else "${request.totalDays.toInt()} days",
+                            stringResource(R.string.leave_detail_days_label),
+                            if (request.isHalfDay) {
+                                stringResource(R.string.leave_apply_half_day_label)
+                            } else {
+                                pluralStringResource(
+                                    R.plurals.leave_detail_days_count,
+                                    request.totalDays.toInt(),
+                                    request.totalDays.toInt(),
+                                )
+                            },
                         )
-                        DetailRow("Reason", request.reason)
+                        DetailRow(stringResource(R.string.leave_detail_reason_label), request.reason)
                     }
                 }
             }

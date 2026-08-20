@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
@@ -30,6 +31,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.MinTouchTarget
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppCard
@@ -96,7 +98,7 @@ fun AttendanceScreen(container: AppContainer, user: SessionUser?) {
             ) {
                 MonthStep(
                     forward = false,
-                    label = "Go to ${AttendanceRules.monthLabel(cursor.minusMonths(1))}",
+                    label = stringResource(R.string.attendance_go_to_month_template, AttendanceRules.monthLabel(cursor.minusMonths(1))),
                 ) { cursor = cursor.minusMonths(1) }
 
                 AppText(
@@ -114,9 +116,9 @@ fun AttendanceScreen(container: AppContainer, user: SessionUser?) {
                     // makes people think they broke something; one that is
                     // visibly inert says "this is as far as it goes".
                     label = if (canGoForward) {
-                        "Go to ${AttendanceRules.monthLabel(cursor.plusMonths(1))}"
+                        stringResource(R.string.attendance_go_to_month_template, AttendanceRules.monthLabel(cursor.plusMonths(1)))
                     } else {
-                        "This is the current month"
+                        stringResource(R.string.attendance_current_month_label)
                     },
                 ) { cursor = cursor.plusMonths(1) }
             }
@@ -132,8 +134,8 @@ fun AttendanceScreen(container: AppContainer, user: SessionUser?) {
                         if (summary != null) SummaryCard(summary)
                         if (rows.isEmpty()) {
                             EmptyState(
-                                title = "Nothing recorded this month",
-                                description = "Days you clock in, take leave or work from home appear here.",
+                                title = stringResource(R.string.attendance_empty_title),
+                                description = stringResource(R.string.attendance_empty_description),
                             )
                         }
                     }
@@ -163,10 +165,10 @@ private fun SummaryCard(summary: AttendanceSummaryDto) {
 
     AppCard {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Total("Present", summary.presentDays.toString())
-            Total("Absent", summary.absentDays.toString())
-            Total("Leave", summary.leaveDays.toString())
-            Total("Remote", summary.wfhDays.toString())
+            Total(stringResource(R.string.attendance_present_label), summary.presentDays.toString())
+            Total(stringResource(R.string.attendance_absent_label), summary.absentDays.toString())
+            Total(stringResource(R.string.attendance_leave_label), summary.leaveDays.toString())
+            Total(stringResource(R.string.attendance_remote_label), summary.wfhDays.toString())
         }
         Row(
             Modifier
@@ -174,11 +176,11 @@ private fun SummaryCard(summary: AttendanceSummaryDto) {
                 .padding(top = Theme.spacing.md),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Total("Worked", ShiftRules.formatDuration(summary.totalWorkedMinutes))
-            Total("Overtime", ShiftRules.formatDuration(summary.totalOvertimeMinutes))
+            Total(stringResource(R.string.attendance_worked_label), ShiftRules.formatDuration(summary.totalWorkedMinutes))
+            Total(stringResource(R.string.attendance_overtime_label), ShiftRules.formatDuration(summary.totalOvertimeMinutes))
             // An em dash, not "0h". Nobody averaged nothing; there was nothing
             // to average.
-            Total("Average day", average?.let { ShiftRules.formatDuration(it) } ?: "—")
+            Total(stringResource(R.string.attendance_average_day_label), average?.let { ShiftRules.formatDuration(it) } ?: "—")
         }
     }
 }
@@ -230,7 +232,7 @@ private fun AttendanceRow(row: AttendanceRowDto) {
         "${row.clockInAt?.let { ShiftRules.formatClock(it) } ?: "—"} – " +
             "${row.clockOutAt?.let { ShiftRules.formatClock(it) } ?: "—"}"
     } else {
-        "No punches"
+        stringResource(R.string.attendance_no_punches_label)
     }
 
     val tone = when (AttendanceRules.statusTone(row.status)) {
@@ -267,7 +269,7 @@ private fun AttendanceRow(row: AttendanceRowDto) {
             // cannot act on but is not told the meaning of reads as an
             // accusation.
             AppText(
-                "Location being checked · nothing needed from you",
+                stringResource(R.string.attendance_location_check_notice),
                 size = Theme.type.caption,
                 lineHeight = Theme.type.captionLine,
                 tone = TextTone.MUTED,
@@ -275,7 +277,7 @@ private fun AttendanceRow(row: AttendanceRowDto) {
         }
         if (row.isRegularized) {
             AppText(
-                "Corrected by HR",
+                stringResource(R.string.attendance_regularized_notice),
                 size = Theme.type.caption,
                 lineHeight = Theme.type.captionLine,
                 tone = TextTone.MUTED,

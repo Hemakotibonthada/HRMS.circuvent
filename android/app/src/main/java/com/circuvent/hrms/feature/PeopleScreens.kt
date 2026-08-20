@@ -21,11 +21,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -76,7 +78,13 @@ fun ReferralsScreen(container: AppContainer, onRefer: () -> Unit) {
         contentPadding = screenPadding(),
         verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm),
     ) {
-        item { AppButton("Refer someone", onRefer, contentDescription = "Opens the referral form") }
+        item {
+            AppButton(
+                stringResource(R.string.referrals_refer_someone_action),
+                onRefer,
+                contentDescription = stringResource(R.string.referrals_refer_someone_content_description),
+            )
+        }
 
         item {
             when (val current = state) {
@@ -87,15 +95,17 @@ fun ReferralsScreen(container: AppContainer, onRefer: () -> Unit) {
                     Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                         AppCard {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Figure("Referred", stats.total.toString())
-                                Figure("In pipeline", stats.inPipeline.toString())
-                                Figure("Hired", stats.hired.toString())
+                                Figure(stringResource(R.string.referrals_figure_referred_label), stats.total.toString())
+                                Figure(stringResource(R.string.referrals_figure_in_pipeline_label), stats.inPipeline.toString())
+                                Figure(stringResource(R.string.referrals_figure_hired_label), stats.hired.toString())
                             }
                             // Rendered only when the server actually sent it.
                             stats.bonusPaid?.let {
                                 AppText(
-                                    "₹%,.0f paid".format(it) +
-                                        (stats.bonusPending?.let { p -> " · ₹%,.0f pending".format(p) } ?: ""),
+                                    stringResource(R.string.referrals_bonus_paid_template, "₹%,.0f".format(it)) +
+                                        (stats.bonusPending?.let { p ->
+                                            stringResource(R.string.referrals_bonus_pending_suffix, "₹%,.0f".format(p))
+                                        } ?: ""),
                                     size = Theme.type.footnote,
                                     lineHeight = Theme.type.footnoteLine,
                                     tone = TextTone.MUTED,
@@ -106,8 +116,8 @@ fun ReferralsScreen(container: AppContainer, onRefer: () -> Unit) {
 
                         if (referrals.isEmpty()) {
                             EmptyState(
-                                title = "No referrals yet",
-                                description = "Anyone you put forward appears here, with how far they have got.",
+                                title = stringResource(R.string.referrals_empty_title),
+                                description = stringResource(R.string.referrals_empty_description),
                             )
                         }
                     }
@@ -118,7 +128,12 @@ fun ReferralsScreen(container: AppContainer, onRefer: () -> Unit) {
         (state as? Loaded.Ready)?.value?.first?.let { referrals ->
             items(referrals, key = { it.id }) { referral ->
                 AppCard(
-                    contentDescription = "${referral.candidateName} for ${referral.positionTitle}, ${words(referral.status)}",
+                    contentDescription = stringResource(
+                        R.string.referrals_content_description,
+                        referral.candidateName,
+                        referral.positionTitle,
+                        words(referral.status),
+                    ),
                 ) {
                     Row(
                         Modifier.fillMaxWidth(),
@@ -203,7 +218,7 @@ fun ReferScreen(container: AppContainer, onDone: () -> Unit) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it.take(150) },
-            label = { Text("Their name") },
+            label = { Text(stringResource(R.string.refer_name_field_label)) },
             singleLine = true,
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
@@ -211,8 +226,8 @@ fun ReferScreen(container: AppContainer, onDone: () -> Unit) {
         OutlinedTextField(
             value = email,
             onValueChange = { email = it.take(320) },
-            label = { Text("Their email") },
-            supportingText = { Text("We email them a link to fill in their own details") },
+            label = { Text(stringResource(R.string.refer_email_field_label)) },
+            supportingText = { Text(stringResource(R.string.refer_email_field_supporting_text)) },
             singleLine = true,
             enabled = !busy,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
@@ -221,7 +236,7 @@ fun ReferScreen(container: AppContainer, onDone: () -> Unit) {
         OutlinedTextField(
             value = position,
             onValueChange = { position = it.take(150) },
-            label = { Text("Role they would suit") },
+            label = { Text(stringResource(R.string.refer_position_field_label)) },
             singleLine = true,
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
@@ -229,7 +244,7 @@ fun ReferScreen(container: AppContainer, onDone: () -> Unit) {
         OutlinedTextField(
             value = relationship,
             onValueChange = { relationship = it.take(120) },
-            label = { Text("How you know them (optional)") },
+            label = { Text(stringResource(R.string.refer_relationship_field_label)) },
             singleLine = true,
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
@@ -237,14 +252,16 @@ fun ReferScreen(container: AppContainer, onDone: () -> Unit) {
         OutlinedTextField(
             value = recommendation,
             onValueChange = { recommendation = it.take(2000) },
-            label = { Text("Why you recommend them (optional)") },
+            label = { Text(stringResource(R.string.refer_recommendation_field_label)) },
             minLines = 3,
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
         )
 
+        val notSentTitle = stringResource(R.string.refer_not_sent_title)
+        val offlineDescription = stringResource(R.string.refer_offline_description)
         AppButton(
-            label = "Send referral",
+            label = stringResource(R.string.refer_send_action),
             enabled = nameOk && emailOk && positionOk,
             busy = busy,
             onClick = {
@@ -259,17 +276,16 @@ fun ReferScreen(container: AppContainer, onDone: () -> Unit) {
                         )
                         onDone()
                     } catch (e: com.circuvent.hrms.data.net.OfflineException) {
-                        error = "This was not sent" to
-                            "A referral needs a connection so the invitation email goes out. Nothing has been lost."
+                        error = notSentTitle to offlineDescription
                     } catch (e: Exception) {
-                        error = "This was not sent" to e.message
+                        error = notSentTitle to e.message
                     } finally {
                         busy = false
                     }
                 }
             },
         )
-        AppButton("Cancel", onDone, variant = ButtonVariant.GHOST, enabled = !busy)
+        AppButton(stringResource(R.string.expenses_cancel_action), onDone, variant = ButtonVariant.GHOST, enabled = !busy)
     }
 }
 
@@ -305,7 +321,7 @@ fun SwapsScreen(container: AppContainer, user: SessionUser?) {
         contentPadding = screenPadding(),
         verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm),
     ) {
-        error?.let { item { Banner(BannerTone.ERROR, "That did not work", description = it) } }
+        error?.let { item { Banner(BannerTone.ERROR, stringResource(R.string.swaps_generic_error_title), description = it) } }
 
         item {
             when (val current = state) {
@@ -313,8 +329,8 @@ fun SwapsScreen(container: AppContainer, user: SessionUser?) {
                 is Loaded.Failed -> Banner(BannerTone.ERROR, current.title, description = current.description)
                 is Loaded.Ready -> if (current.value.isEmpty()) {
                     EmptyState(
-                        title = "No swaps",
-                        description = "Offer a shift from the Shifts tab, and anything offered to you appears here.",
+                        title = stringResource(R.string.swaps_empty_title),
+                        description = stringResource(R.string.swaps_empty_description),
                     )
                 }
             }
@@ -325,13 +341,16 @@ fun SwapsScreen(container: AppContainer, user: SessionUser?) {
                 val mine = swap.requestedById == user?.id || swap.requestedById == user?.employeeId
                 val busy = busyId == swap.id
 
-                AppCard(contentDescription = "Swap, ${words(swap.status)}") {
+                AppCard(contentDescription = stringResource(R.string.swaps_content_description, words(swap.status))) {
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        AppText(if (mine) "You offered a shift" else "Offered to you", weight = FontWeight.Medium)
+                        AppText(
+                            if (mine) stringResource(R.string.swaps_you_offered_label) else stringResource(R.string.swaps_offered_to_you_label),
+                            weight = FontWeight.Medium,
+                        )
                         StatusPill(
                             words(swap.status),
                             when (swap.status) {
@@ -353,7 +372,7 @@ fun SwapsScreen(container: AppContainer, user: SessionUser?) {
                     // Offered to somebody else and still open: they can take it.
                     if (!mine && swap.status == "pending") {
                         AppButton(
-                            label = "Take this shift",
+                            label = stringResource(R.string.swaps_take_shift_action),
                             fullWidth = false,
                             busy = busy,
                             modifier = Modifier.padding(top = Theme.spacing.sm),

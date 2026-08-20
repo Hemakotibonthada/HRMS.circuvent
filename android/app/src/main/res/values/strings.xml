@@ -545,4 +545,319 @@
     <string name="work_arrangement_content_description">%1$s, %2$s to %3$s, %4$s</string>
     <string name="work_arrangement_at_location_template">at %1$s</string>
     <string name="work_arrangement_decision_reason_template">Reason: %1$s</string>
+
+    <!-- Inbox (InboxScreen.kt) -->
+    <string name="inbox_colleague_fallback">A colleague</string>
+    <string name="inbox_leave_type_fallback">Leave</string>
+    <string name="inbox_no_reason_given_fallback">No reason given</string>
+    <string name="inbox_to_word">to</string>
+    <plurals name="inbox_leave_days_count">
+        <item quantity="one">%1$s day</item>
+        <item quantity="other">%1$s days</item>
+    </plurals>
+    <string name="inbox_work_from_home_label">Work from home</string>
+    <string name="inbox_attendance_correction_title">Attendance correction</string>
+    <string name="inbox_approval_step_fallback">Approval</string>
+    <string name="inbox_overdue_label">Overdue</string>
+    <string name="inbox_queue_name_leave">leave</string>
+    <string name="inbox_queue_name_work_arrangements">work arrangements</string>
+    <string name="inbox_queue_name_regularisations">regularisations</string>
+    <string name="inbox_queue_name_workflow_approvals">workflow approvals</string>
+    <string name="inbox_decision_not_recorded_title">The decision was not recorded</string>
+    <string name="inbox_partial_load_title">Part of your inbox could not be loaded</string>
+    <string name="inbox_partial_load_description_template">Anything waiting under %1$s is missing from this list. Pull down to try again.</string>
+    <string name="inbox_queue_join_separator">" and "</string>
+    <string name="inbox_empty_title">You are all caught up</string>
+    <string name="inbox_empty_description">Leave, work-from-home and attendance corrections needing your decision arrive here as soon as they are submitted.</string>
+    <string name="inbox_own_request_title">This is your own request</string>
+    <string name="inbox_own_request_description">Someone else has to decide it.</string>
+    <string name="inbox_reason_for_rejection_field_label">Reason for rejection</string>
+    <string name="inbox_reason_hint">They will see this.</string>
+    <string name="inbox_reason_too_short_error">Give a reason. The person needs to know why.</string>
+    <string name="inbox_confirm_rejection_action">Confirm rejection</string>
+    <string name="inbox_back_action">Back</string>
+    <string name="inbox_approve_action">Approve</string>
+    <string name="inbox_approve_content_description">Approve %1$s\'s %2$s request</string>
+    <string name="inbox_reject_action">Reject</string>
+    <string name="inbox_entity_request_fallback">A request</string>
+    <string name="inbox_entity_leave_request_label">Leave request</string>
+    <string name="inbox_entity_expense_claim_label">Expense claim</string>
+    <string name="inbox_entity_timesheet_label">Timesheet</string>
+
+    <!-- PeopleScreens.kt: ReferralsScreen -->
+    <string name="referrals_refer_someone_action">Refer someone</string>
+    <string name="referrals_refer_someone_content_description">Opens the referral form</string>
+    <string name="referrals_figure_referred_label">Referred</string>
+    <string name="referrals_figure_in_pipeline_label">In pipeline</string>
+    <string name="referrals_figure_hired_label">Hired</string>
+    <string name="referrals_bonus_paid_template">%1$s paid</string>
+    <string name="referrals_bonus_pending_suffix">" · %1$s pending"</string>
+    <string name="referrals_empty_title">No referrals yet</string>
+    <string name="referrals_empty_description">Anyone you put forward appears here, with how far they have got.</string>
+    <string name="referrals_content_description">%1$s for %2$s, %3$s</string>
+
+    <!-- PeopleScreens.kt: ReferScreen -->
+    <string name="refer_name_field_label">Their name</string>
+    <string name="refer_email_field_label">Their email</string>
+    <string name="refer_email_field_supporting_text">We email them a link to fill in their own details</string>
+    <string name="refer_position_field_label">Role they would suit</string>
+    <string name="refer_relationship_field_label">How you know them (optional)</string>
+    <string name="refer_recommendation_field_label">Why you recommend them (optional)</string>
+    <string name="refer_send_action">Send referral</string>
+    <string name="refer_not_sent_title">This was not sent</string>
+    <string name="refer_offline_description">A referral needs a connection so the invitation email goes out. Nothing has been lost.</string>
+
+    <!-- PeopleScreens.kt: SwapsScreen -->
+    <string name="swaps_generic_error_title">That did not work</string>
+    <string name="swaps_empty_title">No swaps</string>
+    <string name="swaps_empty_description">Offer a shift from the Shifts tab, and anything offered to you appears here.</string>
+    <string name="swaps_content_description">Swap, %1$s</string>
+    <string name="swaps_you_offered_label">You offered a shift</string>
+    <string name="swaps_offered_to_you_label">Offered to you</string>
+    <string name="swaps_take_shift_action">Take this shift</string>
+
+    <!-- LeaveScreens.kt: shared -->
+    <string name="leave_type_with_leave_suffix">%1$s leave</string>
+
+    <!-- LeaveScreens.kt: LeaveApplyScreen -->
+    <string name="leave_type_casual_label">Casual</string>
+    <string name="leave_type_sick_label">Sick</string>
+    <string name="leave_type_earned_label">Earned</string>
+    <string name="leave_type_maternity_label">Maternity</string>
+    <string name="leave_type_paternity_label">Paternity</string>
+    <string name="leave_type_bereavement_label">Bereavement</string>
+    <string name="leave_type_unpaid_label">Unpaid</string>
+    <string name="leave_apply_type_label">Leave type</string>
+    <string name="leave_apply_half_day_label">Half day</string>
+    <plurals name="leave_apply_cost_days">
+        <item quantity="one">This will use %1$s day of your balance.</item>
+        <item quantity="other">This will use %1$s days of your balance.</item>
+    </plurals>
+    <string name="leave_apply_non_working_days_title">This includes days nobody works</string>
+    <string name="leave_apply_reason_field_label">Reason</string>
+    <string name="leave_apply_submit_action">Submit request</string>
+    <string name="leave_apply_saved_on_device_title">Saved on this device</string>
+    <string name="leave_apply_saved_offline_description">It will be submitted when you have a connection.</string>
+    <string name="leave_apply_saved_retry_description">It will be retried.</string>
+    <string name="leave_apply_not_submitted_title">This request was not submitted</string>
+    <string name="leave_apply_not_submitted_description">It will not be retried. Check the dates and your balance, or speak to HR.</string>
+
+    <!-- LeaveScreens.kt: LeaveDetailScreen -->
+    <string name="leave_detail_not_found_title">This request could not be found</string>
+    <string name="leave_detail_not_found_description">It may have been cancelled, or it belongs to someone else.</string>
+    <string name="leave_detail_from_label">From</string>
+    <string name="leave_detail_to_label">To</string>
+    <string name="leave_detail_days_label">Days</string>
+    <string name="leave_detail_reason_label">Reason</string>
+    <plurals name="leave_detail_days_count">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+
+    <!-- MyTeamScreen.kt -->
+    <string name="myteam_empty_title">No team yet</string>
+    <string name="myteam_empty_description">Once you have colleagues who share a manager with you, who is away and whose birthday is coming up appear here.</string>
+    <string name="myteam_away_today_section_label">Away today</string>
+    <string name="myteam_everyone_in_label">Everyone is in.</string>
+    <string name="myteam_away_content_description">%1$s is away today on %2$s</string>
+    <string name="myteam_back_on_template">back on %1$s</string>
+    <string name="myteam_away_this_week_section_label">Away this week</string>
+    <string name="myteam_birthdays_section_label">Birthdays</string>
+    <string name="myteam_birthday_content_description">%1$s\'s birthday, %2$s</string>
+    <string name="myteam_today_label">Today</string>
+    <string name="myteam_anniversaries_section_label">Work anniversaries</string>
+    <string name="myteam_anniversary_content_description">%1$s, %2$s</string>
+
+    <!-- AttendanceScreen.kt -->
+    <string name="attendance_go_to_month_template">Go to %1$s</string>
+    <string name="attendance_current_month_label">This is the current month</string>
+    <string name="attendance_empty_title">Nothing recorded this month</string>
+    <string name="attendance_empty_description">Days you clock in, take leave or work from home appear here.</string>
+    <string name="attendance_present_label">Present</string>
+    <string name="attendance_absent_label">Absent</string>
+    <string name="attendance_leave_label">Leave</string>
+    <string name="attendance_remote_label">Remote</string>
+    <string name="attendance_worked_label">Worked</string>
+    <string name="attendance_overtime_label">Overtime</string>
+    <string name="attendance_average_day_label">Average day</string>
+    <string name="attendance_no_punches_label">No punches</string>
+    <string name="attendance_location_check_notice">Location being checked · nothing needed from you</string>
+    <string name="attendance_regularized_notice">Corrected by HR</string>
+
+    <!-- TodayScreen.kt -->
+    <string name="today_camera_permission_needed_title">Camera permission is needed</string>
+    <string name="today_camera_permission_needed_description">Your employer requires a photograph with each punch. Grant it in Settings and try again.</string>
+    <string name="today_location_permission_needed_title">Location permission is needed</string>
+    <string name="today_location_permission_needed_description">Your employer checks that a clock-in happened at a work location. Grant it in Settings and try again.</string>
+    <string name="today_offline_title">You are offline</string>
+    <string name="today_offline_description">Your clock-in will be sent when you reconnect.</string>
+    <string name="today_location_off_title">Location is switched off</string>
+    <string name="today_location_off_description">Turn location on in your device settings and try again.</string>
+    <string name="today_no_location_fix_title">No location fix</string>
+    <string name="today_not_at_work_title">You are not at work</string>
+    <string name="today_photo_not_taken_title">The photograph was not taken</string>
+    <string name="today_photo_not_taken_description_template">%1$s Your employer requires one with each punch.</string>
+    <string name="today_generic_error_title">That did not work</string>
+    <string name="today_greeting_template">Hello, %1$s</string>
+    <string name="today_day_complete_label">Day complete</string>
+    <string name="today_clocked_in_label">You are clocked in</string>
+    <string name="today_not_clocked_in_label">Not clocked in</string>
+    <string name="today_field_in_label">In</string>
+    <string name="today_field_out_label">Out</string>
+    <string name="today_worked_label">Worked</string>
+    <string name="today_location_review_notice">Your manager will check today\'s location. Nothing is needed from you.</string>
+    <plurals name="today_pending_actions">
+        <item quantity="one">%1$d action waiting to be sent</item>
+        <item quantity="other">%1$d actions waiting to be sent</item>
+    </plurals>
+    <string name="today_photo_notice_title">A photograph is taken with each punch</string>
+    <string name="today_clock_out_action">Clock out</string>
+    <string name="today_clock_in_action">Clock in</string>
+    <string name="today_clock_out_content_description">Records the end of your working day using your current location</string>
+    <string name="today_clock_in_content_description">Records the start of your working day using your current location</string>
+    <plurals name="today_quarantined_actions">
+        <item quantity="one">%1$d action was refused and will not be retried</item>
+        <item quantity="other">%1$d actions were refused and will not be retried</item>
+    </plurals>
+    <string name="today_quarantined_no_reason_fallback">no reason given</string>
+    <string name="today_try_again_action">Try again</string>
+    <string name="today_try_again_content_description">Try %1$s again</string>
+    <string name="today_discard_action">Discard</string>
+    <string name="today_discard_content_description">Discard %1$s permanently</string>
+    <string name="today_clocked_in_success">Clocked in</string>
+    <string name="today_clocked_out_success">Clocked out</string>
+    <string name="today_saved_on_device_title">Saved on this device</string>
+    <string name="today_saved_offline_description">It will be sent when you have a connection.</string>
+    <string name="today_not_recorded_title">This could not be recorded</string>
+    <string name="today_not_recorded_description">Please speak to your manager or HR.</string>
+    <string name="today_saved_retry_description">It will be retried automatically.</string>
+
+    <!-- MyDetailsScreen.kt -->
+    <string name="mydetails_saved_label">Saved</string>
+    <string name="mydetails_not_saved_fallback">That was not saved</string>
+    <string name="mydetails_joined_on">Joined %1$s</string>
+    <string name="mydetails_hr_owned_notice">Your role, code and joining date are set by HR.</string>
+    <string name="mydetails_mobile_number_label">Mobile number</string>
+    <string name="mydetails_personal_email_label">Personal email</string>
+    <string name="mydetails_date_of_birth_label">Date of birth</string>
+    <string name="mydetails_date_of_birth_locked_notice">Ask HR to change this. It affects gratuity and your retirement date.</string>
+    <string name="mydetails_date_of_birth_hint">YYYY-MM-DD. You can set this once; after that HR changes it.</string>
+    <string name="mydetails_blood_group_label">Blood group</string>
+    <string name="mydetails_address_label">Address</string>
+    <string name="mydetails_city_label">City</string>
+    <string name="mydetails_state_label">State</string>
+    <string name="mydetails_pin_code_label">PIN code</string>
+    <string name="mydetails_save_action">Save</string>
+
+    <!-- SignInScreen.kt -->
+    <string name="signin_missing_fields_title">Enter your email address and password</string>
+    <string name="signin_no_connection_title">No connection</string>
+    <string name="signin_no_connection_description">Check your signal and try again. Your password is not the problem.</string>
+    <string name="signin_generic_error_title">That did not work</string>
+    <string name="signin_unexpected_error_title">Something went wrong</string>
+    <string name="signin_unexpected_error_description">Please try again.</string>
+    <string name="signin_passkey_unexpected_response_description">Your device returned something unexpected.</string>
+    <string name="signin_no_passkey_title">No passkey on this device</string>
+    <string name="signin_no_passkey_description">Sign in with your password once, then add a passkey from your profile.</string>
+    <string name="signin_passkey_no_connection_description">Check your signal and try again.</string>
+    <string name="signin_passkey_generic_error_description">Please try your password.</string>
+    <string name="signin_app_title">Circuvent HR</string>
+    <string name="signin_subtitle">Sign in with your work account</string>
+    <string name="signin_email_label">Work email</string>
+    <string name="signin_password_label">Password</string>
+    <string name="signin_hide_password_content_description">Hide password</string>
+    <string name="signin_show_password_content_description">Show password</string>
+    <string name="signin_totp_label">Authentication code</string>
+    <string name="signin_totp_hint">The six-digit code from your authenticator app</string>
+    <string name="signin_submit_action">Sign in</string>
+    <string name="signin_submit_content_description">Sign in to Circuvent HR</string>
+    <string name="signin_passkey_action">Use a passkey</string>
+    <string name="signin_passkey_content_description">Sign in using a passkey on this device</string>
+
+    <!-- WallScreen.kt -->
+    <string name="wall_load_failed_title">The wall could not be loaded</string>
+    <string name="wall_draft_too_short">Write something first.</string>
+    <string name="wall_post_failed_title">That post was not published</string>
+    <string name="wall_like_failed_title">That like was not saved</string>
+    <string name="wall_draft_label">Share something with the company</string>
+    <string name="wall_post_action">Post</string>
+    <string name="wall_share_something_action">Share something</string>
+    <string name="wall_share_something_content_description">Write a post for the company wall</string>
+    <string name="wall_empty_title">Nothing on the wall yet</string>
+    <string name="wall_empty_description">Welcomes, thank-yous and news from around the company appear here. Yours can be the first.</string>
+    <string name="wall_unknown_author_fallback">Someone</string>
+    <plurals name="wall_like_count">
+        <item quantity="one">%1$d like</item>
+        <item quantity="other">%1$d likes</item>
+    </plurals>
+    <plurals name="wall_comment_count">
+        <item quantity="one">%1$d comment</item>
+        <item quantity="other">%1$d comments</item>
+    </plurals>
+    <string name="wall_remove_like_content_description">Remove your like from %1$s\'s post</string>
+    <string name="wall_add_like_content_description">Like %1$s\'s post</string>
+    <string name="wall_kind_achievement">Achievement</string>
+    <string name="wall_kind_welcome">Welcome</string>
+    <string name="wall_kind_announcement">Announcement</string>
+
+    <!-- MeScreen.kt (ProfileScreen) -->
+    <string name="me_section_time">Time</string>
+    <string name="me_section_money">Money</string>
+    <string name="me_section_growth">Growth</string>
+    <string name="me_section_workplace">Workplace</string>
+    <string name="me_section_team">My team</string>
+    <string name="me_pending_actions_description">They are saved on this device and will be sent when you have a connection.</string>
+    <string name="me_settings_content_description">Settings. Appearance, biometric unlock and sign out</string>
+    <string name="me_settings_title">Settings</string>
+    <string name="me_settings_description">Appearance, biometric unlock and sign out</string>
+    <string name="me_open_id_card_content_description">%1$s. Open your identity card</string>
+    <string name="me_signed_in_fallback">Signed in</string>
+    <string name="me_feature_attendance_title">Attendance</string>
+    <string name="me_feature_attendance_subtitle">Your punches, month by month</string>
+    <string name="me_feature_regularise_title">Correct a day</string>
+    <string name="me_feature_regularise_subtitle">A missed punch, or one the reader lost</string>
+    <string name="me_feature_work_away_title">Work away</string>
+    <string name="me_feature_work_away_subtitle">From home or on duty. This is not leave</string>
+    <string name="me_feature_shift_swaps_title">Shift swaps</string>
+    <string name="me_feature_shift_swaps_subtitle">Offer a shift, or take one offered</string>
+    <string name="me_feature_holidays_title">Holidays</string>
+    <string name="me_feature_holidays_subtitle">The days the office is closed</string>
+    <string name="me_feature_tax_declaration_title">Tax declaration</string>
+    <string name="me_feature_tax_declaration_subtitle">Declare investments so less is deducted</string>
+    <string name="me_feature_form16_title">Form 16</string>
+    <string name="me_feature_form16_subtitle">Your annual TDS certificate</string>
+    <string name="me_feature_loans_title">Loans</string>
+    <string name="me_feature_loans_subtitle">What you owe, and what is left to repay</string>
+    <string name="me_feature_expenses_title">Expenses</string>
+    <string name="me_feature_expenses_subtitle">Claim something back, and follow it</string>
+    <string name="me_feature_benefits_title">Benefits</string>
+    <string name="me_feature_benefits_subtitle">Your cover, the plans on offer, dependants</string>
+    <string name="me_feature_goals_title">My goals</string>
+    <string name="me_feature_goals_subtitle">Record progress as it happens</string>
+    <string name="me_feature_learning_title">Learning</string>
+    <string name="me_feature_learning_subtitle">Courses assigned, and what you can start</string>
+    <string name="me_feature_checkins_title">Check-ins</string>
+    <string name="me_feature_checkins_subtitle">Notes and actions from your one-to-ones</string>
+    <string name="me_feature_referrals_title">Referrals</string>
+    <string name="me_feature_referrals_subtitle">Put someone forward, and follow them</string>
+    <string name="me_feature_wall_title">Company wall</string>
+    <string name="me_feature_wall_subtitle">Welcomes, thank-yous and news</string>
+    <string name="me_feature_directory_title">Directory</string>
+    <string name="me_feature_directory_subtitle">Find a colleague</string>
+    <string name="me_feature_announcements_title">Announcements</string>
+    <string name="me_feature_announcements_subtitle">Notices from your company</string>
+    <string name="me_feature_my_details_title">My details</string>
+    <string name="me_feature_my_details_subtitle">Your phone, address and date of birth</string>
+    <string name="me_feature_id_card_title">Identity card</string>
+    <string name="me_feature_id_card_subtitle">Your details, without a connection</string>
+    <string name="me_feature_assets_title">My equipment</string>
+    <string name="me_feature_assets_subtitle">Laptops and other assets issued to you</string>
+    <string name="me_feature_helpdesk_title">Helpdesk</string>
+    <string name="me_feature_helpdesk_subtitle">Raise a ticket with HR or IT, and track it</string>
+    <string name="me_feature_my_team_title">My team</string>
+    <string name="me_feature_my_team_subtitle">Who is away, and whose day it is</string>
+    <string name="me_feature_approvals_title">Approvals</string>
+    <string name="me_feature_approvals_subtitle">Anything routed to you for a decision</string>
+    <string name="me_feature_leave_requests_title">Leave requests</string>
+    <string name="me_feature_leave_requests_subtitle">Leave waiting on your decision</string>
 </resources>

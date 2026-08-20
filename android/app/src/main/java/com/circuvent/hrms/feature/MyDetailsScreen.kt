@@ -20,11 +20,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -68,6 +70,9 @@ fun MyDetailsScreen(container: AppContainer) {
     var postalCode by remember { mutableStateOf("") }
 
     val scope = rememberCoroutineScope()
+
+    val savedLabel = stringResource(R.string.mydetails_saved_label)
+    val notSavedFallback = stringResource(R.string.mydetails_not_saved_fallback)
 
     fun adopt(me: MyDetailsDto) {
         state = Loaded.Ready(me)
@@ -119,12 +124,12 @@ fun MyDetailsScreen(container: AppContainer) {
                     )
                 )
                 adopt(saved)
-                message = BannerTone.SUCCESS to "Saved"
+                message = BannerTone.SUCCESS to savedLabel
             } catch (e: Exception) {
                 // The server's sentence is shown as-is. It is the one that
                 // explains why a date of birth cannot be changed, and it is
                 // better than anything this screen could invent.
-                message = BannerTone.ERROR to (e.message ?: "That was not saved")
+                message = BannerTone.ERROR to (e.message ?: notSavedFallback)
             } finally {
                 busy = false
             }
@@ -170,7 +175,7 @@ fun MyDetailsScreen(container: AppContainer) {
                     }
                     me.joinDate?.takeIf { it.isNotBlank() }?.let {
                         AppText(
-                            "Joined ${rememberFormattedDate(it)}",
+                            stringResource(R.string.mydetails_joined_on, rememberFormattedDate(it)),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
                             tone = TextTone.MUTED,
@@ -178,26 +183,26 @@ fun MyDetailsScreen(container: AppContainer) {
                     }
                     Spacer(Modifier.height(Theme.spacing.xs))
                     AppText(
-                        "Your role, code and joining date are set by HR.",
+                        stringResource(R.string.mydetails_hr_owned_notice),
                         size = Theme.type.caption,
                         lineHeight = Theme.type.captionLine,
                         tone = TextTone.MUTED,
                     )
                 }
 
-                Field("Mobile number", phone, { phone = it }, KeyboardType.Phone, busy)
-                Field("Personal email", personalEmail, { personalEmail = it }, KeyboardType.Email, busy)
+                Field(stringResource(R.string.mydetails_mobile_number_label), phone, { phone = it }, KeyboardType.Phone, busy)
+                Field(stringResource(R.string.mydetails_personal_email_label), personalEmail, { personalEmail = it }, KeyboardType.Email, busy)
 
                 if (me.dateOfBirthLocked) {
                     AppCard(muted = true) {
-                        AppText("Date of birth", size = Theme.type.caption, tone = TextTone.MUTED)
+                        AppText(stringResource(R.string.mydetails_date_of_birth_label), size = Theme.type.caption, tone = TextTone.MUTED)
                         AppText(
                             me.dateOfBirth?.let { rememberFormattedDate(it) } ?: "—",
                             weight = FontWeight.SemiBold,
                         )
                         Spacer(Modifier.height(Theme.spacing.xs))
                         AppText(
-                            "Ask HR to change this. It affects gratuity and your retirement date.",
+                            stringResource(R.string.mydetails_date_of_birth_locked_notice),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
                             tone = TextTone.MUTED,
@@ -207,9 +212,9 @@ fun MyDetailsScreen(container: AppContainer) {
                     OutlinedTextField(
                         value = dateOfBirth,
                         onValueChange = { dateOfBirth = it.take(10) },
-                        label = { Text("Date of birth") },
+                        label = { Text(stringResource(R.string.mydetails_date_of_birth_label)) },
                         supportingText = {
-                            Text("YYYY-MM-DD. You can set this once; after that HR changes it.")
+                            Text(stringResource(R.string.mydetails_date_of_birth_hint))
                         },
                         singleLine = true,
                         enabled = !busy,
@@ -218,21 +223,21 @@ fun MyDetailsScreen(container: AppContainer) {
                     )
                 }
 
-                Field("Blood group", bloodGroup, { bloodGroup = it }, KeyboardType.Text, busy)
-                Field("Address", addressLine1, { addressLine1 = it }, KeyboardType.Text, busy)
+                Field(stringResource(R.string.mydetails_blood_group_label), bloodGroup, { bloodGroup = it }, KeyboardType.Text, busy)
+                Field(stringResource(R.string.mydetails_address_label), addressLine1, { addressLine1 = it }, KeyboardType.Text, busy)
 
                 Row(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                     Column(Modifier.weight(1f)) {
-                        Field("City", city, { city = it }, KeyboardType.Text, busy)
+                        Field(stringResource(R.string.mydetails_city_label), city, { city = it }, KeyboardType.Text, busy)
                     }
                     Column(Modifier.weight(1f)) {
-                        Field("State", stateName, { stateName = it }, KeyboardType.Text, busy)
+                        Field(stringResource(R.string.mydetails_state_label), stateName, { stateName = it }, KeyboardType.Text, busy)
                     }
                 }
 
-                Field("PIN code", postalCode, { postalCode = it }, KeyboardType.Number, busy)
+                Field(stringResource(R.string.mydetails_pin_code_label), postalCode, { postalCode = it }, KeyboardType.Number, busy)
 
-                AppButton(label = "Save", onClick = ::save, busy = busy)
+                AppButton(label = stringResource(R.string.mydetails_save_action), onClick = ::save, busy = busy)
             }
         }
     }

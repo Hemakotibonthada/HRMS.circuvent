@@ -1,5 +1,6 @@
 package com.circuvent.hrms.feature
 
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.core.design.AccentTone
@@ -45,6 +48,7 @@ import com.circuvent.hrms.core.ui.TextTone
 import com.circuvent.hrms.core.ui.formatIsoRangeText
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.data.SessionUser
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -185,6 +189,7 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
     var error by remember { mutableStateOf<Pair<String, String?>?>(null) }
 
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     suspend fun load() {
         val failures = mutableListOf<String>()
@@ -210,70 +215,83 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
                     list.filter { it.status == "pending" }.forEach { row ->
                         collected += InboxItem.Leave(
                             id = row.id,
-                            person = row.employeeName?.takeIf { it.isNotBlank() } ?: "A colleague",
-                            title = row.leaveType.ifBlank { "Leave" },
-                            detail = row.reason.ifBlank { "No reason given" },
-                            period = periodOf(row.startDate, row.endDate) +
-                                " · ${trimDays(row.totalDays)} day${if (row.totalDays == 1.0) "" else "s"}",
+                            person = row.employeeName?.takeIf { it.isNotBlank() }
+                                ?: context.getString(R.string.inbox_colleague_fallback),
+                            title = row.leaveType.ifBlank { context.getString(R.string.inbox_leave_type_fallback) },
+                            detail = row.reason.ifBlank { context.getString(R.string.inbox_no_reason_given_fallback) },
+                            period = periodOf(row.startDate, row.endDate, context) + " · " +
+                                context.resources.getQuantityString(
+                                    R.plurals.inbox_leave_days_count,
+                                    if (row.totalDays == 1.0) 1 else 2,
+                                    trimDays(row.totalDays),
+                                ),
                             requesterId = row.employeeId,
                         )
                     }
                 }
-                .onFailure { failures += "leave" }
+                .onFailure { failures += context.getString(R.string.inbox_queue_name_leave) }
 
             arrangementJob.await()
                 .onSuccess { list ->
                     list.filter { it.status == "pending" }.forEach { row ->
                         collected += InboxItem.Arrangement(
                             id = row.id,
-                            person = row.employeeName.takeIf { it.isNotBlank() } ?: "A colleague",
-                            title = if (row.kind == "on_duty") "On duty" else "Work from home",
+                            person = row.employeeName.takeIf { it.isNotBlank() }
+                                ?: context.getString(R.string.inbox_colleague_fallback),
+                            title = if (row.kind == "on_duty") {
+                                context.getString(R.string.work_arrangement_kind_on_duty)
+                            } else {
+                                context.getString(R.string.inbox_work_from_home_label)
+                            },
                             detail = listOfNotNull(
                                 row.location?.takeIf { it.isNotBlank() },
                                 row.reason?.takeIf { it.isNotBlank() },
-                            ).joinToString(" · ").ifBlank { "No reason given" },
-                            period = periodOf(row.startDate, row.endDate),
+                            ).joinToString(" · ")
+                                .ifBlank { context.getString(R.string.inbox_no_reason_given_fallback) },
+                            period = periodOf(row.startDate, row.endDate, context),
                             requesterId = row.employeeId,
                         )
                     }
                 }
-                .onFailure { failures += "work arrangements" }
+                .onFailure { failures += context.getString(R.string.inbox_queue_name_work_arrangements) }
 
             regularisationJob.await()
                 .onSuccess { list ->
                     list.filter { it.status == "pending" }.forEach { row ->
                         collected += InboxItem.Regularisation(
                             id = row.id,
-                            person = row.employeeName.takeIf { it.isNotBlank() } ?: "A colleague",
-                            title = "Attendance correction",
+                            person = row.employeeName.takeIf { it.isNotBlank() }
+                                ?: context.getString(R.string.inbox_colleague_fallback),
+                            title = context.getString(R.string.inbox_attendance_correction_title),
                             detail = listOfNotNull(
                                 row.reason.takeIf { it.isNotBlank() },
                                 listOfNotNull(row.inTime, row.outTime)
-                                    .joinToString(" to ")
+                                    .joinToString(" ${context.getString(R.string.inbox_to_word)} ")
                                     .takeIf { it.isNotBlank() },
-                            ).joinToString(" · ").ifBlank { "No reason given" },
+                            ).joinToString(" · ")
+                                .ifBlank { context.getString(R.string.inbox_no_reason_given_fallback) },
                             period = row.attendanceDate,
                             requesterId = row.employeeId,
                         )
                     }
                 }
-                .onFailure { failures += "regularisations" }
+                .onFailure { failures += context.getString(R.string.inbox_queue_name_regularisations) }
 
             workflowJob.await()
                 .onSuccess { list ->
                     list.forEach { row ->
                         collected += InboxItem.Workflow(
                             id = row.instanceId,
-                            title = row.stepName.ifBlank { "Approval" },
+                            title = row.stepName.ifBlank { context.getString(R.string.inbox_approval_step_fallback) },
                             detail = buildString {
-                                append(humanEntity(row.entityType))
-                                if (row.isOverdue) append(" · Overdue")
+                                append(humanEntity(row.entityType, context))
+                                if (row.isOverdue) append(" · " + context.getString(R.string.inbox_overdue_label))
                             },
                             period = row.dueAt?.take(10).orEmpty(),
                         )
                     }
                 }
-                .onFailure { failures += "workflow approvals" }
+                .onFailure { failures += context.getString(R.string.inbox_queue_name_workflow_approvals) }
 
             // Oldest first. Somebody who has been waiting a week should not be
             // pushed below somebody who asked this morning. Workflow steps
@@ -302,7 +320,7 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
                 // already-decided request.
                 load()
             } catch (e: Exception) {
-                error = "The decision was not recorded" to e.message
+                error = context.getString(R.string.inbox_decision_not_recorded_title) to e.message
             } finally {
                 busyId = null
             }
@@ -322,9 +340,11 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
             item {
                 Banner(
                     BannerTone.WARNING,
-                    "Part of your inbox could not be loaded",
-                    description = "Anything waiting under ${partial.joinToString(" and ")} is missing " +
-                        "from this list. Pull down to try again.",
+                    stringResource(R.string.inbox_partial_load_title),
+                    description = stringResource(
+                        R.string.inbox_partial_load_description_template,
+                        partial.joinToString(stringResource(R.string.inbox_queue_join_separator)),
+                    ),
                 )
             }
         }
@@ -333,9 +353,8 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
             when {
                 loading -> SkeletonRows(count = 3, rowHeight = 150.dp)
                 items.isEmpty() && partial.isEmpty() -> EmptyState(
-                    title = "You are all caught up",
-                    description = "Leave, work-from-home and attendance corrections needing your " +
-                        "decision arrive here as soon as they are submitted.",
+                    title = stringResource(R.string.inbox_empty_title),
+                    description = stringResource(R.string.inbox_empty_description),
                 )
             }
         }
@@ -344,6 +363,7 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
             // The server refuses a self-approval, and this mirrors it so the
             // refusal is visible before the tap rather than after it.
             val isOwn = item.requesterId == user?.employeeId || item.requesterId == user?.id
+            val reasonTooShortError = stringResource(R.string.inbox_reason_too_short_error)
 
             AppCard {
                 Row(verticalAlignment = Alignment.Top) {
@@ -378,18 +398,18 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
                 if (isOwn) {
                     Banner(
                         BannerTone.INFO,
-                        "This is your own request",
-                        description = "Someone else has to decide it.",
+                        stringResource(R.string.inbox_own_request_title),
+                        description = stringResource(R.string.inbox_own_request_description),
                     )
                 } else if (rejecting == item.id) {
                     OutlinedTextField(
                         value = reason,
                         onValueChange = { reason = it.take(1000) },
-                        label = { Text("Reason for rejection") },
+                        label = { Text(stringResource(R.string.inbox_reason_for_rejection_field_label)) },
                         // Somebody told only "rejected" has to come back and
                         // ask what was wrong, which is a conversation the
                         // system could have saved them.
-                        supportingText = { Text(reasonError ?: "They will see this.") },
+                        supportingText = { Text(reasonError ?: stringResource(R.string.inbox_reason_hint)) },
                         isError = reasonError != null,
                         minLines = 2,
                         enabled = busyId != item.id,
@@ -398,7 +418,7 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
                     Spacer(Modifier.height(Theme.spacing.sm))
                     Row(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                         AppButton(
-                            label = "Confirm rejection",
+                            label = stringResource(R.string.inbox_confirm_rejection_action),
                             variant = ButtonVariant.DANGER,
                             fullWidth = false,
                             busy = busyId == item.id,
@@ -406,7 +426,7 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
                                 // Matches the server, which refuses a rejection
                                 // under three characters.
                                 if (reason.trim().length < 3) {
-                                    reasonError = "Give a reason. The person needs to know why."
+                                    reasonError = reasonTooShortError
                                 } else {
                                     reasonError = null
                                     decide(item, approve = false, why = reason.trim())
@@ -414,7 +434,7 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
                             },
                         )
                         AppButton(
-                            label = "Back",
+                            label = stringResource(R.string.inbox_back_action),
                             variant = ButtonVariant.GHOST,
                             fullWidth = false,
                             onClick = { rejecting = null; reason = ""; reasonError = null },
@@ -423,14 +443,18 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                         AppButton(
-                            label = "Approve",
+                            label = stringResource(R.string.inbox_approve_action),
                             fullWidth = false,
                             busy = busyId == item.id,
                             onClick = { decide(item, approve = true, why = null) },
-                            contentDescription = "Approve ${item.person}'s ${item.title.lowercase()} request",
+                            contentDescription = stringResource(
+                                R.string.inbox_approve_content_description,
+                                item.person,
+                                item.title.lowercase(),
+                            ),
                         )
                         AppButton(
-                            label = "Reject",
+                            label = stringResource(R.string.inbox_reject_action),
                             variant = ButtonVariant.SECONDARY,
                             fullWidth = false,
                             enabled = busyId != item.id,
@@ -443,8 +467,9 @@ fun InboxScreen(container: AppContainer, user: SessionUser?) {
     }
 }
 
-private fun periodOf(from: String, to: String): String =
-    if (from == to || to.isBlank()) from else "$from to $to"
+private fun periodOf(from: String, to: String, context: Context): String =
+    if (from == to || to.isBlank()) from
+    else "$from ${context.getString(R.string.inbox_to_word)} $to"
 
 /**
  * Turns a workflow entity type into something readable.
@@ -453,11 +478,11 @@ private fun periodOf(from: String, to: String): String =
  * Falling back to a de-underscored version is not a translation, but it beats
  * showing "expense_claim" to somebody being asked to approve one.
  */
-private fun humanEntity(entityType: String): String = when (entityType) {
-    "" -> "A request"
-    "leave_request" -> "Leave request"
-    "expense_claim" -> "Expense claim"
-    "timesheet" -> "Timesheet"
+private fun humanEntity(entityType: String, context: Context): String = when (entityType) {
+    "" -> context.getString(R.string.inbox_entity_request_fallback)
+    "leave_request" -> context.getString(R.string.inbox_entity_leave_request_label)
+    "expense_claim" -> context.getString(R.string.inbox_entity_expense_claim_label)
+    "timesheet" -> context.getString(R.string.inbox_entity_timesheet_label)
     else -> entityType.replace('_', ' ').replaceFirstChar { it.uppercase() }
 }
 
