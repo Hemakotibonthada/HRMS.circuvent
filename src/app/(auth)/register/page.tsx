@@ -19,6 +19,27 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  // The form is in one of two states: collecting the details, or waiting for
+  // the code that proves the address is real. The details stay in state so a
+  // resend needs no retyping and so the person can go back and correct a
+  // mistyped address without starting again.
+  const [step, setStep] = useState<"details" | "code">("details");
+  const [code, setCode] = useState("");
+
+  const startRegistration = async (): Promise<boolean> => {
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ name, company, email, password }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      toast.error(body.error || "Registration failed. Please try again.");
+      return false;
+    }
+    return true;
+  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,14 +53,45 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      // The organisation, the owner account and its roles are created together
-      // in one server transaction. Doing it here meant a half-made tenant
-      // whenever any single write failed.
-      const res = await fetch("/api/auth/register", {
+      // Nothing is created yet. The server holds these details as a pending
+      // registration and mails a code; the organisation is provisioned by
+      // /api/auth/register/verify once that code comes back. An unverified
+      // address used to be able to stand up a tenant named after any company.
+      if (await startRegistration()) {
+        setStep("code");
+        toast.success("We've sent a 6-digit code to your email.");
+      }
+    } catch {
+      toast.error("Could not reach the sign-up service. Check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setLoading(true);
+    try {
+      if (await startRegistration()) toast.success("A new code is on its way.");
+    } catch {
+      toast.error("Could not reach the sign-up service. Check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(code.trim())) {
+      toast.error("Enter the 6-digit code from your email");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/register/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name, company, email, password }),
+        body: JSON.stringify({ email, code: code.trim() }),
       });
       const body = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -48,7 +100,7 @@ export default function RegisterPage() {
       };
 
       if (!res.ok) {
-        toast.error(body.error || "Registration failed. Please try again.");
+        toast.error(body.error || "That code is not valid.");
         return;
       }
 
@@ -92,10 +144,71 @@ export default function RegisterPage() {
 
           <Card className="border-0 shadow-xl transition-shadow duration-500 hover:shadow-2xl">
             <CardHeader className="text-center">
-              <CardTitle className="text-xl">Create your account</CardTitle>
-              <CardDescription>Start your 14-day free trial</CardDescription>
+              <CardTitle className="text-xl">
+                {step === "details" ? "Create your account" : "Check your email"}
+              </CardTitle>
+              <CardDescription>
+                {step === "details"
+                  ? "Start your 14-day free trial"
+                  : `Enter the 6-digit code we sent to ${email}`}
+              </CardDescription>
             </CardHeader>
             <CardContent>
+            {step === "code" ? (
+              <form onSubmit={handleVerify} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="code">Verification code</Label>
+                  <Input
+                    id="code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="123456"
+                    maxLength={6}
+                    value={code}
+                    // Digits only, so a pasted code carrying a stray space or
+                    // dash is accepted rather than rejected as malformed.
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    className="text-center text-2xl tracking-[0.5em] font-mono"
+                    autoFocus
+                    required
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full h-10 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-md hover:shadow-lg transition-all"
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Verifying...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      Verify and create account <ArrowRight className="h-4 w-4" />
+                    </span>
+                  )}
+                </Button>
+                <div className="flex items-center justify-between text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setStep("details")}
+                    className="text-muted-foreground hover:text-foreground"
+                    disabled={loading}
+                  >
+                    Change details
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    className="text-primary font-medium hover:underline"
+                    disabled={loading}
+                  >
+                    Resend code
+                  </button>
+                </div>
+              </form>
+            ) : (
             <form onSubmit={handleRegister} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
@@ -169,6 +282,7 @@ export default function RegisterPage() {
                 )}
               </Button>
             </form>
+            )}
             <p className="mt-6 text-center text-sm text-muted-foreground">
               Already have an account?{" "}
               <Link href="/login" className="text-primary font-medium hover:underline">

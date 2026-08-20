@@ -85,6 +85,42 @@ export async function sendMail(options: {
   }
 }
 
+/**
+ * The code that proves somebody controls the address they signed up with.
+ *
+ * A code rather than a link, deliberately: the person is sitting in front of
+ * the registration form waiting, and a link would either open a second tab
+ * that has lost the form state or require the whole flow to be resumable from
+ * a cold start. A six-digit code they can type back into the page they are
+ * already on keeps the sign-up in one place.
+ */
+export function verifyEmailCodeEmail(
+  code: string,
+  ttlMinutes: number,
+  displayName?: string
+): { subject: string; html: string; text: string } {
+  const who = displayName?.trim() ? displayName.trim() : "there";
+  return {
+    subject: `${code} is your Circuvent verification code`,
+    text:
+      `Hi ${who},\n\nYour verification code is ${code}. It expires in ${ttlMinutes} ` +
+      `minutes.\n\nIf you didn't try to create a Circuvent account, you can ignore ` +
+      `this email — nothing has been created.`,
+    html: `
+      <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto">
+        <div style="background:linear-gradient(135deg,#7c3aed,#a855f7);padding:24px;border-radius:12px 12px 0 0">
+          <h1 style="color:#fff;margin:0;font-size:20px">Confirm your email</h1>
+        </div>
+        <div style="background:#f8fafc;padding:28px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px">
+          <p style="font-size:14px;color:#0c1222;margin:0 0 18px">Hi ${who}, enter this code to finish creating your account.</p>
+          <p style="margin:0 0 18px;font-size:32px;font-weight:700;letter-spacing:8px;color:#7c3aed;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${code}</p>
+          <p style="font-size:12px;color:#64748b;margin:0 0 6px">This code expires in ${ttlMinutes} minutes.</p>
+          <p style="font-size:12px;color:#94a3b8;margin:0">If you didn't try to create an account, ignore this email — nothing has been created.</p>
+        </div>
+      </div>`,
+  };
+}
+
 /** Password reset email. */
 export function resetPasswordEmail(link: string, displayName?: string): { subject: string; html: string; text: string } {
   const who = displayName?.trim() ? displayName.trim() : "there";
