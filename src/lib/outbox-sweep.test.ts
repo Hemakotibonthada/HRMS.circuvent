@@ -8,6 +8,8 @@ import {
   paystubRetryDelayMinutes,
 } from "@/lib/paystub-sync-outbox";
 import { retryDelayMinutes } from "@/lib/onboarding-groups";
+import type { DocumentPdfDrainResult } from "@/lib/document-pdf-outbox";
+import { documentPdfRetryDelayMinutes } from "@/lib/document-pdf-outbox";
 
 function paystubResult(over: Partial<PaystubDrainResult> = {}): PaystubDrainResult {
   return { attempted: 0, synced: 0, failed: 0, retired: 0, ...over };
@@ -15,6 +17,10 @@ function paystubResult(over: Partial<PaystubDrainResult> = {}): PaystubDrainResu
 
 function groupResult(over: Partial<DrainResult> = {}): DrainResult {
   return { attempted: 0, joined: 0, failed: 0, ...over };
+}
+
+function documentPdfResult(over: Partial<DocumentPdfDrainResult> = {}): DocumentPdfDrainResult {
+  return { attempted: 0, succeeded: 0, failed: 0, ...over };
 }
 
 describe("what a sweep does with a row", () => {
@@ -59,24 +65,36 @@ describe("how long a failed push waits", () => {
       expect(paystubRetryDelayMinutes(attempt)).toBe(retryDelayMinutes(attempt));
     }
   });
+
+  it("backs off identically to the document PDF storage outbox", () => {
+    // A third outbox joined the other two later; it must not quietly pick its
+    // own backoff curve just because it lives in a different file.
+    for (const attempt of [1, 2, 5, 10, 50]) {
+      expect(documentPdfRetryDelayMinutes(attempt)).toBe(paystubRetryDelayMinutes(attempt));
+    }
+  });
 });
 
 describe("sweeping every tenant", () => {
-  it("drains both outboxes for each organisation", async () => {
+  it("drains all three outboxes for each organisation", async () => {
     const drainPaystub = vi.fn(async () => paystubResult({ attempted: 2, synced: 2 }));
     const drainGroups = vi.fn(async () => groupResult({ attempted: 1, joined: 1 }));
+    const drainDocumentPdfs = vi.fn(async () => documentPdfResult({ attempted: 1, succeeded: 1 }));
 
     const result = await sweepOutboxes(50, {
       listOrgs: async () => ["org-a", "org-b"],
       drainPaystub,
       drainGroups,
+      drainDocumentPdfs,
     });
 
     expect(result.organisations).toBe(2);
     expect(drainPaystub).toHaveBeenCalledTimes(2);
     expect(drainGroups).toHaveBeenCalledTimes(2);
+    expect(drainDocumentPdfs).toHaveBeenCalledTimes(2);
     expect(result.totals.paystubSynced).toBe(4);
     expect(result.totals.groupsJoined).toBe(2);
+    expect(result.totals.documentPdfsStored).toBe(2);
     expect(result.problems).toEqual([]);
   });
 
@@ -89,6 +107,7 @@ describe("sweeping every tenant", () => {
         return paystubResult();
       },
       drainGroups: async () => groupResult(),
+      drainDocumentPdfs: async () => documentPdfResult(),
     });
 
     expect(seen).toEqual(["org-a", "org-b"]);
@@ -106,6 +125,7 @@ describe("sweeping every tenant", () => {
       listOrgs: async () => ["org-a", "org-bad", "org-b"],
       drainPaystub,
       drainGroups: async () => groupResult({ joined: 1 }),
+      drainDocumentPdfs: async () => documentPdfResult(),
     });
 
     expect(result.totals.paystubSynced).toBe(2);
@@ -133,20 +153,41 @@ describe("sweeping every tenant", () => {
       listOrgs: async () => ["org-a"],
       drainPaystub: async () => paystubResult({ attempted: 1, failed: 1, retired: 3 }),
       drainGroups: async () => groupResult(),
+      drainDocumentPdfs: async () => documentPdfResult(),
     });
 
     expect(result.totals.paystubFailed).toBe(1);
     expect(result.totals.paystubRetired).toBe(3);
   });
 
+  it("counts document PDF failures separately from paystub and group failures", async () => {
+    // Three independent totals: an R2 outage should read as an R2 problem,
+    // not get folded into (or masked by) an unrelated Paystub or directory one.
+    const result = await sweepOutboxes(50, {
+      listOrgs: async () => ["org-a"],
+      drainPaystub: async () => paystubResult(),
+      drainGroups: async () => groupResult(),
+      drainDocumentPdfs: async () => documentPdfResult({ attempted: 2, succeeded: 1, failed: 1 }),
+    });
+
+    expect(result.totals.documentPdfsStored).toBe(1);
+    expect(result.totals.documentPdfsFailed).toBe(1);
+    expect(result.totals.paystubFailed).toBe(0);
+    expect(result.totals.groupsFailed).toBe(0);
+  });
+
   it("hands the batch limit down to each drain", async () => {
     const drainPaystub = vi.fn(async () => paystubResult());
+    const drainDocumentPdfs = vi.fn(async () => documentPdfResult());
     await sweepOutboxes(7, {
       listOrgs: async () => ["org-a"],
       drainPaystub,
       drainGroups: async () => groupResult(),
+      drainDocumentPdfs,
     });
 
     expect(drainPaystub).toHaveBeenCalledWith({ orgId: "org-a" }, 7);
+    expect(drainDocumentPdfs).toHaveBeenCalledWith({ orgId: "org-a" }, 7);
   });
 });
+

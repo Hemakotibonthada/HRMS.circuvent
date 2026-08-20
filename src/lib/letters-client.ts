@@ -41,6 +41,8 @@ export interface DocumentSummary {
   sentAt?: string;
   completedAt?: string;
   expiresAt?: string;
+  /** R2 object key for the archived, signed PDF once stored — present only once `document-pdf-outbox.ts` has landed a copy. Not a URL a browser can fetch directly; download it through `downloadDocumentPdf`. */
+  blobUrl?: string;
   signatures: { id: string; role: string; email: string; name?: string; signedAt?: string }[];
 }
 
@@ -266,6 +268,35 @@ export async function sendDocument(documentId: string): Promise<SendResult> {
 
   if (!response.ok) throw new Error(await readError(response, "Could not send the letter"));
   return (await response.json()) as SendResult;
+}
+
+/**
+ * Downloads a document's archived, signed PDF and saves it under the given name.
+ *
+ * Deliberately not a plain `<a href>`: the same URL answers with a JSON error
+ * body — not a PDF — when the caller lacks permission, or when the document
+ * exists but the storage outbox has not landed a copy yet, and a bare link
+ * would just navigate the tab to that JSON with no way for the page to show
+ * it as an error. Fetching it here lets a failed download report the same
+ * way every other action on this screen does.
+ */
+export async function downloadDocumentPdf(documentId: string, suggestedTitle: string): Promise<void> {
+  const response = await fetch(`/api/documents/${documentId}/pdf`, { credentials: "include" });
+  if (!response.ok) throw new Error(await readError(response, "Could not download the PDF"));
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${suggestedTitle || "document"}.pdf`;
+    link.click();
+  } finally {
+    // The object URL only needs to live long enough for the click above to be
+    // handed to the browser's download machinery; holding onto it leaks
+    // memory for the lifetime of the tab.
+    URL.revokeObjectURL(url);
+  }
 }
 
 /**

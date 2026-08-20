@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   User, CalendarDays, DollarSign, Clock, Headphones, GraduationCap,
   Bot, Target, FileText, ArrowRight, Activity, CheckCircle2, AlertTriangle,
-  Briefcase, TrendingUp, Shield, UserCog, Users,
+  Briefcase, TrendingUp, Shield, UserCog, Users, Umbrella,
 } from "lucide-react";
 import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area,
@@ -34,6 +34,7 @@ const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ec4899","#ef4444","#63
 const QUICK_ACTIONS_EMPLOYEE = [
   { label: "Apply Leave", icon: CalendarDays, href: "/leave", color: "from-blue-500 to-cyan-500" },
   { label: "View Payslip", icon: DollarSign, href: "/payslip", color: "from-green-500 to-emerald-500" },
+  { label: "My Benefits", icon: Umbrella, href: "/mybenefits", color: "from-fuchsia-500 to-pink-500" },
   { label: "Clock In", icon: Clock, href: "/attendance", color: "from-orange-500 to-amber-500" },
   { label: "Helpdesk", icon: Headphones, href: "/helpdesk", color: "from-purple-500 to-violet-500" },
   { label: "Training", icon: GraduationCap, href: "/training", color: "from-pink-500 to-rose-500" },

@@ -4,15 +4,19 @@
  * `vercel.json`'s `crons` block has Vercel call this on a schedule. The route
  * itself only authenticates that call and hands off to `sweepOutboxes`, which
  * re-drives the deliveries that did not get through the first time — employee
- * records owed to Paystub, and group memberships owed to auth.circuvent.com.
+ * records owed to Paystub, group memberships owed to auth.circuvent.com, and
+ * signed documents' archived PDFs owed to R2.
  *
  * ## Why HRMS needed one at all
  *
- * Both outboxes were written to record a retry schedule on every failure, and
- * nothing ever read it. The only code that re-drove either ran when an
- * employee happened to be created or edited, so a delivery that failed once
- * waited for an unrelated edit to that same person. This route is what turns
- * those columns from a log of things that did not happen into a queue.
+ * All three outboxes were written to record a retry schedule on every
+ * failure, and for the first two, nothing ever read it. The only code that
+ * re-drove either ran when an employee happened to be created or edited, so a
+ * delivery that failed once waited for an unrelated edit to that same person.
+ * This route is what turns those columns from a log of things that did not
+ * happen into a queue. The PDF storage outbox was built after this route
+ * already existed, precisely so it would never have that gap in the first
+ * place.
  *
  * ## On the schedule
  *
@@ -38,7 +42,7 @@
  * is configured. A missing secret refuses every request rather than waving
  * them through: treating "not configured" as "no authentication needed" would
  * mean forgetting this variable in a new environment silently publishes an
- * unauthenticated trigger that writes to two other systems.
+ * unauthenticated trigger that writes to three other systems.
  */
 
 import { NextRequest, NextResponse } from "next/server";

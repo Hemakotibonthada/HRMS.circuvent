@@ -282,7 +282,22 @@ export default function SettingsPage() {
               </Card>
               <Card><CardHeader className="py-3"><CardTitle className="text-sm">Backup & Recovery</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="flex items-center justify-between rounded-lg border p-3"><div><p className="text-xs font-medium">Last Backup</p><p className="text-[10px] text-muted-foreground">Mar 25, 2026 at 3:00 AM (Automatic)</p></div><Badge className="status-active text-[9px] border-0">Healthy</Badge></div>
+                  {/*
+                    This used to read "Mar 25, 2026 at 3:00 AM (Automatic)" with a permanent
+                    green "Healthy" badge -- a string with no backup job behind it, shown with
+                    total confidence at the exact moment someone opens this page to decide
+                    whether the company's data is recoverable. That is the one moment where a
+                    comforting guess is worse than no answer at all. No process on this page
+                    (or anywhere in HRMS) has ever written a real backup timestamp here, so the
+                    honest state is "unknown," not a plausible-looking date. The backup tool
+                    that now actually runs against this database lives in
+                    Auth.circuvent/scripts/backup and writes a manifest (runs/latest.json) with
+                    real timestamps and row counts; this page is a separate app/deployment with
+                    no filesystem or network access to that manifest today, so it cannot show
+                    the real value yet either -- surfacing that gap honestly here rather than
+                    inventing a fix for it.
+                  */}
+                  <div className="flex items-center justify-between rounded-lg border p-3"><div><p className="text-xs font-medium">Last Backup</p><p className="text-[10px] text-muted-foreground">No backup has been recorded for this environment</p></div><Badge className="status-inactive text-[9px] border-0">Unknown</Badge></div>
                   <div className="flex gap-2"><Button variant="outline" size="sm" className="text-xs gap-1"><Download className="h-3 w-3" />Export All Data</Button><Button variant="outline" size="sm" className="text-xs gap-1"><Upload className="h-3 w-3" />Import Data</Button><Button variant="outline" size="sm" className="text-xs gap-1 text-red-600"><Trash2 className="h-3 w-3" />Purge Old Data</Button></div>
                 </CardContent>
               </Card>

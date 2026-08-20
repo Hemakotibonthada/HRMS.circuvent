@@ -26,12 +26,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { FileText, Plus, Send, CheckCircle2, Clock, Copy, AlertTriangle } from "lucide-react";
+import { FileText, Plus, Send, CheckCircle2, Clock, Copy, AlertTriangle, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { DataEmptyState, DataLoadingSkeleton } from "@/components/data-empty-state";
 import {
-  checkDraft, describeDelivery, generateOffer, listDocuments, listTemplates,
+  checkDraft, describeDelivery, downloadDocumentPdf, generateOffer, listDocuments, listTemplates,
   sendDocument, type DocumentSummary, type OfferDraft, type TemplateSummary,
 } from "@/lib/letters-client";
 import { ENGAGEMENT_TYPES, ruleFor, type EngagementType } from "@/lib/offer-rules";
@@ -155,6 +155,14 @@ export default function LettersPage() {
     }
   }, [load]);
 
+  const downloadPdf = useCallback(async (doc: DocumentSummary) => {
+    try {
+      await downloadDocumentPdf(doc.id, doc.title);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not download the PDF");
+    }
+  }, []);
+
   const kpis = [
     { label: "Templates", value: templates.length, icon: FileText, gradient: "from-violet-500 to-purple-600" },
     { label: "Issued", value: documents.length, icon: Send, gradient: "from-blue-500 to-cyan-500" },
@@ -267,6 +275,11 @@ export default function LettersPage() {
                     {doc.status === "draft" && (
                       <Button size="sm" variant="outline" className="gap-1" onClick={() => void resend(doc.id)}>
                         <Send className="h-3 w-3" /> Send
+                      </Button>
+                    )}
+                    {doc.blobUrl && (
+                      <Button size="sm" variant="outline" className="gap-1" onClick={() => void downloadPdf(doc)}>
+                        <Download className="h-3 w-3" /> PDF
                       </Button>
                     )}
                   </div>

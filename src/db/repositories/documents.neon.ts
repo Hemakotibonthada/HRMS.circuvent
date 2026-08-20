@@ -35,6 +35,10 @@ import {
   type TemplateDefinition,
   type TokenValues,
 } from "@/lib/document-rules";
+import {
+  queueAndAttemptDocumentPdfStorage,
+  queueDocumentPdfStorage,
+} from "@/lib/document-pdf-outbox";
 import { NotFoundError, RepositoryError } from "./types";
 
 export interface TemplateRecord {
@@ -58,6 +62,8 @@ export interface DocumentRecord {
   candidateId?: string;
   renderedBody?: string;
   contentHash?: string;
+  /** R2 object key for the archived PDF, once `document-pdf-outbox.ts` has stored it — not a public URL. */
+  blobUrl?: string;
   sentAt?: string;
   completedAt?: string;
   expiresAt?: string;
@@ -497,7 +503,7 @@ export class NeonDocumentsRepository {
   ): Promise<SignedResult> {
     const presented = await hashToken(token);
 
-    return withTenant(this.ctx, async (tx) => {
+    const result = await withTenant(this.ctx, async (tx) => {
       const [document] = await tx
         .select()
         .from(generatedDocuments)
@@ -573,6 +579,14 @@ export class NeonDocumentsRepository {
         })
         .where(eq(generatedDocuments.id, documentId));
 
+      if (status === "completed") {
+        // Recorded in the same transaction as completion itself: the render
+        // and upload happen afterwards (outside this transaction, since they
+        // talk to R2 and can take real time), but the intent to do so can
+        // never be lost even if nothing ever runs that second step.
+        await queueDocumentPdfStorage(tx, this.ctx.orgId, documentId);
+      }
+
       return {
         document: (await this.getIn(tx, documentId))!,
         signatory: {
@@ -582,6 +596,23 @@ export class NeonDocumentsRepository {
         },
       };
     });
+
+    if (result.document.status === "completed") {
+      // Best-effort immediate attempt, outside the transaction that just
+      // committed. A failure here is not this signature's problem: the
+      // outbox row queued above already guarantees `drainDueDocumentPdfStorage`
+      // will pick it up from the next cron sweep, so this can never turn a
+      // slow or unreachable R2 into a failed sign.
+      void queueAndAttemptDocumentPdfStorage(this.ctx, documentId).catch((error: unknown) => {
+        console.warn("[document-pdf] Could not run the immediate PDF storage attempt.", {
+          orgId: this.ctx.orgId,
+          documentId,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      });
+    }
+
+    return result;
   }
 
   async decline(
@@ -812,6 +843,7 @@ export class NeonDocumentsRepository {
       candidateId: row.candidateId ?? undefined,
       renderedBody: row.renderedBody ?? undefined,
       contentHash: row.contentHash ?? undefined,
+      blobUrl: row.blobUrl ?? undefined,
       sentAt: row.sentAt?.toISOString(),
       completedAt: row.completedAt?.toISOString(),
       expiresAt: row.expiresAt?.toISOString(),

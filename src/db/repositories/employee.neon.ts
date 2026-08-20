@@ -18,6 +18,7 @@ import {
   leaveBalances,
   leavePolicies,
 } from "@/db/schema/hrms";
+import { auditLog } from "@/db/schema/identity";
 import {
   drainDueGroupJoins,
   queueGroupJoins,
@@ -36,6 +37,13 @@ import {
   queueAndAttemptPaystubEmployeeSync,
   queuePaystubEmployeeSync,
 } from "@/lib/paystub-sync-outbox";
+import { decryptNullable, encryptNullable } from "@/lib/crypto/field-encryption";
+import {
+  canWriteBankDetails,
+  toAuditSnapshot,
+  type BankDetailsUpdate,
+  type RawEmployeeBankDetails,
+} from "@/lib/bank-details-rules";
 import {
   NotFoundError,
   RepositoryError,
@@ -582,5 +590,175 @@ export class NeonEmployeeRepository implements EmployeeRepository {
       `);
       return (result.rows as { path: string[] }[]).map((r) => r.path);
     });
+  }
+
+  /**
+   * Reads one employee's bank and statutory details, decrypted and unmasked.
+   *
+   * Deliberately not part of the `EmployeeRepository` interface — like
+   * payroll and tax, this is a single sensitive sub-resource with its own
+   * route and its own authorisation rule (self, or a privileged role that can
+   * view but never write), not a field of the general employee record that
+   * every list/search/CRUD caller receives. Callers still owe this a mask
+   * before it reaches a response body (`toBankDetailsView` in
+   * `lib/bank-details-rules.ts`) — this method returns the real account
+   * number, the same way `getById` returns the real salary and leaves
+   * shaping the response to the route.
+   */
+  async getBankDetails(employeeId: string): Promise<RawEmployeeBankDetails> {
+    return withTenant(this.ctx, async (tx) => {
+      const [row] = await tx
+        .select({
+          bankDetails: employees.bankDetails,
+          panNumber: employees.panNumber,
+          uanNumber: employees.uanNumber,
+          pfNumber: employees.pfNumber,
+          esiNumber: employees.esiNumber,
+        })
+        .from(employees)
+        .where(and(eq(employees.id, employeeId), isNull(employees.deletedAt)));
+
+      if (!row) throw new NotFoundError("Employee", employeeId);
+
+      return {
+        bankDetails: row.bankDetails ?? null,
+        statutoryIds: {
+          panNumber: decryptNullable(row.panNumber),
+          uanNumber: row.uanNumber,
+          pfNumber: row.pfNumber,
+          esiNumber: row.esiNumber,
+        },
+      };
+    });
+  }
+
+  /**
+   * Replaces one employee's bank and statutory details, audits the change and
+   * queues the Paystub sync — the same three things `update()` above does for
+   * the rest of the record, kept as a separate method because this data has
+   * its own encryption rule (PAN) and its own audit trail, not because the
+   * transaction shape differs.
+   *
+   * Whole-record replacement, not a patch: `BankDetailsUpdate` (see
+   * `lib/bank-details-rules.ts`) always carries every field, because the
+   * self-service form always submits every field together, so there is no
+   * partial-update case where an absent field must be read back as
+   * "leave unchanged" versus "clear it".
+   */
+  async updateBankDetails(
+    employeeId: string,
+    data: BankDetailsUpdate,
+  ): Promise<RawEmployeeBankDetails> {
+    // The route this backs never accepts a target employeeId in its request
+    // body at all — it always calls this with employeeId === ctx.userId — so
+    // this can only ever fire if some future caller (a script, an admin
+    // tool, a route refactored without re-reading this comment) passes a
+    // mismatched id. Checked here anyway: `canWriteBankDetails` is the one
+    // place this rule is written down, and a rule enforced at only one of its
+    // two possible call sites is a rule that quietly stops applying the day
+    // someone adds a second one.
+    if (!canWriteBankDetails(this.ctx.userId ?? "", employeeId)) {
+      throw new RepositoryError("You can only update your own bank details", 403);
+    }
+
+    const after = await withTenant(this.ctx, async (tx) => {
+      const [before] = await tx
+        .select({
+          bankDetails: employees.bankDetails,
+          panNumber: employees.panNumber,
+          uanNumber: employees.uanNumber,
+          pfNumber: employees.pfNumber,
+          esiNumber: employees.esiNumber,
+        })
+        .from(employees)
+        .where(and(eq(employees.id, employeeId), isNull(employees.deletedAt)));
+
+      if (!before) throw new NotFoundError("Employee", employeeId);
+
+      const beforeRaw: RawEmployeeBankDetails = {
+        bankDetails: before.bankDetails ?? null,
+        statutoryIds: {
+          panNumber: decryptNullable(before.panNumber),
+          uanNumber: before.uanNumber,
+          pfNumber: before.pfNumber,
+          esiNumber: before.esiNumber,
+        },
+      };
+
+      const [row] = await tx
+        .update(employees)
+        .set({
+          bankDetails: data.bankDetails,
+          panNumber: encryptNullable(data.panNumber),
+          uanNumber: data.uanNumber,
+          pfNumber: data.pfNumber,
+          esiNumber: data.esiNumber,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(employees.id, employeeId), isNull(employees.deletedAt)))
+        .returning({
+          bankDetails: employees.bankDetails,
+          panNumber: employees.panNumber,
+          uanNumber: employees.uanNumber,
+          pfNumber: employees.pfNumber,
+          esiNumber: employees.esiNumber,
+        });
+
+      // The row existed for the SELECT above, and this UPDATE carries the
+      // same id/deletedAt predicate inside the same transaction — its
+      // absence here would mean a concurrent hard delete raced this update,
+      // which nothing in this repository does (`remove()` only ever soft
+      // deletes). Checked anyway rather than trusting that.
+      if (!row) throw new NotFoundError("Employee", employeeId);
+
+      const afterRaw: RawEmployeeBankDetails = {
+        bankDetails: row.bankDetails ?? null,
+        statutoryIds: {
+          panNumber: decryptNullable(row.panNumber),
+          uanNumber: row.uanNumber,
+          pfNumber: row.pfNumber,
+          esiNumber: row.esiNumber,
+        },
+      };
+
+      // Bank details decide where somebody's salary is deposited; a silent
+      // change here is exactly the failure identity.audit_log's hash chain
+      // exists to make detectable after the fact. `hash` below is a
+      // placeholder, not the real value: the column is NOT NULL with no
+      // default, so Drizzle's insert type requires something, but
+      // `audit_log_chain_hash` (see drizzle/0001_row_level_security.sql)
+      // overwrites both `hash` and `previous_hash` unconditionally in a
+      // BEFORE INSERT trigger — which runs before the NOT NULL constraint is
+      // ever checked — so this placeholder never reaches disk.
+      await tx.insert(auditLog).values({
+        orgId: this.ctx.orgId,
+        actorId: this.ctx.userId ?? null,
+        app: "hrms",
+        action: "employee.bank_details.updated",
+        entityType: "employee",
+        entityId: employeeId,
+        before: toAuditSnapshot(beforeRaw),
+        after: toAuditSnapshot(afterRaw),
+        hash: "pending",
+      });
+
+      await queuePaystubEmployeeSync(tx, this.ctx.orgId, employeeId);
+      return afterRaw;
+    });
+
+    void queueAndAttemptPaystubEmployeeSync(this.ctx, employeeId).catch(
+      (error: unknown) => {
+        console.warn(
+          "[paystub-sync] Could not run the immediate employee push attempt.",
+          {
+            orgId: this.ctx.orgId,
+            employeeId,
+            errorName: error instanceof Error ? error.name : "UnknownError",
+          },
+        );
+      },
+    );
+
+    return after;
   }
 }

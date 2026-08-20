@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { employees } from "@/db/schema/hrms";
 import {
   PaystubSyncConfigError,
@@ -6,6 +6,7 @@ import {
   resolvePaystubTenant,
 } from "@/lib/paystub-client";
 import { deliverPaystubEmployeeSync } from "@/lib/paystub-sync-outbox";
+import { encryptField } from "@/lib/crypto/field-encryption";
 
 type EmployeeRow = typeof employees.$inferSelect;
 
@@ -154,6 +155,51 @@ describe("employeeToPaystubSyncBody", () => {
     expect(() =>
       resolvePaystubTenant("hrms-org-1", { "hrms-org-1": { orgId: "paystub-org-1", entityId: "" } })
     ).toThrow(/entityId/);
+  });
+});
+
+describe("panNumber is stored encrypted", () => {
+  // Fixed 32-byte key so encryption is deterministic to set up — not to
+  // compare ciphertexts, which are randomised on purpose. Same idiom as
+  // field-encryption.test.ts.
+  const KEY = Buffer.alloc(32, 1).toString("base64");
+  const originalKey = process.env.ENCRYPTION_KEY;
+
+  beforeEach(() => {
+    process.env.ENCRYPTION_KEY = KEY;
+  });
+
+  afterEach(() => {
+    if (originalKey === undefined) delete process.env.ENCRYPTION_KEY;
+    else process.env.ENCRYPTION_KEY = originalKey;
+  });
+
+  it("decrypts panNumber before handing it to Paystub", () => {
+    // The bug this guards against: employeeToPaystubSyncBody used to forward
+    // row.panNumber untouched under a comment claiming "HRMS masks on
+    // capture" — it never had, because nothing wrote to this column at all
+    // until the bank-details self-service form. Once the bank-details route
+    // started encrypting it (lib/crypto/field-encryption.ts), that untouched
+    // forwarding would have sent Paystub a ciphertext envelope like
+    // "enc.v1.3f2a9c1e...." to print on a payslip in place of a PAN.
+    const body = employeeToPaystubSyncBody(
+      { employee: employee({ panNumber: encryptField("ABCDE1234F") }) },
+      { orgId: "paystub-org-1", entityId: "paystub-entity-1" }
+    );
+
+    expect(body.statutoryIds?.pan).toBe("ABCDE1234F");
+  });
+
+  it("still accepts a row written before encryption existed", () => {
+    // decryptNullable passes an already-plaintext value through unchanged,
+    // so a PAN captured before this feature shipped is not suddenly
+    // unreadable the day encryption is turned on.
+    const body = employeeToPaystubSyncBody(
+      { employee: employee({ panNumber: "ABCDE1234F" }) },
+      { orgId: "paystub-org-1", entityId: "paystub-entity-1" }
+    );
+
+    expect(body.statutoryIds?.pan).toBe("ABCDE1234F");
   });
 });
 

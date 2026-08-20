@@ -7,6 +7,7 @@ import {
   MODULE_PERMISSION_MAP,
   ROLE_PERMISSIONS,
   canAccessModule,
+  canViewOthersBankDetails,
   canViewOthersSalary,
   getRoleLabel,
   hasAnyPermission,
@@ -212,6 +213,35 @@ describe("canViewOthersSalary", () => {
     const roles: PrivilegedRole[] = ["owner", "admin", "hr", "manager", "employee"];
     for (const role of roles) {
       expect(canViewOthersSalary(role)).toBe(roleHasPermission(role, "payroll.view"));
+    }
+  });
+});
+
+// Bank account and statutory IDs are gated the same way salary is: reusing
+// payroll.view rather than a bespoke permission, so anyone trusted with a
+// figure is trusted with the account it moves through — see the comment on
+// canViewOthersBankDetails in rbac.ts for why a separate permission would add
+// no real distinction.
+describe("canViewOthersBankDetails", () => {
+  it("admits the roles that hold payroll.view", () => {
+    expect(canViewOthersBankDetails("owner")).toBe(true);
+    expect(canViewOthersBankDetails("admin")).toBe(true);
+    expect(canViewOthersBankDetails("hr")).toBe(true);
+  });
+
+  it("refuses managers — a reporting line is not authority over pay", () => {
+    expect(canViewOthersBankDetails("manager")).toBe(false);
+    expect(ROLE_PERMISSIONS.manager).not.toContain("payroll.view");
+  });
+
+  it("refuses ordinary employees", () => {
+    expect(canViewOthersBankDetails("employee")).toBe(false);
+  });
+
+  it("tracks the permission model rather than a hardcoded role list", () => {
+    const roles: PrivilegedRole[] = ["owner", "admin", "hr", "manager", "employee"];
+    for (const role of roles) {
+      expect(canViewOthersBankDetails(role)).toBe(roleHasPermission(role, "payroll.view"));
     }
   });
 });

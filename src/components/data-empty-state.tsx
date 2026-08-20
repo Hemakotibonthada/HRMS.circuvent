@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Inbox, Plus, Search, FileText, Users, CalendarDays,
   Clock, DollarSign, Target, Award, Briefcase, Package,
-  GraduationCap, Headphones, Building2, type LucideIcon,
+  GraduationCap, Headphones, Building2, Umbrella, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -95,6 +95,7 @@ export const EMPTY_STATES = {
   leave: { icon: CalendarDays, title: "No leave requests", description: "Leave requests from your team will appear here.", actionLabel: "Apply Leave" },
   attendance: { icon: Clock, title: "No attendance records", description: "Clock-in records will appear here once employees start logging time." },
   payroll: { icon: DollarSign, title: "No payroll data", description: "Process your first payroll cycle to see salary records here.", actionLabel: "Process Payroll" },
+  benefits: { icon: Umbrella, title: "No benefits data yet", description: "Benefit plans, enrolments, dependants and claims will appear here once configured for this employee." },
   expenses: { icon: FileText, title: "No expense claims", description: "Submit expense claims for reimbursement.", actionLabel: "Submit Expense" },
   recruitment: { icon: Briefcase, title: "No job postings", description: "Create job postings to start hiring.", actionLabel: "Post Job" },
   helpdesk: { icon: Headphones, title: "No tickets", description: "Create support tickets for IT or HR queries.", actionLabel: "Create Ticket" },

@@ -1,4 +1,5 @@
 import type { employees } from "@/db/schema/hrms";
+import { decryptNullable } from "@/lib/crypto/field-encryption";
 
 type EmployeeRow = typeof employees.$inferSelect;
 
@@ -170,13 +171,20 @@ function mapAddress(row: EmployeeRow): Record<string, string> | undefined {
 /**
  * The statutory identifiers HRMS holds, dropping the ones it does not.
  *
- * A masked value ("XXXXXX740A") is passed through as it stands: HRMS masks on
- * capture, so the masked form is the only form it has, and a payslip showing a
- * masked PAN is right where showing nothing is wrong.
+ * `panNumber` is stored encrypted at rest (see `lib/crypto/field-encryption`
+ * and the schema comment on `employees.panNumber`), so the raw column value
+ * is a ciphertext envelope, not a PAN. It must be decrypted here before it
+ * leaves this process — sending it straight through, as this function used
+ * to under a comment claiming "HRMS masks on capture" (it never has; nothing
+ * wrote to this column at all until the bank-details self-service form),
+ * would hand Paystub a string like "enc.v1.3f2a9c1e...." to print on a
+ * payslip instead of the employee's PAN. `decryptNullable` also passes an
+ * already-plaintext value through unchanged, which covers every row written
+ * before encryption existed.
  */
 function mapStatutoryIds(row: EmployeeRow): PaystubEmployeeSyncBody["statutoryIds"] | undefined {
   const ids = {
-    pan: row.panNumber ?? undefined,
+    pan: decryptNullable(row.panNumber) ?? undefined,
     uan: row.uanNumber ?? undefined,
     pf_number: row.pfNumber ?? undefined,
     esi_number: row.esiNumber ?? undefined,

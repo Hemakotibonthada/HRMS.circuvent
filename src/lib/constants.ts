@@ -9,7 +9,7 @@ import {
   BookOpen, Heart, Cake, Keyboard,
   FolderKanban, Sparkles, GitBranch, MessageSquare, Activity,
   Scale, Monitor, Map,
-  Bot, Upload, Fingerprint,
+  Bot, Upload, Fingerprint, Umbrella, Landmark,
   type LucideIcon
 } from "lucide-react";
 
@@ -83,6 +83,34 @@ export const MODULES: NavItem[] = [
     icon: DollarSign,
     href: "/payroll",
     color: "oklch(0.68 0.16 145)",
+    category: "workforce",
+  },
+  {
+    // Added so `benefits` is reachable from navigation: rbac.ts already defined a
+    // "benefits.view" module permission, but no MODULES entry ever existed, so the
+    // page (and its data) was only reachable by typing the URL directly.
+    id: "benefits",
+    name: "Benefits",
+    shortName: "Benefits",
+    description: "Health, insurance & benefit plans",
+    icon: Umbrella,
+    href: "/benefits",
+    color: "oklch(0.66 0.17 165)",
+    category: "workforce",
+  },
+  {
+    // Same omission as `benefits` above, and with a worse consequence: an
+    // employee cannot be paid until somebody has captured their account
+    // details, and the page that captures them was reachable only by typing
+    // the URL. A payroll run that fails for want of a bank account is traced
+    // back to a form nobody could find.
+    id: "bankdetails",
+    name: "Bank Details",
+    shortName: "Bank",
+    description: "Your salary account & statutory IDs",
+    icon: Landmark,
+    href: "/bankdetails",
+    color: "oklch(0.64 0.16 250)",
     category: "workforce",
   },
   {

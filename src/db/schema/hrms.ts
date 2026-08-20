@@ -237,13 +237,23 @@ export const employees = hrms.table(
     currency: text("currency").notNull().default("INR"),
 
     /**
-     * Not yet encrypted, despite holding an account number and IFSC.
-     *
-     * `jsonb` cannot hold a ciphertext string without a type change, so this
-     * needs a migration rather than the backfill the text columns use. Nothing
-     * writes to it today. Tracked in docs/ROADMAP.md.
+     * Written by `NeonEmployeeRepository.updateBankDetails` (see
+     * `db/repositories/employee.neon.ts`) from the employee self-service form
+     * at `/bankdetails`. Still not encrypted, despite holding an account
+     * number and IFSC: `jsonb` cannot hold a ciphertext string without a type
+     * change, so that needs a migration rather than the backfill the `text`
+     * columns below use. The account number is masked to its last 4 digits on
+     * every read that reaches a browser (`toBankDetailsView` in
+     * `lib/bank-details-rules.ts`); the column itself remains full-precision
+     * plaintext in Postgres. Tracked in docs/ROADMAP.md.
      */
-    bankDetails: jsonb("bank_details"),
+    bankDetails: jsonb("bank_details").$type<{
+      bankName: string;
+      accountHolderName: string;
+      accountNumber: string;
+      ifsc: string;
+      accountType: "savings" | "current";
+    }>(),
     emergencyContact: jsonb("emergency_contact"),
     skills: jsonb("skills").notNull().default(sql`'[]'::jsonb`),
     qualifications: jsonb("qualifications").notNull().default(sql`'[]'::jsonb`),
@@ -251,11 +261,15 @@ export const employees = hrms.table(
     /**
      * Indian statutory identifiers.
      *
-     * PAN and Aadhaar are national identifiers and are encrypted at rest by
-     * `lib/crypto/field-encryption`. UAN, PF and ESI are scheme membership
-     * numbers, are quoted on statutory filings, and are left in the clear —
-     * stated explicitly because this comment previously claimed the whole
-     * group was encrypted when none of it was.
+     * PAN is a national identifier and, as of `updateBankDetails`, is the one
+     * of these five actually encrypted at rest by `lib/crypto/field-encryption`
+     * — every earlier row and every other write path left it in the clear, so
+     * `decryptNullable` tolerates a plaintext PAN read back unchanged (see the
+     * field-encryption module for why that fallback exists at all). Aadhaar
+     * has no capture path anywhere in the product yet, encrypted or otherwise,
+     * despite once being claimed encrypted by this same comment. UAN, PF and
+     * ESI are scheme membership numbers, are quoted on statutory filings, and
+     * are left in the clear.
      */
     panNumber: text("pan_number"),
     aadhaarNumber: text("aadhaar_number"),

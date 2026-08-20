@@ -343,6 +343,14 @@ export const MODULE_PERMISSION_MAP: Record<string, Permission> = {
   provisioning: "assets.view",
   journey: "dashboard.view",
   myprofile: "dashboard.view",
+  // No dedicated bankdetails.* permission exists, and none is needed: every
+  // employee already has dashboard.view, and the route behind this page does
+  // its own, stricter self-vs-other check (canWriteBankDetails /
+  // canViewOthersBankDetails) rather than relying on a module permission to
+  // scope who sees whose bank account. Without this entry the page would be
+  // unreachable by anyone but an admin — MODULE_PERMISSION_MAP has no
+  // wildcard, so an absent key fails closed in canAccessModule below.
+  bankdetails: "dashboard.view",
   calculator: "dashboard.view",
   vault: "documents.view",
   chatbot: "dashboard.view",
@@ -383,6 +391,24 @@ export function roleHasPermission(role: PrivilegedRole, permission: Permission):
  * compensation while `/api/employees/[id]/direct-reports` stripped it.
  */
 export function canViewOthersSalary(role: PrivilegedRole): boolean {
+  return roleHasPermission(role, "payroll.view");
+}
+
+/**
+ * Whether this role may see another employee's bank account and statutory
+ * IDs.
+ *
+ * Reuses `payroll.view` rather than adding a bank-details-specific
+ * permission: anyone trusted to see another person's salary figure is
+ * already trusted with the account it is paid into, and a second permission
+ * that always happens to be granted alongside the first would just be a
+ * permission nobody could ever set differently from `payroll.view` — a
+ * distinction with no behaviour behind it. This governs *reads* only; there
+ * is no equivalent for writes; see `canWriteBankDetails` in
+ * `lib/bank-details-rules.ts`, which every role fails except the account's
+ * own owner.
+ */
+export function canViewOthersBankDetails(role: PrivilegedRole): boolean {
   return roleHasPermission(role, "payroll.view");
 }
 

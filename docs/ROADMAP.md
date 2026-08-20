@@ -802,7 +802,7 @@ heading is honest; four fabricated receipts are not.
 | Issue | Where |
 |---|---|
 | ~925 lint warnings (`no-explicit-any`, `no-console`) | Repo-wide. Informational; `lint:strict` holds new code to zero. |
-| **`bank_details` is not encrypted**, unlike the other sensitive columns. | `src/db/schema/hrms.ts`. It is `jsonb`, so holding a ciphertext string needs a type change and a migration rather than the backfill the `text` columns use. Nothing writes to it today. |
+| **`bank_details` is not encrypted**, unlike the other sensitive columns. | `src/db/schema/hrms.ts`. It is `jsonb`, so holding a ciphertext string needs a type change and a migration rather than the backfill the `text` columns use. It now has a writer — the `/bankdetails` self-service form — so this is no longer a hypothetical row; masking the account number on every read (`toBankDetailsView`) narrows the exposure until the migration happens. |
 
 ### MFA could not be turned on
 
