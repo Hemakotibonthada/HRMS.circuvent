@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Favorite
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.WavingHand
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +47,7 @@ import com.circuvent.hrms.core.design.AccentTone
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.design.colors
 import com.circuvent.hrms.core.ui.AccentBadge
+import com.circuvent.hrms.core.ui.AccentRule
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppText
@@ -60,6 +63,8 @@ import com.circuvent.hrms.core.ui.TextTone
 import com.circuvent.hrms.core.ui.rememberFormattedDate
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.SessionUser
+import com.circuvent.hrms.data.WallCommentCreate
+import com.circuvent.hrms.data.WallCommentDto
 import com.circuvent.hrms.data.WallPostDto
 import kotlinx.coroutines.launch
 
@@ -89,6 +94,10 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
     var draftError by remember { mutableStateOf<String?>(null) }
     var publishing by remember { mutableStateOf(false) }
     var busyId by remember { mutableStateOf<String?>(null) }
+    // Which post has its replies open. One at a time: the wall is a scrolling
+    // list and several expanded threads turn it into a wall of somebody else's
+    // conversations.
+    var expandedPostId by remember { mutableStateOf<String?>(null) }
 
     val scope = rememberCoroutineScope()
 
@@ -289,27 +298,139 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
                         },
                     )
 
-                    // Shown, not actionable: the count is real and came from
-                    // somewhere, but there is no comment store to open.
-                    if (post.comments > 0) {
-                        Spacer(Modifier.width(Theme.spacing.md))
-                        Icon(
-                            imageVector = Icons.Filled.Forum,
-                            contentDescription = null,
-                            tint = Theme.colors.textMuted,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.width(Theme.spacing.xs))
+                    Spacer(Modifier.width(Theme.spacing.sm))
+                    AppButton(
+                        label = stringResource(R.string.wall_comment_action),
+                        onClick = {
+                            expandedPostId = if (expandedPostId == post.id) null else post.id
+                        },
+                        variant = ButtonVariant.GHOST,
+                        fullWidth = false,
+                    )
+                }
+
+                if (expandedPostId == post.id) {
+                    WallComments(container = container, postId = post.id)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The replies on one post, loaded when it is opened.
+ *
+ * Not fetched with the feed: most posts are never opened, and a wall of twenty
+ * posts would otherwise be twenty extra queries to render counts nobody looked
+ * at. The count shown is the number of replies actually present, because it is
+ * derived from them rather than stored beside them — the old count came out of
+ * the post document and had nothing behind it.
+ */
+@Composable
+private fun WallComments(container: AppContainer, postId: String) {
+    var items by remember(postId) { mutableStateOf<List<WallCommentDto>>(emptyList()) }
+    var loading by remember(postId) { mutableStateOf(true) }
+    var draft by remember(postId) { mutableStateOf("") }
+    var sending by remember(postId) { mutableStateOf(false) }
+    var error by remember(postId) { mutableStateOf<String?>(null) }
+
+    val scope = rememberCoroutineScope()
+    val failed = stringResource(R.string.wall_comment_failed)
+
+    suspend fun load() {
+        loading = true
+        items = runCatching { container.repository.wallComments(postId).items }.getOrDefault(emptyList())
+        loading = false
+    }
+
+    LaunchedEffect(postId) { load() }
+
+    Column(Modifier.padding(top = Theme.spacing.sm)) {
+        AccentRule()
+
+        if (loading) {
+            SkeletonRows(count = 1, rowHeight = 44.dp)
+        } else {
+            items.forEach { comment ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = Theme.spacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm),
+                ) {
+                    Column(Modifier.weight(1f)) {
                         AppText(
-                            pluralStringResource(R.plurals.wall_comment_count, post.comments, post.comments),
-                            size = Theme.type.caption,
-                            lineHeight = Theme.type.captionLine,
-                            tone = TextTone.MUTED,
+                            comment.authorName
+                                ?: stringResource(R.string.wall_unknown_author_fallback),
+                            weight = FontWeight.Medium,
+                            size = Theme.type.footnote,
+                            lineHeight = Theme.type.footnoteLine,
+                        )
+                        AppText(
+                            comment.body,
+                            size = Theme.type.footnote,
+                            lineHeight = Theme.type.footnoteLine,
                         )
                     }
                 }
             }
+
+            if (items.isEmpty()) {
+                AppText(
+                    stringResource(R.string.wall_no_comments),
+                    modifier = Modifier.padding(top = Theme.spacing.sm),
+                    size = Theme.type.caption,
+                    tone = TextTone.MUTED,
+                )
+            }
         }
+
+        error?.let {
+            AppText(it, tone = TextTone.DANGER, size = Theme.type.caption)
+        }
+
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            label = { Text(stringResource(R.string.wall_comment_field_label)) },
+            // Send sits inside the field rather than under it. Below the field
+            // it was hidden by the keyboard the field itself raises: imePadding
+            // keeps the focused input visible, not whatever follows it, so the
+            // one control needed to finish the reply was the one you could not
+            // reach without dismissing the keyboard first.
+            trailingIcon = {
+                val ready = !sending && draft.isNotBlank()
+                IconButton(
+                    onClick = {
+                        sending = true
+                        error = null
+                        scope.launch {
+                            try {
+                                container.repository.addWallComment(
+                                    WallCommentCreate(postId = postId, body = draft.trim())
+                                )
+                                draft = ""
+                                load()
+                            } catch (e: Throwable) {
+                                error = e.message ?: failed
+                            } finally {
+                                sending = false
+                            }
+                        }
+                    },
+                    enabled = ready,
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = stringResource(R.string.wall_comment_send_action),
+                        tint = if (ready) Theme.colors.primary else Theme.colors.textMuted,
+                    )
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Theme.spacing.sm),
+        )
     }
 }
 

@@ -507,6 +507,47 @@ class AppRepository(private val api: ApiClient) {
             api.get("/api/team/attendance" + if (date != null) "?date=$date" else "")
         )
 
+    // ─── Recognition ─────────────────────────────────────────
+
+    /** Recent praise across the organisation. */
+    suspend fun praise(): PraiseResponse =
+        json.decodeFromString(api.get("/api/praise"))
+
+    /** Replies on one wall post, loaded only when it is opened. */
+    suspend fun wallComments(postId: String): WallCommentResponse =
+        json.decodeFromString(
+            api.get("/api/wall/comments?postId=" + java.net.URLEncoder.encode(postId, "UTF-8"))
+        )
+
+    /** Reply to a wall post. Who it is from is the session's business. */
+    suspend fun addWallComment(body: WallCommentCreate) {
+        api.post("/api/wall/comments", json.encodeToString(WallCommentCreate.serializer(), body))
+    }
+
+    /**
+     * Colleagues by name, for anyone signed in.
+     *
+     * Separate from [directory], which calls the HR endpoint and needs an HR
+     * role. Most of the company has no role at all, so that one answers 403 to
+     * exactly the people trying to look somebody up.
+     */
+    suspend fun colleagues(search: String? = null): ColleagueResponse {
+        val term = search?.trim()?.takeIf { it.isNotEmpty() }
+        val path = if (term == null) "/api/directory"
+        else "/api/directory?search=" + java.net.URLEncoder.encode(term, "UTF-8")
+        return json.decodeFromString(api.get(path))
+    }
+
+    /**
+     * Recognise a colleague.
+     *
+     * Only the recipient, the value and the words are sent. Who it is from is
+     * the session's business, decided server-side, so it cannot be forged.
+     */
+    suspend fun givePraise(body: PraiseCreate) {
+        api.post("/api/praise", json.encodeToString(PraiseCreate.serializer(), body))
+    }
+
     // ─── Your own record ─────────────────────────────────────
 
     /**

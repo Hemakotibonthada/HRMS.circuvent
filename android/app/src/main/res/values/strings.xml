@@ -685,6 +685,37 @@
     <string name="team_member_content_description">%1$s, %2$s</string>
     <!-- %1$s name, %2$s status, %3$s arrival time. -->
     <string name="team_member_content_description_with_time">%1$s, %2$s, arrived %3$s</string>
+
+    <!-- Praise: recognising a colleague -->
+    <string name="praise_give_action">Praise a colleague</string>
+    <string name="praise_recent_section_label">Recent praise</string>
+    <string name="praise_empty_title">No praise yet</string>
+    <string name="praise_empty_description">When somebody does good work, say so here. Everyone can see it.</string>
+    <string name="praise_who_field_label">Who deserves it</string>
+    <string name="praise_change_person_action">Change</string>
+    <string name="praise_value_field_label">What for</string>
+    <string name="praise_message_field_label">Say why</string>
+    <string name="praise_send_action">Send praise</string>
+    <string name="praise_sending_label">Sending…</string>
+    <string name="praise_sent_message">Sent. They will see it on the praise wall.</string>
+    <string name="praise_send_error_fallback">That praise could not be sent.</string>
+    <!-- %1$s is the name of the person who gave the praise -->
+    <string name="praise_from_template">From %1$s</string>
+    <string name="praise_value_teamwork">Teamwork</string>
+    <string name="praise_value_ownership">Ownership</string>
+    <string name="praise_value_craft">Craft</string>
+    <string name="praise_value_customer">Customer</string>
+    <string name="praise_value_kindness">Kindness</string>
+    <string name="me_feature_praise_title">Praise</string>
+    <string name="me_feature_praise_subtitle">Recognise a colleague, where everyone can see</string>
+
+    <!-- Wall replies -->
+    <string name="wall_comment_action">Reply</string>
+    <string name="wall_comment_field_label">Write a reply</string>
+    <string name="wall_comment_send_action">Post reply</string>
+    <string name="wall_comment_sending">Posting…</string>
+    <string name="wall_comment_failed">That reply could not be posted.</string>
+    <string name="wall_no_comments">No replies yet. Be the first.</string>
     <string name="myteam_everyone_in_label">Everyone is in.</string>
     <string name="myteam_away_content_description">%1$s is away today on %2$s</string>
     <string name="myteam_back_on_template">back on %1$s</string>

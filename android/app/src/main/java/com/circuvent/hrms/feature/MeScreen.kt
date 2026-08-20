@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.EditCalendar
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Groups
@@ -397,6 +398,12 @@ private fun itemsFor(section: MeSection, go: (String) -> Unit): List<FeatureGrid
             Glyph.Vector(Icons.Filled.Forum),
             AccentTone.Plum,
         ) { go("wall") },
+        FeatureGridItem(
+            stringResource(R.string.me_feature_praise_title),
+            stringResource(R.string.me_feature_praise_subtitle),
+            Glyph.Vector(Icons.Filled.EmojiEvents),
+            AccentTone.Amber,
+        ) { go("praise") },
         FeatureGridItem(
             stringResource(R.string.me_feature_directory_title),
             stringResource(R.string.me_feature_directory_subtitle),

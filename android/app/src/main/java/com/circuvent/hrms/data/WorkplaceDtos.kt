@@ -198,3 +198,69 @@ data class TeamAttendanceResponse(
     val counts: TeamAttendanceCounts = TeamAttendanceCounts(),
     val members: List<TeamMemberDayDto> = emptyList(),
 )
+
+// ─── Praise ──────────────────────────────────────────────────
+
+/**
+ * One piece of recognition.
+ *
+ * `fromName` is resolved by the server from the session that wrote it, not from
+ * anything the sender typed. The web's older recognition let anyone type any
+ * name into a "from" box and then ranked those strings.
+ */
+@Serializable
+data class PraiseDto(
+    val id: String = "",
+    val createdAt: String? = null,
+    val value: String = "",
+    val message: String = "",
+    val toName: String = "",
+    val toAvatarUrl: String? = null,
+    val fromName: String? = null,
+)
+
+@Serializable
+data class PraiseResponse(val items: List<PraiseDto> = emptyList())
+
+@Serializable
+data class PraiseCreate(
+    val toEmployeeId: String,
+    val value: String,
+    val message: String,
+)
+
+/**
+ * A colleague, as the name-only lookup returns them.
+ *
+ * Deliberately not [DirectoryEmployeeDto]: that carries email, phone and join
+ * date from an endpoint only HR roles may call. This is what it takes to
+ * recognise somebody, available to everybody.
+ */
+@Serializable
+data class ColleagueDto(
+    val id: String = "",
+    val fullName: String = "",
+    val designation: String = "",
+    val departmentName: String? = null,
+    val avatarUrl: String? = null,
+)
+
+@Serializable
+data class ColleagueResponse(val items: List<ColleagueDto> = emptyList())
+
+// ─── Wall comments ───────────────────────────────────────────
+
+@Serializable
+data class WallCommentDto(
+    val id: String = "",
+    val createdAt: String? = null,
+    val body: String = "",
+    val authorName: String? = null,
+    val authorAvatarUrl: String? = null,
+)
+
+@Serializable
+data class WallCommentResponse(val items: List<WallCommentDto> = emptyList())
+
+@Serializable
+data class WallCommentCreate(val postId: String, val body: String)
