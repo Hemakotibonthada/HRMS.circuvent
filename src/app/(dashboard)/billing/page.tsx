@@ -1,18 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import {
-  CreditCard, Check, Users, Calendar, ArrowRight, Shield, Zap,
-  Star, Download, Clock,
-} from "lucide-react";
+import { CreditCard, Check, ArrowRight, Star, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SUBSCRIPTION_PLANS } from "@/lib/constants";
+import { toast } from "sonner";
 import { clickable } from "@/lib/a11y/clickable";
 
 /**
@@ -30,33 +26,110 @@ import { clickable } from "@/lib/a11y/clickable";
  */
 const INVOICES: { id: string; date: string; amount: string; status: "paid" | "due"; plan: string }[] = [];
 
+/** What `/api/billing/subscription` answers with. */
+interface SubscriptionResponse {
+  subscription: {
+    plan: string;
+    planName: string;
+    status: string;
+    maxEmployees: number | null;
+    employeesUsed: number;
+    seatsRemaining: number | null;
+    trialDaysLeft: number;
+    entitled: boolean;
+    pricePerEmployeeMinor: number;
+    currency: string;
+    currentPeriodEnd: string | null;
+  } | null;
+  plans: {
+    id: string;
+    name: string;
+    pricePerEmployeeMinor: number;
+    currency: string;
+    maxEmployees: number | null;
+    features: string[];
+  }[];
+}
+
+/** Paise to a readable rupee amount, the way every other screen shows money. */
+function inr(minor: number): string {
+  return `₹${(minor / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+}
+
 export default function BillingPage() {
   const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
 
-  const currentPlan = SUBSCRIPTION_PLANS[1]; // Professional
-
   /*
-   * Usage figures.
+   * The tenant's real subscription.
    *
-   * Null, because nothing measures them. There is a `subscriptions` table in
-   * the identity schema, but no billing API route and no code that populates
-   * `useBillingStore` — its `subscription` is initialised to null and never
-   * set. The numbers that used to sit here — 148 of 200 employees, 23.4 GB of
-   * 50 GB, and a monthly cost derived from that headcount — were typed in.
+   * This page used to read `SUBSCRIPTION_PLANS[1] // Professional` — a
+   * hardcoded index — so every organisation on every deployment was shown the
+   * Professional plan and its price whether or not anybody had agreed to
+   * either, and the usage figures beside it were typed in. At 74% of an
+   * invented headcount the page tripped an "Approaching limit — consider
+   * upgrading" warning, which is an invented reason to spend money.
    *
-   * They were not harmless. This page is shown to a paying tenant about their
-   * own account, the headcount drove a progress bar, and at 74% it tripped an
-   * "Approaching limit — consider upgrading" warning. That is an invented
-   * reason to spend money.
-   *
-   * An em dash under a heading is honest; a precise wrong number is not. It
-   * also follows the rule the rest of this codebase works to: a metric with no
-   * data is null, never a zero or a plausible-looking figure.
+   * Everything below now comes from /api/billing/subscription, and anything
+   * the server does not know stays null rather than becoming a plausible
+   * number.
    */
-  const currentEmployees: number | null = null;
-  const maxEmployees: number | null = null;
+  const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/billing/subscription", { credentials: "include" });
+        if (!res.ok) return;
+        const body = (await res.json()) as SubscriptionResponse;
+        if (!cancelled) setSubscription(body);
+      } catch {
+        // Left null: an unreachable billing service must not invent a plan.
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const sub = subscription?.subscription ?? null;
+  const plans = subscription?.plans ?? [];
+  const currentPlan = plans.find((p) => p.id === sub?.plan) ?? null;
+  const currentEmployees: number | null = sub?.employeesUsed ?? null;
+  const maxEmployees: number | null = sub?.maxEmployees ?? null;
+  // Nothing measures storage yet, so it stays absent rather than guessed.
   const storageUsedGb: number | null = null;
+
+  const startCheckout = async (planId: string) => {
+    setCheckoutBusy(true);
+    try {
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ plan: planId }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; order?: { id: string } };
+      if (!res.ok) {
+        toast.error(body.error || "Could not start checkout.");
+        return;
+      }
+      // The order exists; the Razorpay widget is what carries it from here.
+      // Until that script is embedded, say so rather than pretending the
+      // payment completed.
+      toast.success(`Order ${body.order?.id ?? ""} created. Complete payment to activate.`);
+      setIsUpgradeOpen(false);
+    } catch {
+      toast.error("Could not reach the billing service.");
+    } finally {
+      setCheckoutBusy(false);
+    }
+  };
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
@@ -72,17 +145,36 @@ export default function BillingPage() {
             <div>
               <div className="flex items-center gap-2">
                 <Badge className="bg-white/20 text-white border-0 backdrop-blur-sm">
-                  <Star className="h-3 w-3 mr-1 fill-white" /> {currentPlan.name} Plan
+                  <Star className="h-3 w-3 mr-1 fill-white" />{" "}
+                  {loading ? "Loading…" : sub ? `${sub.planName} Plan` : "No plan"}
                 </Badge>
-                <Badge className="bg-emerald-400/20 text-emerald-100 border-0">Active</Badge>
+                {sub && (
+                  <Badge className="bg-emerald-400/20 text-emerald-100 border-0 capitalize">
+                    {sub.status === "trial" ? `Trial · ${sub.trialDaysLeft} days left` : sub.status}
+                  </Badge>
+                )}
               </div>
               <h2 className="text-3xl font-extrabold mt-3">
-                {currentPlan.currency === "USD" ? "$" : ""}{currentPlan.price}
-                <span className="text-lg font-normal opacity-80">/{currentPlan.interval}</span>
+                {sub ? (
+                  <>
+                    {inr(sub.pricePerEmployeeMinor)}
+                    <span className="text-lg font-normal opacity-80"> per employee/month</span>
+                  </>
+                ) : (
+                  <span className="text-lg font-normal opacity-80">—</span>
+                )}
               </h2>
-              {/* The billing date came from nowhere — no subscription record is
-                  read on this page — so it is not stated. */}
-              <p className="text-sm opacity-70 mt-1">List price, {currentPlan.currency}</p>
+              <p className="text-sm opacity-70 mt-1">
+                {/* Only stated when there is a record behind it. This line
+                    used to read "List price, USD" beneath a hardcoded plan. */}
+                {sub
+                  ? sub.status === "trial"
+                    ? "No charge during your trial"
+                    : `${sub.employeesUsed} employees · ${inr(sub.pricePerEmployeeMinor * sub.employeesUsed)} per month`
+                  : loading
+                    ? ""
+                    : "This organisation has no subscription record yet."}
+              </p>
             </div>
             <Button
               onClick={() => setIsUpgradeOpen(true)}
@@ -110,12 +202,12 @@ export default function BillingPage() {
             <div>
               <p className="text-xs font-medium text-muted-foreground">Monthly Cost</p>
               <p className="mt-1 text-lg font-bold">
-                {currentEmployees === null
+                {currentEmployees === null || !sub
                   ? "—"
-                  : `${currentPlan.currency === "USD" ? "$" : ""}${currentPlan.price * currentEmployees}`}
+                  : inr(sub.pricePerEmployeeMinor * currentEmployees)}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {currentPlan.currency === "USD" ? "$" : ""}{currentPlan.price} per employee
+                {sub ? `${inr(sub.pricePerEmployeeMinor)} per employee` : "No plan"}
               </p>
             </div>
             <div>
@@ -134,12 +226,15 @@ export default function BillingPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2">
-            {currentPlan.features.map((feature) => (
+            {(currentPlan?.features ?? []).map((feature: string) => (
               <div key={feature} className="flex items-center gap-2 text-sm">
                 <Check className="h-4 w-4 text-emerald-500 shrink-0" />
                 <span>{feature}</span>
               </div>
             ))}
+            {!currentPlan && !loading && (
+              <p className="text-sm text-muted-foreground">No plan is attached to this organisation.</p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -185,8 +280,8 @@ export default function BillingPage() {
             <DialogTitle>Choose Your Plan</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4 sm:grid-cols-3">
-            {SUBSCRIPTION_PLANS.map((plan) => {
-              const isCurrent = plan.id === currentPlan.id;
+            {plans.map((plan) => {
+              const isCurrent = plan.id === currentPlan?.id;
               const isSelected = selectedPlan === plan.id;
               return (
                 <div
@@ -199,11 +294,6 @@ export default function BillingPage() {
                     !isCurrent && !isSelected && "border-border hover:border-primary/40"
                   )}
                 >
-                  {plan.popular && (
-                    <Badge className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 text-[10px]">
-                      Popular
-                    </Badge>
-                  )}
                   {isCurrent && (
                     <Badge className="absolute -top-2.5 right-3 bg-primary text-primary-foreground border-0 text-[10px]">
                       Current
@@ -211,14 +301,14 @@ export default function BillingPage() {
                   )}
                   <h3 className="font-semibold">{plan.name}</h3>
                   <div className="mt-2 flex items-baseline gap-0.5">
-                    <span className="text-2xl font-extrabold">${plan.price}</span>
-                    <span className="text-xs text-muted-foreground">/{plan.interval}</span>
+                    <span className="text-2xl font-extrabold">{inr(plan.pricePerEmployeeMinor)}</span>
+                    <span className="text-xs text-muted-foreground">/employee/month</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {plan.maxEmployees === -1 ? "Unlimited" : `Up to ${plan.maxEmployees}`} employees
+                    {plan.maxEmployees === null ? "Unlimited" : `Up to ${plan.maxEmployees}`} employees
                   </p>
                   <ul className="mt-4 space-y-2">
-                    {plan.features.slice(0, 5).map((f) => (
+                    {plan.features.slice(0, 5).map((f: string) => (
                       <li key={f} className="flex items-start gap-1.5 text-xs">
                         <Check className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
                         <span>{f}</span>
@@ -235,13 +325,17 @@ export default function BillingPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsUpgradeOpen(false)}>Cancel</Button>
             <Button
-              disabled={!selectedPlan || selectedPlan === currentPlan.id}
+              disabled={!selectedPlan || selectedPlan === currentPlan?.id || checkoutBusy}
+              onClick={() => selectedPlan && startCheckout(selectedPlan)}
               className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0"
             >
-              {selectedPlan && SUBSCRIPTION_PLANS.findIndex((p) => p.id === selectedPlan) > SUBSCRIPTION_PLANS.findIndex((p) => p.id === currentPlan.id)
-                ? "Upgrade Plan"
-                : "Switch Plan"
-              }
+              {checkoutBusy
+                ? "Starting…"
+                : selectedPlan &&
+                    plans.findIndex((p) => p.id === selectedPlan) >
+                      plans.findIndex((p) => p.id === currentPlan?.id)
+                  ? "Upgrade Plan"
+                  : "Switch Plan"}
             </Button>
           </DialogFooter>
         </DialogContent>
