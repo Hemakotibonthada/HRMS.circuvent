@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -99,32 +100,47 @@ private val NAV_GROUPS: List<Pair<String, List<NavItem>>> = listOf(
 
 @Composable
 fun Shell(state: AppState) {
-    Row(Modifier.fillMaxSize().background(Desk.colors.background)) {
-        Sidebar(state)
+    // The sidebar collapses to icons on a narrow window.
+    //
+    // Not a nicety. A 1280x800 laptop at 200% scaling gives 640x400dp of usable
+    // space — less logical room than a large phone — and a fixed 232dp sidebar
+    // takes over a third of it, leaving tables squeezed into 400dp. The rail
+    // keeps every destination reachable and hands the width back to the content
+    // that people actually came to read.
+    BoxWithConstraints(Modifier.fillMaxSize().background(Desk.colors.background)) {
+        val wide = maxWidth >= 860.dp
 
-        Column(Modifier.fillMaxSize()) {
-            TopBar(state)
-            Box(Modifier.fillMaxSize().padding(Desk.spacing.xl)) {
-                when (state.screen) {
-                    Screen.HOME -> HomeScreen(state)
-                    Screen.LEAVE -> LeaveScreen(state)
-                    Screen.ATTENDANCE -> AttendanceScreen(state)
-                    Screen.WORK_AWAY -> WorkAwayScreen(state)
-                    Screen.CORRECTIONS -> CorrectionsScreen(state)
-                    Screen.TEAM -> TeamScreen(state)
-                    Screen.INBOX -> InboxScreen(state)
-                    Screen.DIRECTORY -> DirectoryScreen(state)
-                    Screen.PRAISE -> PraiseScreen(state)
-                    Screen.WALL -> WallScreen(state)
-                    Screen.MY_DETAILS -> MyDetailsScreen(state)
-                    Screen.PAYSLIPS -> PayslipsScreen(state)
-                    Screen.EXPENSES -> ExpensesScreen(state)
-                    Screen.LOANS -> LoansScreen(state)
-                    Screen.HELPDESK -> HelpdeskScreen(state)
-                    Screen.HOLIDAYS -> HolidaysScreen(state)
-                    Screen.ANNOUNCEMENTS -> AnnouncementsScreen(state)
-                    Screen.DOCUMENTS -> DocumentsScreen(state)
-                    Screen.SETTINGS -> SettingsScreen(state)
+        Row(Modifier.fillMaxSize()) {
+            Sidebar(state, wide)
+
+            Column(Modifier.fillMaxSize()) {
+                TopBar(state)
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(if (wide) Desk.spacing.xl else Desk.spacing.md)
+                ) {
+                    when (state.screen) {
+                        Screen.HOME -> HomeScreen(state)
+                        Screen.LEAVE -> LeaveScreen(state)
+                        Screen.ATTENDANCE -> AttendanceScreen(state)
+                        Screen.WORK_AWAY -> WorkAwayScreen(state)
+                        Screen.CORRECTIONS -> CorrectionsScreen(state)
+                        Screen.TEAM -> TeamScreen(state)
+                        Screen.INBOX -> InboxScreen(state)
+                        Screen.DIRECTORY -> DirectoryScreen(state)
+                        Screen.PRAISE -> PraiseScreen(state)
+                        Screen.WALL -> WallScreen(state)
+                        Screen.MY_DETAILS -> MyDetailsScreen(state)
+                        Screen.PAYSLIPS -> PayslipsScreen(state)
+                        Screen.EXPENSES -> ExpensesScreen(state)
+                        Screen.LOANS -> LoansScreen(state)
+                        Screen.HELPDESK -> HelpdeskScreen(state)
+                        Screen.HOLIDAYS -> HolidaysScreen(state)
+                        Screen.ANNOUNCEMENTS -> AnnouncementsScreen(state)
+                        Screen.DOCUMENTS -> DocumentsScreen(state)
+                        Screen.SETTINGS -> SettingsScreen(state)
+                    }
                 }
             }
         }
@@ -132,43 +148,57 @@ fun Shell(state: AppState) {
 }
 
 @Composable
-private fun Sidebar(state: AppState) {
+private fun Sidebar(state: AppState, wide: Boolean) {
     Column(
         Modifier
-            .width(232.dp)
+            .width(if (wide) 232.dp else 60.dp)
             .fillMaxHeight()
             .background(Desk.colors.sidebar)
             .verticalScroll(rememberScrollState())
             .padding(vertical = Desk.spacing.lg),
+        horizontalAlignment = if (wide) Alignment.Start else Alignment.CenterHorizontally,
     ) {
-        Text(
-            "Circuvent HR",
-            modifier = Modifier.padding(horizontal = Desk.spacing.lg, vertical = Desk.spacing.sm),
-            color = Color.White,
-            style = MaterialTheme.typography.titleLarge,
-        )
-
-        Spacer(Modifier.height(Desk.spacing.md))
+        if (wide) {
+            Text(
+                "Circuvent HR",
+                modifier = Modifier.padding(horizontal = Desk.spacing.lg, vertical = Desk.spacing.sm),
+                color = Color.White,
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Spacer(Modifier.height(Desk.spacing.md))
+        }
 
         NAV_GROUPS.forEach { (group, items) ->
-            Text(
-                group.uppercase(),
-                modifier = Modifier.padding(
-                    start = Desk.spacing.lg,
-                    top = Desk.spacing.md,
-                    bottom = Desk.spacing.xs,
-                ),
-                color = Color.White.copy(alpha = 0.45f),
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold,
-            )
+            if (wide) {
+                Text(
+                    group.uppercase(),
+                    modifier = Modifier.padding(
+                        start = Desk.spacing.lg,
+                        top = Desk.spacing.md,
+                        bottom = Desk.spacing.xs,
+                    ),
+                    color = Color.White.copy(alpha = 0.45f),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            } else {
+                // A hairline instead of a heading. The grouping still reads,
+                // and a truncated word would not.
+                Box(
+                    Modifier
+                        .padding(vertical = Desk.spacing.sm)
+                        .width(24.dp)
+                        .height(1.dp)
+                        .background(Color.White.copy(alpha = 0.18f))
+                )
+            }
 
             items.forEach { item ->
                 val active = state.screen == item.screen
                 Row(
                     Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = Desk.spacing.sm, vertical = 1.dp)
+                        .then(if (wide) Modifier.fillMaxWidth() else Modifier.size(44.dp))
+                        .padding(horizontal = if (wide) Desk.spacing.sm else 0.dp, vertical = 1.dp)
                         .clip(RoundedCornerShape(Desk.radius.sm))
                         .background(if (active) Desk.colors.primary else Color.Transparent)
                         .selectable(
@@ -176,22 +206,31 @@ private fun Sidebar(state: AppState) {
                             role = Role.Tab,
                             onClick = { state.screen = item.screen },
                         )
-                        .padding(horizontal = Desk.spacing.md, vertical = Desk.spacing.sm),
+                        .padding(
+                            horizontal = if (wide) Desk.spacing.md else 0.dp,
+                            vertical = if (wide) Desk.spacing.sm else 0.dp,
+                        ),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (wide) Arrangement.Start else Arrangement.Center,
                 ) {
                     Icon(
                         item.icon,
-                        contentDescription = null,
+                        // Named even when the label is hidden, or the rail is
+                        // twelve identical unlabelled targets to a screen reader.
+                        contentDescription = if (wide) null else item.screen.title,
                         tint = if (active) Desk.colors.onPrimary else Color.White.copy(alpha = 0.75f),
                         modifier = Modifier.size(17.dp),
                     )
-                    Spacer(Modifier.width(Desk.spacing.md))
-                    Text(
-                        item.screen.title,
-                        color = if (active) Desk.colors.onPrimary else Color.White.copy(alpha = 0.85f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                    )
+                    if (wide) {
+                        Spacer(Modifier.width(Desk.spacing.md))
+                        Text(
+                            item.screen.title,
+                            color = if (active) Desk.colors.onPrimary else Color.White.copy(alpha = 0.85f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }

@@ -58,6 +58,16 @@ compose.desktop {
     application {
         mainClass = "com.circuvent.hrms.desktop.MainKt"
 
+        // Let Java work out the display scaling.
+        //
+        // Without this the packaged launcher ran DPI-unaware: Compose laid the
+        // window out at density 1.0 while Windows scaled the frame by two, so
+        // on a 1280x800 panel at 200% the app composed a 2560-wide scene into a
+        // 1280-wide window and showed the left half of itself. The Gradle-run
+        // build was fine, which is what made it a packaging bug rather than a
+        // layout one.
+        jvmArgs += listOf("-Dsun.java2d.uiScale.enabled=true")
+
         // The bundled ProGuard (7.2.2) cannot read Java 21 class files — it
         // stops at version 62 — and the toolchain here is 21 because that is
         // the JDK installed on the build machine.

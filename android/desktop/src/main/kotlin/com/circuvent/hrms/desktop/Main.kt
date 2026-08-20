@@ -8,6 +8,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -27,9 +28,18 @@ import androidx.compose.ui.window.rememberWindowState
  * clipping content out of view.
  */
 fun main() = application {
+    // Maximised, not a fixed 1280x800.
+    //
+    // A window sized in logical pixels can be larger than the screen it opens
+    // on: at 200% scaling a 1280x800 window needs 2560x1600 of physical panel,
+    // and on a 1280x800 laptop most of the app is simply off the edge — which
+    // is exactly what it did. Maximised always fits whatever it lands on, and
+    // is the natural state for something people keep open all day anyway. The
+    // size below is only what it restores to.
     val windowState = rememberWindowState(
-        width = 1280.dp,
-        height = 800.dp,
+        placement = WindowPlacement.Maximized,
+        width = 1100.dp,
+        height = 720.dp,
         position = WindowPosition(Alignment.Center),
     )
 
