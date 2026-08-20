@@ -895,7 +895,30 @@ export class NeonDocumentsRepository {
     };
   }
 
-  /** Token values an employee record can supply. */
+  /**
+   * Token values an employee record can supply.
+   *
+   * These are the names the templates actually use. They used to be emitted
+   * under a dotted namespace — `employee.fullName`, `employee.code`,
+   * `employee.joinDate` — while every template in the catalog asks for
+   * `full_name`, `employee_code` and `join_date`. Nothing joined the two, so
+   * this method supplied values no template could read, and `generate()` then
+   * refused with "16 tokens could not be resolved" naming facts HRMS was
+   * holding in the very row it had just loaded. The offer letter only worked
+   * because ATS passes every value in `extraValues`; the letters that follow
+   * an offer have no such caller, so a joining letter could not be issued at
+   * all.
+   *
+   * Dates and money are formatted the way a letter reads them rather than the
+   * way a database stores them: "1 September 2026", not "2026-09-01", and
+   * major units, because a raw bigint of minor units in a contract reads as a
+   * hundredfold pay rise.
+   *
+   * Only facts the employment record actually holds are returned. Anything
+   * else a template needs — who signs it, where to report, what to bring on
+   * the first day — stays unresolved on purpose, so `generate()` refuses
+   * rather than issuing a letter with a blank where an answer belongs.
+   */
   private async employeeTokens(
     tx: Parameters<Parameters<typeof withTenant>[1]>[0],
     employeeId: string
@@ -912,24 +935,28 @@ export class NeonDocumentsRepository {
 
     if (!row) throw new NotFoundError("Employee", employeeId);
 
+    const fullName = `${row.e.firstName} ${row.e.lastName}`.trim();
+    const joinDate = formatLetterDate(row.e.joinDate);
+
     return {
-      "employee.firstName": row.e.firstName,
-      "employee.lastName": row.e.lastName,
-      "employee.fullName": `${row.e.firstName} ${row.e.lastName}`,
-      "employee.code": row.e.employeeCode,
-      "employee.email": row.e.workEmail,
-      "employee.designation": row.e.designation,
-      "employee.department": row.departmentName ?? undefined,
-      "employee.joinDate": row.e.joinDate,
-      "employee.employmentType": row.e.employmentType,
-      "employee.noticePeriodDays": row.e.noticePeriodDays ?? undefined,
-      // Money as a formatted major-unit string; a raw bigint of minor units in
-      // a contract would read as a hundredfold pay rise.
-      "employee.ctc": row.e.ctcMinor
-        ? formatMoney(row.e.ctcMinor, row.e.currency)
-        : undefined,
-      "org.currency": row.e.currency,
-      "today": new Date().toISOString().slice(0, 10),
+      full_name: fullName,
+      first_name: row.e.firstName,
+      last_name: row.e.lastName,
+      employee_code: row.e.employeeCode,
+      candidate_email: row.e.workEmail,
+      employee_email: row.e.workEmail,
+      position_title: row.e.designation ?? undefined,
+      designation: row.e.designation ?? undefined,
+      department: row.departmentName ?? undefined,
+      join_date: joinDate,
+      // The same day under the name the welcome email uses for it.
+      start_date: joinDate,
+      employment_type: formatEmploymentType(row.e.employmentType),
+      notice_period:
+        row.e.noticePeriodDays != null ? `${row.e.noticePeriodDays} days` : undefined,
+      annual_ctc: row.e.ctcMinor ? formatMoney(row.e.ctcMinor, row.e.currency) : undefined,
+      org_currency: row.e.currency,
+      today: new Date().toISOString().slice(0, 10),
     };
   }
 }
@@ -937,5 +964,48 @@ export class NeonDocumentsRepository {
 function formatMoney(minor: bigint, currency: string): string {
   const major = Number(minor) / 100;
   return `${currency} ${major.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+}
+
+/**
+ * A date as a letter writes it: "1 September 2026".
+ *
+ * `issue_date` is the one date `generate()` sets itself and it uses ISO, but
+ * that is a default of last resort for a value with no record behind it. A
+ * joining date read off the employment record is prose in a letter somebody
+ * signs, and "2026-09-01" in the middle of a sentence reads as a serial
+ * number. Returns undefined rather than "Invalid Date" for an absent or
+ * unparseable value, so the token stays unresolved and `generate()` refuses
+ * instead of issuing a letter that names a date nobody can read.
+ */
+function formatLetterDate(value: string | Date | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/**
+ * `full_time` is a column value, not something to print in a contract.
+ *
+ * Anything this does not recognise is passed through with its underscores
+ * turned into spaces rather than dropped: an unfamiliar engagement type is
+ * still better named imperfectly than left blank on an appointment letter.
+ */
+function formatEmploymentType(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const known: Record<string, string> = {
+    full_time: "Full-time, permanent",
+    part_time: "Part-time",
+    contract: "Fixed-term contract",
+    intern: "Internship",
+    apprentice: "Apprenticeship",
+    consultant: "Consultant",
+  };
+  return known[value] ?? value.replace(/_/g, " ");
 }
 
