@@ -137,7 +137,16 @@ fun HomeFeed(container: AppContainer, onNavigate: (String) -> Unit) {
                     .take(3)
             }
             holidayJob.await().onSuccess { response ->
-                holidays = response.items.take(3)
+                // "Coming up" has to mean coming up. The endpoint returns the
+                // whole year in date order, so taking the first three showed
+                // New Year's Day and Bhogi to somebody looking at this in
+                // August. Filtered to today onwards, and sorted, because the
+                // order the server happens to return is not a promise.
+                val today = java.time.LocalDate.now().toString()
+                holidays = response.items
+                    .filter { it.holidayDate >= today }
+                    .sortedBy { it.holidayDate }
+                    .take(3)
             }
         }
     }
