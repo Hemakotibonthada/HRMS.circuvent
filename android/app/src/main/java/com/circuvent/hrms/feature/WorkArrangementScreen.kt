@@ -19,9 +19,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -50,8 +52,10 @@ import kotlinx.coroutines.launch
 // balance invites people to believe it costs them one. The screen says so once,
 // plainly, because it is the assumption everybody arrives with.
 
+@Composable
 private fun kindLabel(kind: String): String =
-    if (kind == "on_duty") "On duty" else "Working from home"
+    if (kind == "on_duty") stringResource(R.string.work_arrangement_kind_on_duty)
+    else stringResource(R.string.work_arrangement_kind_wfh)
 
 private fun statusTone(status: String): PillTone = when (status) {
     "approved" -> PillTone.SUCCESS
@@ -86,6 +90,9 @@ fun WorkArrangementScreen(container: AppContainer) {
 
     val scope = rememberCoroutineScope()
 
+    val sentSuccessMessage = stringResource(R.string.work_arrangement_sent_success_message)
+    val sendErrorFallback = stringResource(R.string.work_arrangement_send_error_fallback)
+
     suspend fun load() {
         state = try {
             Loaded.Ready(container.repository.workArrangements())
@@ -107,10 +114,12 @@ fun WorkArrangementScreen(container: AppContainer) {
 
                 // The assumption everybody arrives with, corrected once.
                 AppCard {
-                    AppText("This is not leave", weight = FontWeight.SemiBold)
                     AppText(
-                        "A day worked from home or on duty elsewhere counts as a day worked. " +
-                            "Nothing comes off your leave balance.",
+                        stringResource(R.string.work_arrangement_not_leave_title),
+                        weight = FontWeight.SemiBold,
+                    )
+                    AppText(
+                        stringResource(R.string.work_arrangement_not_leave_description),
                         tone = TextTone.MUTED,
                         size = Theme.type.footnote,
                         lineHeight = Theme.type.footnoteLine,
@@ -118,7 +127,10 @@ fun WorkArrangementScreen(container: AppContainer) {
                 }
 
                 if (!showForm) {
-                    AppButton(label = "Request a day away", onClick = { showForm = true })
+                    AppButton(
+                        label = stringResource(R.string.work_arrangement_request_action),
+                        onClick = { showForm = true },
+                    )
                 } else {
                     AppCard {
                         Row(
@@ -126,7 +138,7 @@ fun WorkArrangementScreen(container: AppContainer) {
                             horizontalArrangement = Arrangement.spacedBy(Theme.spacing.xs),
                         ) {
                             AppButton(
-                                label = "From home",
+                                label = stringResource(R.string.work_arrangement_from_home_toggle_label),
                                 variant = if (kind == "wfh") ButtonVariant.PRIMARY
                                 else ButtonVariant.SECONDARY,
                                 fullWidth = false,
@@ -134,7 +146,7 @@ fun WorkArrangementScreen(container: AppContainer) {
                                 modifier = Modifier.weight(1f),
                             )
                             AppButton(
-                                label = "On duty",
+                                label = stringResource(R.string.work_arrangement_kind_on_duty),
                                 variant = if (kind == "on_duty") ButtonVariant.PRIMARY
                                 else ButtonVariant.SECONDARY,
                                 fullWidth = false,
@@ -146,14 +158,14 @@ fun WorkArrangementScreen(container: AppContainer) {
                         OutlinedTextField(
                             value = startDate,
                             onValueChange = { startDate = it },
-                            label = { Text("First day (YYYY-MM-DD)") },
+                            label = { Text(stringResource(R.string.work_arrangement_first_day_field_label)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
                         )
                         OutlinedTextField(
                             value = endDate,
                             onValueChange = { endDate = it },
-                            label = { Text("Last day (YYYY-MM-DD)") },
+                            label = { Text(stringResource(R.string.work_arrangement_last_day_field_label)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
                         )
@@ -164,7 +176,7 @@ fun WorkArrangementScreen(container: AppContainer) {
                             OutlinedTextField(
                                 value = location,
                                 onValueChange = { location = it },
-                                label = { Text("Where you will be") },
+                                label = { Text(stringResource(R.string.work_arrangement_location_field_label)) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
                             )
@@ -173,12 +185,16 @@ fun WorkArrangementScreen(container: AppContainer) {
                         OutlinedTextField(
                             value = reason,
                             onValueChange = { reason = it },
-                            label = { Text("Why (optional)") },
+                            label = { Text(stringResource(R.string.work_arrangement_reason_field_label)) },
                             modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
                         )
 
                         AppButton(
-                            label = if (submitting) "Sending…" else "Send for approval",
+                            label = if (submitting) {
+                                stringResource(R.string.work_arrangement_sending_label)
+                            } else {
+                                stringResource(R.string.work_arrangement_send_for_approval_action)
+                            },
                             enabled = !submitting && startDate.isNotBlank() && endDate.isNotBlank() &&
                                 (kind != "on_duty" || location.isNotBlank()),
                             busy = submitting,
@@ -200,10 +216,10 @@ fun WorkArrangementScreen(container: AppContainer) {
                                         showForm = false
                                         startDate = ""; endDate = ""; location = ""; reason = ""
                                         load()
-                                        message = BannerTone.SUCCESS to "Sent for approval."
+                                        message = BannerTone.SUCCESS to sentSuccessMessage
                                     } catch (e: Throwable) {
                                         message = BannerTone.ERROR to
-                                            (e.message ?: "The request could not be sent.")
+                                            (e.message ?: sendErrorFallback)
                                     } finally {
                                         submitting = false
                                     }
@@ -211,14 +227,14 @@ fun WorkArrangementScreen(container: AppContainer) {
                             },
                         )
                         AppButton(
-                            label = "Cancel",
+                            label = stringResource(R.string.expenses_cancel_action),
                             variant = ButtonVariant.SECONDARY,
                             onClick = { showForm = false },
                         )
                     }
                 }
 
-                SectionLabel("Your requests")
+                SectionLabel(stringResource(R.string.work_arrangement_your_requests_heading))
             }
         }
 
@@ -231,8 +247,8 @@ fun WorkArrangementScreen(container: AppContainer) {
             }
             ready != null && ready.value.requests.isEmpty() -> item {
                 EmptyState(
-                    title = "Nothing requested",
-                    description = "Days you ask to work from home or elsewhere appear here.",
+                    title = stringResource(R.string.work_arrangement_empty_title),
+                    description = stringResource(R.string.work_arrangement_empty_description),
                 )
             }
             ready != null -> items(ready.value.requests, key = { it.id }) { request ->
@@ -245,9 +261,13 @@ fun WorkArrangementScreen(container: AppContainer) {
 @Composable
 private fun WorkArrangementRow(request: WorkArrangementDto) {
     AppCard(
-        contentDescription =
-            "${kindLabel(request.kind)}, ${shortDate(request.startDate)} to " +
-                "${shortDate(request.endDate)}, ${request.status}",
+        contentDescription = stringResource(
+            R.string.work_arrangement_content_description,
+            kindLabel(request.kind),
+            shortDate(request.startDate),
+            shortDate(request.endDate),
+            request.status,
+        ),
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -269,10 +289,18 @@ private fun WorkArrangementRow(request: WorkArrangementDto) {
         )
 
         request.location?.takeIf { it.isNotBlank() }?.let {
-            AppText("at $it", tone = TextTone.MUTED, size = Theme.type.caption)
+            AppText(
+                stringResource(R.string.work_arrangement_at_location_template, it),
+                tone = TextTone.MUTED,
+                size = Theme.type.caption,
+            )
         }
         request.decisionReason?.takeIf { it.isNotBlank() }?.let {
-            AppText("Reason: $it", tone = TextTone.MUTED, size = Theme.type.caption)
+            AppText(
+                stringResource(R.string.work_arrangement_decision_reason_template, it),
+                tone = TextTone.MUTED,
+                size = Theme.type.caption,
+            )
         }
     }
 }

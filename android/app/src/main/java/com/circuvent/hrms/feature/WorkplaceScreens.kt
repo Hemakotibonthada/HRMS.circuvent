@@ -20,6 +20,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -56,25 +57,25 @@ import kotlinx.coroutines.launch
 // Four things an employee reaches for that had no screen, and one that needed
 // no server at all.
 
-private val MONTH_NAMES = listOf(
-    "", "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-)
-
+@Composable
 private fun readableDate(iso: String): String {
     if (iso.length < 10) return iso
     val year = iso.substring(0, 4)
     val month = iso.substring(5, 7).toIntOrNull() ?: return iso
     val day = iso.substring(8, 10).trimStart('0')
-    return "$day ${MONTH_NAMES.getOrElse(month) { "" }} $year"
+    return "$day ${monthName(month)} $year"
 }
+
+@Composable
+private fun monthName(month: Int): String =
+    stringArrayResource(R.array.month_names_full).getOrNull(month - 1) ?: ""
 
 /**
  * Delegates to the app's single date formatter.
  *
- * [readableDate] above is kept for the two non-composable call sites that build
- * accessibility strings outside composition; everything drawn on screen goes
- * through here so it follows the reader's chosen format.
+ * [readableDate] above renders a fixed "D Month YYYY" form for the handful of
+ * call sites that pre-date this formatter; everything else goes through here so
+ * it follows the reader's chosen format.
  */
 @Composable
 private fun preferredDate(iso: String): String = rememberFormattedDate(iso)

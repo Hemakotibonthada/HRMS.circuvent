@@ -22,9 +22,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -93,12 +96,12 @@ fun LearningScreen(container: AppContainer, onOpenCourse: (String) -> Unit) {
                     val (courses, enrolments) = current.value
                     if (courses.isEmpty() && enrolments.isEmpty()) {
                         EmptyState(
-                            title = "No courses yet",
-                            description = "Courses assigned to you, and any you are free to take, appear here.",
+                            title = stringResource(R.string.learning_empty_title),
+                            description = stringResource(R.string.learning_empty_description),
                         )
                     } else if (enrolments.any { it.state != "completed" }) {
                         AppText(
-                            "In progress",
+                            stringResource(R.string.learning_in_progress_heading),
                             size = Theme.type.footnote,
                             lineHeight = Theme.type.footnoteLine,
                             weight = FontWeight.SemiBold,
@@ -122,7 +125,7 @@ fun LearningScreen(container: AppContainer, onOpenCourse: (String) -> Unit) {
             if (available.isNotEmpty()) {
                 item {
                     AppText(
-                        "Available",
+                        stringResource(R.string.learning_available_heading),
                         size = Theme.type.footnote,
                         lineHeight = Theme.type.footnoteLine,
                         weight = FontWeight.SemiBold,
@@ -141,17 +144,22 @@ fun LearningScreen(container: AppContainer, onOpenCourse: (String) -> Unit) {
 
 @Composable
 private fun EnrolmentCard(enrolment: EnrolmentDto, onOpen: () -> Unit) {
+    val courseFallback = stringResource(R.string.learning_course_fallback)
     AppCard(
         onClick = onOpen,
-        contentDescription = "${enrolment.courseTitle ?: "Course"}, " +
-            "${enrolment.progressPercent} percent complete, ${readable(enrolment.state)}",
+        contentDescription = stringResource(
+            R.string.learning_enrolment_content_description,
+            enrolment.courseTitle ?: courseFallback,
+            enrolment.progressPercent,
+            readable(enrolment.state),
+        ),
     ) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AppText(enrolment.courseTitle ?: "Course", weight = FontWeight.Medium, maxLines = 2)
+            AppText(enrolment.courseTitle ?: courseFallback, weight = FontWeight.Medium, maxLines = 2)
             StatusPill(readable(enrolment.state), enrolmentTone(enrolment.state))
         }
 
@@ -166,8 +174,8 @@ private fun EnrolmentCard(enrolment: EnrolmentDto, onOpen: () -> Unit) {
             trackColor = Theme.colors.borderSubtle,
         )
         AppText(
-            "${enrolment.progressPercent}% complete" +
-                (enrolment.dueOn?.let { " · due $it" } ?: ""),
+            stringResource(R.string.learning_progress_percent_complete, enrolment.progressPercent) +
+                (enrolment.dueOn?.let { stringResource(R.string.learning_due_on_suffix, it) } ?: ""),
             size = Theme.type.caption,
             lineHeight = Theme.type.captionLine,
             tone = TextTone.MUTED,
@@ -190,14 +198,14 @@ private fun CourseCard(course: CourseDto, onOpen: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AppText(course.title, weight = FontWeight.Medium, maxLines = 2)
-            if (course.isMandatory) StatusPill("Required", PillTone.WARNING)
+            if (course.isMandatory) StatusPill(stringResource(R.string.learning_required_label), PillTone.WARNING)
         }
 
         AppText(
             listOfNotNull(
                 course.category,
                 course.durationMinutes?.let { ShiftRules.formatDuration(it) },
-                course.moduleCount?.let { "$it modules" },
+                course.moduleCount?.let { pluralStringResource(R.plurals.learning_module_count, it, it) },
             ).joinToString(" · "),
             size = Theme.type.caption,
             lineHeight = Theme.type.captionLine,
@@ -268,7 +276,7 @@ fun CourseDetailScreen(container: AppContainer, courseId: String) {
                 )
 
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
-                    if (course.isMandatory) StatusPill("Required", PillTone.WARNING)
+                    if (course.isMandatory) StatusPill(stringResource(R.string.learning_required_label), PillTone.WARNING)
                     enrolment?.let { StatusPill(readable(it.state), enrolmentTone(it.state)) }
                     course.durationMinutes?.let {
                         StatusPill(ShiftRules.formatDuration(it), PillTone.NEUTRAL)
@@ -277,18 +285,20 @@ fun CourseDetailScreen(container: AppContainer, courseId: String) {
 
                 course.description?.let { AppText(it) }
 
-                error?.let { Banner(BannerTone.ERROR, "That did not work", description = it) }
+                error?.let {
+                    Banner(BannerTone.ERROR, stringResource(R.string.learning_that_did_not_work_title), description = it)
+                }
 
                 if (enrolment == null) {
                     if (course.unavailableReason != null) {
                         Banner(
                             BannerTone.WARNING,
-                            "You cannot start this yet",
+                            stringResource(R.string.learning_cannot_start_title),
                             description = course.unavailableReason,
                         )
                     } else {
                         AppButton(
-                            label = "Start this course",
+                            label = stringResource(R.string.learning_start_course_action),
                             busy = busy,
                             onClick = {
                                 busy = true
@@ -314,7 +324,7 @@ fun CourseDetailScreen(container: AppContainer, courseId: String) {
                         trackColor = Theme.colors.borderSubtle,
                     )
                     AppText(
-                        "${enrolment.progressPercent}% complete",
+                        stringResource(R.string.learning_progress_percent_complete, enrolment.progressPercent),
                         size = Theme.type.caption,
                         lineHeight = Theme.type.captionLine,
                         tone = TextTone.MUTED,
@@ -322,7 +332,7 @@ fun CourseDetailScreen(container: AppContainer, courseId: String) {
                 }
 
                 AppText(
-                    "Modules",
+                    stringResource(R.string.learning_modules_heading),
                     size = Theme.type.footnote,
                     lineHeight = Theme.type.footnoteLine,
                     weight = FontWeight.SemiBold,
@@ -331,11 +341,18 @@ fun CourseDetailScreen(container: AppContainer, courseId: String) {
                     modifier = Modifier.padding(top = Theme.spacing.md),
                 )
 
+                val moduleCompletedStatus = stringResource(R.string.learning_module_completed_status)
+                val moduleNotStartedStatus = stringResource(R.string.learning_module_not_started_status)
+                val moduleOptionalLabel = stringResource(R.string.learning_module_optional_label)
+
                 current.value.modules.sortedBy { it.sequence }.forEach { module ->
                     AppCard(
                         muted = module.isCompleted,
-                        contentDescription = "${module.title}, " +
-                            if (module.isCompleted) "completed" else "not started",
+                        contentDescription = stringResource(
+                            R.string.learning_module_content_description,
+                            module.title,
+                            if (module.isCompleted) moduleCompletedStatus else moduleNotStartedStatus,
+                        ),
                     ) {
                         Row(
                             Modifier.fillMaxWidth(),
@@ -347,7 +364,7 @@ fun CourseDetailScreen(container: AppContainer, courseId: String) {
                                 AppText(
                                     listOfNotNull(
                                         module.durationMinutes?.let { ShiftRules.formatDuration(it) },
-                                        if (module.isOptional) "Optional" else null,
+                                        if (module.isOptional) moduleOptionalLabel else null,
                                     ).joinToString(" · "),
                                     size = Theme.type.caption,
                                     lineHeight = Theme.type.captionLine,
@@ -358,14 +375,17 @@ fun CourseDetailScreen(container: AppContainer, courseId: String) {
                             if (module.isCompleted) {
                                 // A word, not a tick. A green check alone means
                                 // nothing to a screen reader.
-                                StatusPill("Done", PillTone.SUCCESS)
+                                StatusPill(stringResource(R.string.learning_module_done_status), PillTone.SUCCESS)
                             } else if (enrolment != null) {
                                 AppButton(
-                                    label = "Mark done",
+                                    label = stringResource(R.string.learning_mark_done_action),
                                     variant = ButtonVariant.GHOST,
                                     fullWidth = false,
                                     enabled = !busy,
-                                    contentDescription = "Mark ${module.title} as done",
+                                    contentDescription = stringResource(
+                                        R.string.learning_mark_done_content_description,
+                                        module.title,
+                                    ),
                                     onClick = {
                                         busy = true
                                         error = null

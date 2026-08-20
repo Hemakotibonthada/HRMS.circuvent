@@ -20,9 +20,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -61,18 +63,20 @@ import kotlinx.coroutines.launch
 //     asking is the difference between "it worked" and "why has nothing
 //     changed".
 
-private val REASONS = listOf(
-    "missed_punch" to "I forgot to clock in or out",
-    "wrong_time" to "The recorded time is wrong",
-    "on_duty" to "I was working elsewhere, on duty",
-    "work_from_home" to "I worked from home",
-    "system_error" to "The reader or app failed",
-    "shift_change" to "My shift changed",
+private val REASON_CODES = listOf(
+    "missed_punch", "wrong_time", "on_duty", "work_from_home", "system_error", "shift_change",
 )
 
-private fun reasonLabel(code: String): String =
-    REASONS.firstOrNull { it.first == code }?.second
-        ?: code.replace('_', ' ').replaceFirstChar { it.uppercase() }
+@Composable
+private fun reasonLabel(code: String): String = when (code) {
+    "missed_punch" -> stringResource(R.string.regularisation_reason_missed_punch)
+    "wrong_time" -> stringResource(R.string.regularisation_reason_wrong_time)
+    "on_duty" -> stringResource(R.string.regularisation_reason_on_duty)
+    "work_from_home" -> stringResource(R.string.regularisation_reason_work_from_home)
+    "system_error" -> stringResource(R.string.regularisation_reason_system_error)
+    "shift_change" -> stringResource(R.string.regularisation_reason_shift_change)
+    else -> code.replace('_', ' ').replaceFirstChar { it.uppercase() }
+}
 
 private fun statusTone(status: String): PillTone = when (status) {
     "approved" -> PillTone.SUCCESS
@@ -91,7 +95,7 @@ fun RegularisationScreen(container: AppContainer) {
     var message by remember { mutableStateOf<Pair<BannerTone, String>?>(null) }
 
     var date by remember { mutableStateOf("") }
-    var reason by remember { mutableStateOf(REASONS.first().first) }
+    var reason by remember { mutableStateOf(REASON_CODES.first()) }
     var note by remember { mutableStateOf("") }
     var inTime by remember { mutableStateOf("") }
     var outTime by remember { mutableStateOf("") }
@@ -99,6 +103,10 @@ fun RegularisationScreen(container: AppContainer) {
     var submitting by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
+
+    val sentAdjustmentMessage = stringResource(R.string.regularisation_sent_adjustment_message)
+    val sentSuccessMessage = stringResource(R.string.regularisation_sent_success_message)
+    val sendErrorFallback = stringResource(R.string.regularisation_send_error_fallback)
 
     suspend fun load() {
         state = try {
@@ -128,10 +136,16 @@ fun RegularisationScreen(container: AppContainer) {
                         message?.let { (tone, text) -> Banner(tone, text) }
 
                         AppCard {
-                            AppText("What you can correct", weight = FontWeight.SemiBold)
                             AppText(
-                                "Days from the last ${policy.windowDays} days, and up to " +
-                                    "${policy.monthlyLimit} corrections a month.",
+                                stringResource(R.string.regularisation_what_you_can_correct_title),
+                                weight = FontWeight.SemiBold,
+                            )
+                            AppText(
+                                stringResource(
+                                    R.string.regularisation_window_and_limit_description,
+                                    policy.windowDays,
+                                    policy.monthlyLimit,
+                                ),
                                 tone = TextTone.MUTED,
                                 size = Theme.type.footnote,
                                 lineHeight = Theme.type.footnoteLine,
@@ -140,17 +154,20 @@ fun RegularisationScreen(container: AppContainer) {
 
                         if (!showForm) {
                             AppButton(
-                                label = "Correct a day",
+                                label = stringResource(R.string.regularisation_correct_a_day_action),
                                 onClick = { showForm = true; message = null },
                             )
                         } else {
                             AppCard {
-                                AppText("Correct a day", weight = FontWeight.SemiBold)
+                                AppText(
+                                    stringResource(R.string.regularisation_correct_a_day_action),
+                                    weight = FontWeight.SemiBold,
+                                )
 
                                 OutlinedTextField(
                                     value = date,
                                     onValueChange = { date = it },
-                                    label = { Text("Date (YYYY-MM-DD)") },
+                                    label = { Text(stringResource(R.string.regularisation_date_field_label)) },
                                     singleLine = true,
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -158,12 +175,13 @@ fun RegularisationScreen(container: AppContainer) {
                                 )
 
                                 AppText(
-                                    "What happened",
+                                    stringResource(R.string.regularisation_what_happened_label),
                                     size = Theme.type.footnote,
                                     tone = TextTone.MUTED,
                                     modifier = Modifier.padding(top = Theme.spacing.sm),
                                 )
-                                REASONS.forEach { (code, label) ->
+                                REASON_CODES.forEach { code ->
+                                    val label = reasonLabel(code)
                                     Row(
                                         Modifier
                                             .fillMaxWidth()
@@ -192,14 +210,14 @@ fun RegularisationScreen(container: AppContainer) {
                                     OutlinedTextField(
                                         value = inTime,
                                         onValueChange = { inTime = it },
-                                        label = { Text("In (HH:MM)") },
+                                        label = { Text(stringResource(R.string.regularisation_in_time_field_label)) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f),
                                     )
                                     OutlinedTextField(
                                         value = outTime,
                                         onValueChange = { outTime = it },
-                                        label = { Text("Out (HH:MM)") },
+                                        label = { Text(stringResource(R.string.regularisation_out_time_field_label)) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f),
                                     )
@@ -208,7 +226,7 @@ fun RegularisationScreen(container: AppContainer) {
                                 OutlinedTextField(
                                     value = note,
                                     onValueChange = { note = it },
-                                    label = { Text("Say what happened") },
+                                    label = { Text(stringResource(R.string.regularisation_say_what_happened_field_label)) },
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(top = Theme.spacing.xs),
@@ -221,7 +239,7 @@ fun RegularisationScreen(container: AppContainer) {
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         AppText(
-                                            "I can provide evidence",
+                                            stringResource(R.string.regularisation_can_provide_evidence_label),
                                             size = Theme.type.footnote,
                                         )
                                         AppSwitch(checked = hasProof, onCheckedChange = { hasProof = it })
@@ -229,7 +247,11 @@ fun RegularisationScreen(container: AppContainer) {
                                 }
 
                                 AppButton(
-                                    label = if (submitting) "Sending…" else "Send for approval",
+                                    label = if (submitting) {
+                                        stringResource(R.string.regularisation_sending_label)
+                                    } else {
+                                        stringResource(R.string.regularisation_send_for_approval_action)
+                                    },
                                     enabled = !submitting && date.isNotBlank(),
                                     busy = submitting,
                                     modifier = Modifier.padding(top = Theme.spacing.sm),
@@ -254,12 +276,11 @@ fun RegularisationScreen(container: AppContainer) {
                                                 load()
                                                 message = BannerTone.SUCCESS to
                                                     if (created.routing == "adjustment")
-                                                        "Sent. This month has already been paid, so " +
-                                                            "the correction will come through the next run."
-                                                    else "Sent for approval."
+                                                        sentAdjustmentMessage
+                                                    else sentSuccessMessage
                                             } catch (e: Throwable) {
                                                 message = BannerTone.ERROR to
-                                                    (e.message ?: "The correction could not be sent.")
+                                                    (e.message ?: sendErrorFallback)
                                             } finally {
                                                 submitting = false
                                             }
@@ -268,14 +289,14 @@ fun RegularisationScreen(container: AppContainer) {
                                 )
 
                                 AppButton(
-                                    label = "Cancel",
+                                    label = stringResource(R.string.expenses_cancel_action),
                                     variant = ButtonVariant.SECONDARY,
                                     onClick = { showForm = false; message = null },
                                 )
                             }
                         }
 
-                        SectionLabel("Your corrections")
+                        SectionLabel(stringResource(R.string.regularisation_your_corrections_heading))
                     }
                 }
             }
@@ -286,8 +307,8 @@ fun RegularisationScreen(container: AppContainer) {
             if (ready.value.requests.isEmpty()) {
                 item {
                     EmptyState(
-                        title = "Nothing to correct",
-                        description = "Corrections you raise appear here with where they have got to.",
+                        title = stringResource(R.string.regularisation_empty_title),
+                        description = stringResource(R.string.regularisation_empty_description),
                     )
                 }
             } else {
@@ -326,7 +347,11 @@ private fun RegularisationRow(request: RegularisationDto) {
 
         if (request.inTime != null || request.outTime != null) {
             AppText(
-                "${request.inTime ?: "—"} to ${request.outTime ?: "—"}",
+                stringResource(
+                    R.string.regularisation_time_range_template,
+                    request.inTime ?: "—",
+                    request.outTime ?: "—",
+                ),
                 tone = TextTone.MUTED,
                 size = Theme.type.caption,
             )
@@ -336,14 +361,18 @@ private fun RegularisationRow(request: RegularisationDto) {
         // later needs to know why an approved correction has not moved their pay.
         if (request.routing == "adjustment") {
             AppText(
-                "Comes through the next payroll run as an adjustment.",
+                stringResource(R.string.regularisation_adjustment_note),
                 tone = TextTone.MUTED,
                 size = Theme.type.caption,
             )
         }
 
         request.decisionReason?.takeIf { it.isNotBlank() }?.let {
-            AppText("Reason: $it", size = Theme.type.caption, tone = TextTone.MUTED)
+            AppText(
+                stringResource(R.string.regularisation_decision_reason_template, it),
+                size = Theme.type.caption,
+                tone = TextTone.MUTED,
+            )
         }
     }
 }

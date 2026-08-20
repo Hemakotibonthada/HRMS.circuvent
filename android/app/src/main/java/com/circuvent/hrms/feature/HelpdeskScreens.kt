@@ -23,9 +23,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -55,7 +57,14 @@ private fun HelpdeskRules.Tone.pill(): PillTone = when (this) {
     HelpdeskRules.Tone.NEUTRAL -> PillTone.NEUTRAL
 }
 
-private enum class TicketFilter(val label: String) { LIVE("Live"), WAITING("Waiting for you"), ALL("All") }
+private enum class TicketFilter { LIVE, WAITING, ALL }
+
+@Composable
+private fun TicketFilter.label(): String = when (this) {
+    TicketFilter.LIVE -> stringResource(R.string.helpdesk_filter_live)
+    TicketFilter.WAITING -> stringResource(R.string.helpdesk_filter_waiting)
+    TicketFilter.ALL -> stringResource(R.string.helpdesk_filter_all)
+}
 
 /**
  * Helpdesk.
@@ -99,7 +108,13 @@ fun HelpdeskScreen(
         contentPadding = screenPadding(),
         verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm),
     ) {
-        item { AppButton("Raise a ticket", onRaise, contentDescription = "Describe a new problem for HR or IT") }
+        item {
+            AppButton(
+                stringResource(R.string.helpdesk_raise_ticket_action),
+                onRaise,
+                contentDescription = stringResource(R.string.helpdesk_raise_ticket_content_description),
+            )
+        }
 
         item {
             when (val current = state) {
@@ -111,18 +126,31 @@ fun HelpdeskScreen(
                         if (summary.total > 0) {
                             AppCard {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    TicketTotal("Live", summary.open + summary.waiting)
-                                    TicketTotal("Waiting for you", summary.waiting)
-                                    TicketTotal("Settled", summary.resolved)
+                                    TicketTotal(
+                                        stringResource(R.string.helpdesk_filter_live),
+                                        summary.open + summary.waiting,
+                                    )
+                                    TicketTotal(
+                                        stringResource(R.string.helpdesk_filter_waiting),
+                                        summary.waiting,
+                                    )
+                                    TicketTotal(
+                                        stringResource(R.string.helpdesk_total_settled_label),
+                                        summary.resolved,
+                                    )
                                 }
                             }
 
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                                 TicketFilter.entries.forEach { option ->
+                                    val optionLabel = option.label()
                                     Chip(
-                                        label = option.label,
+                                        label = optionLabel,
                                         selected = filter == option,
-                                        contentDescription = "Show ${option.label.lowercase()} tickets",
+                                        contentDescription = stringResource(
+                                            R.string.helpdesk_show_filter_content_description,
+                                            optionLabel.lowercase(),
+                                        ),
                                     ) { filter = option }
                                 }
                             }
@@ -131,11 +159,11 @@ fun HelpdeskScreen(
                         if (tickets.isEmpty()) {
                             EmptyState(
                                 title = when (filter) {
-                                    TicketFilter.WAITING -> "Nothing is waiting for you"
-                                    TicketFilter.LIVE -> "No open tickets"
-                                    TicketFilter.ALL -> "No tickets yet"
+                                    TicketFilter.WAITING -> stringResource(R.string.helpdesk_empty_waiting_title)
+                                    TicketFilter.LIVE -> stringResource(R.string.helpdesk_empty_live_title)
+                                    TicketFilter.ALL -> stringResource(R.string.helpdesk_empty_all_title)
                                 },
-                                description = "Anything you raise with HR or IT appears here, with where it has got to.",
+                                description = stringResource(R.string.helpdesk_empty_description),
                             )
                         }
                     }
@@ -214,6 +242,10 @@ fun NewTicketScreen(container: AppContainer, onRaised: (String) -> Unit, onCance
 
     val scope = rememberCoroutineScope()
 
+    val sendErrorTitle = stringResource(R.string.helpdesk_send_error_title)
+    val offlineDescription = stringResource(R.string.helpdesk_offline_description)
+    val genericSendErrorFallback = stringResource(R.string.helpdesk_generic_send_error_fallback)
+
     fun raise() {
         banner = null
         val found = HelpdeskRules.validateTicket(subject, body)
@@ -226,10 +258,9 @@ fun NewTicketScreen(container: AppContainer, onRaised: (String) -> Unit, onCance
                 val ticket = container.repository.raiseTicket(subject.trim(), body.trim(), priority)
                 onRaised(ticket.id)
             } catch (e: com.circuvent.hrms.data.net.OfflineException) {
-                banner = "This was not sent" to
-                    "A ticket needs a connection so the response clock starts when you raised it. Nothing has been lost — try again when you have signal."
+                banner = sendErrorTitle to offlineDescription
             } catch (e: Exception) {
-                banner = "This was not sent" to (e.message ?: "Please try again.")
+                banner = sendErrorTitle to (e.message ?: genericSendErrorFallback)
             } finally {
                 busy = false
             }
@@ -250,15 +281,22 @@ fun NewTicketScreen(container: AppContainer, onRaised: (String) -> Unit, onCance
         OutlinedTextField(
             value = subject,
             onValueChange = { subject = it.take(200) },
-            label = { Text("Subject") },
-            supportingText = { Text(errors[HelpdeskRules.Field.SUBJECT] ?: "A short summary — what is wrong") },
+            label = { Text(stringResource(R.string.helpdesk_subject_field_label)) },
+            supportingText = {
+                Text(errors[HelpdeskRules.Field.SUBJECT] ?: stringResource(R.string.helpdesk_subject_hint_fallback))
+            },
             isError = errors.containsKey(HelpdeskRules.Field.SUBJECT),
             singleLine = true,
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
         )
 
-        AppText("Priority", size = Theme.type.footnote, lineHeight = Theme.type.footnoteLine, weight = FontWeight.Medium)
+        AppText(
+            stringResource(R.string.helpdesk_priority_label),
+            size = Theme.type.footnote,
+            lineHeight = Theme.type.footnoteLine,
+            weight = FontWeight.Medium,
+        )
 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
             HelpdeskRules.selectablePriorities.forEach { option ->
@@ -266,7 +304,10 @@ fun NewTicketScreen(container: AppContainer, onRaised: (String) -> Unit, onCance
                     label = HelpdeskRules.priorityLabel(option),
                     selected = priority == option,
                     enabled = !busy,
-                    contentDescription = "${HelpdeskRules.priorityLabel(option)} priority",
+                    contentDescription = stringResource(
+                        R.string.helpdesk_priority_content_description,
+                        HelpdeskRules.priorityLabel(option),
+                    ),
                 ) { priority = option }
             }
         }
@@ -274,7 +315,7 @@ fun NewTicketScreen(container: AppContainer, onRaised: (String) -> Unit, onCance
         // Said before it is chosen, not enforced afterwards. Every ticket
         // marked urgent is the same as none of them being marked urgent.
         AppText(
-            "Urgent is for something that stops you working today. The helpdesk may change the priority once they have read it.",
+            stringResource(R.string.helpdesk_urgent_explainer),
             size = Theme.type.caption,
             lineHeight = Theme.type.captionLine,
             tone = TextTone.MUTED,
@@ -283,11 +324,11 @@ fun NewTicketScreen(container: AppContainer, onRaised: (String) -> Unit, onCance
         OutlinedTextField(
             value = body,
             onValueChange = { body = it.take(20_000) },
-            label = { Text("What is happening?") },
+            label = { Text(stringResource(R.string.helpdesk_body_field_label)) },
             supportingText = {
                 Text(
                     errors[HelpdeskRules.Field.BODY]
-                        ?: "What you were doing, what you expected, and what happened instead"
+                        ?: stringResource(R.string.helpdesk_body_hint_fallback)
                 )
             },
             isError = errors.containsKey(HelpdeskRules.Field.BODY),
@@ -296,8 +337,13 @@ fun NewTicketScreen(container: AppContainer, onRaised: (String) -> Unit, onCance
             modifier = Modifier.fillMaxWidth(),
         )
 
-        AppButton("Send to the helpdesk", ::raise, busy = busy)
-        AppButton("Cancel", onCancel, variant = ButtonVariant.GHOST, enabled = !busy)
+        AppButton(stringResource(R.string.helpdesk_send_action), ::raise, busy = busy)
+        AppButton(
+            stringResource(R.string.expenses_cancel_action),
+            onCancel,
+            variant = ButtonVariant.GHOST,
+            enabled = !busy,
+        )
     }
 }
 
@@ -320,6 +366,9 @@ fun TicketDetailScreen(container: AppContainer, ticketId: String, user: SessionU
 
     val scope = rememberCoroutineScope()
 
+    val replyEmptyError = stringResource(R.string.helpdesk_reply_empty_error)
+    val replySendErrorFallback = stringResource(R.string.helpdesk_reply_send_error_fallback)
+
     suspend fun load() {
         state = try {
             Loaded.Ready(container.repository.ticket(ticketId))
@@ -336,7 +385,7 @@ fun TicketDetailScreen(container: AppContainer, ticketId: String, user: SessionU
         // being told no costs a round trip on a form somebody is typing
         // one-handed.
         if (text.isEmpty()) {
-            replyError = "Write something before sending"
+            replyError = replyEmptyError
             return
         }
         replyError = null
@@ -351,7 +400,7 @@ fun TicketDetailScreen(container: AppContainer, ticketId: String, user: SessionU
                 // short wait.
                 load()
             } catch (e: Exception) {
-                replyError = e.message ?: "Your reply was not sent. Please try again."
+                replyError = e.message ?: replySendErrorFallback
             } finally {
                 sending = false
             }
@@ -396,7 +445,7 @@ fun TicketDetailScreen(container: AppContainer, ticketId: String, user: SessionU
                 )
 
                 StatusPill(
-                    "${HelpdeskRules.priorityLabel(ticket.priority)} priority",
+                    stringResource(R.string.helpdesk_priority_content_description, HelpdeskRules.priorityLabel(ticket.priority)),
                     HelpdeskRules.priorityTone(ticket.priority).pill(),
                 )
 
@@ -405,7 +454,7 @@ fun TicketDetailScreen(container: AppContainer, ticketId: String, user: SessionU
                         tone = if (it.overdue) BannerTone.ERROR else BannerTone.INFO,
                         title = it.text,
                         description = if (it.overdue) {
-                            "The helpdesk has been notified. You do not need to do anything."
+                            stringResource(R.string.helpdesk_overdue_notified_description)
                         } else {
                             null
                         },
@@ -413,12 +462,17 @@ fun TicketDetailScreen(container: AppContainer, ticketId: String, user: SessionU
                 }
 
                 AppCard {
-                    AppText("What you reported", size = Theme.type.caption, lineHeight = Theme.type.captionLine, tone = TextTone.MUTED)
+                    AppText(
+                        stringResource(R.string.helpdesk_reported_label),
+                        size = Theme.type.caption,
+                        lineHeight = Theme.type.captionLine,
+                        tone = TextTone.MUTED,
+                    )
                     AppText(ticket.body)
                 }
 
                 AppText(
-                    "Replies",
+                    stringResource(R.string.helpdesk_replies_heading),
                     size = Theme.type.footnote,
                     lineHeight = Theme.type.footnoteLine,
                     weight = FontWeight.SemiBold,
@@ -429,23 +483,30 @@ fun TicketDetailScreen(container: AppContainer, ticketId: String, user: SessionU
                 val visible = current.value.comments.filter { !it.isInternal }
                 if (visible.isEmpty()) {
                     AppText(
-                        "No replies yet.",
+                        stringResource(R.string.helpdesk_no_replies_yet),
                         size = Theme.type.footnote,
                         lineHeight = Theme.type.footnoteLine,
                         tone = TextTone.MUTED,
                     )
                 } else {
+                    val youLabel = stringResource(R.string.helpdesk_comment_author_you)
+                    val theHelpdeskPrefix = stringResource(R.string.helpdesk_comment_author_helpdesk_prefix)
+                    val helpdeskLabel = stringResource(R.string.helpdesk_comment_author_helpdesk_label)
                     visible.forEach { comment ->
                         val mine = comment.authorId != null && comment.authorId == user?.id
                         AppCard(
                             muted = !mine,
-                            contentDescription = "${if (mine) "You" else "The helpdesk"} wrote: ${comment.body}",
+                            contentDescription = stringResource(
+                                R.string.helpdesk_comment_content_description,
+                                if (mine) youLabel else theHelpdeskPrefix,
+                                comment.body,
+                            ),
                         ) {
                             // Named in words. A reply distinguished only by
                             // which side of the screen it sits on is unreadable
                             // to a screen reader and ambiguous at a glance.
                             AppText(
-                                if (mine) "You" else "Helpdesk",
+                                if (mine) youLabel else helpdeskLabel,
                                 size = Theme.type.caption,
                                 lineHeight = Theme.type.captionLine,
                                 weight = FontWeight.SemiBold,
@@ -462,21 +523,21 @@ fun TicketDetailScreen(container: AppContainer, ticketId: String, user: SessionU
                     // new one.
                     Banner(
                         BannerTone.INFO,
-                        "This ticket is closed",
-                        description = "If the problem comes back, raise a new ticket so it gets a fresh response time.",
+                        stringResource(R.string.helpdesk_closed_ticket_title),
+                        description = stringResource(R.string.helpdesk_closed_ticket_description),
                     )
                 } else {
                     OutlinedTextField(
                         value = reply,
                         onValueChange = { reply = it.take(20_000) },
-                        label = { Text("Add a reply") },
+                        label = { Text(stringResource(R.string.helpdesk_reply_field_label)) },
                         supportingText = { replyError?.let { Text(it) } },
                         isError = replyError != null,
                         minLines = 3,
                         enabled = !sending,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    AppButton("Send reply", ::send, busy = sending)
+                    AppButton(stringResource(R.string.helpdesk_send_reply_action), ::send, busy = sending)
                 }
             }
         }

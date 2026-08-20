@@ -345,4 +345,204 @@
     <string name="goal_status_at_risk">At risk</string>
     <string name="goal_status_completed">Done</string>
     <string name="goal_status_dropped">Dropped</string>
+
+    <!-- Home (HomeSections.kt) -->
+    <string name="home_quick_action_apply_leave">Apply leave</string>
+    <string name="home_quick_action_work_away">Work away</string>
+    <string name="home_quick_action_payslip">Payslip</string>
+    <string name="home_quick_action_expense">Expense</string>
+    <string name="home_quick_action_balance">Balance</string>
+    <string name="home_birthday_today">Birthday today</string>
+    <string name="home_birthday_on_date">Birthday · %1$s</string>
+    <plurals name="home_anniversary_years">
+        <item quantity="one">%1$d year</item>
+        <item quantity="other">%1$d years</item>
+    </plurals>
+    <string name="home_anniversary_today">%1$s today</string>
+    <string name="home_section_wish_them_title">Wish them</string>
+    <string name="home_section_action_my_team">My team</string>
+    <string name="home_section_off_this_week_title">Off this week</string>
+    <string name="home_away_today_with_type">Away today · %1$s</string>
+    <string name="home_section_announcements_title">Announcements</string>
+    <string name="home_section_action_all">All</string>
+    <string name="home_announcement_content_description">%1$s. Open announcements</string>
+    <string name="home_section_coming_up_title">Coming up</string>
+    <string name="home_holiday_optional_note">%1$s · Optional, must be claimed</string>
+    <string name="home_section_see_all_content_description">See all %1$s</string>
+
+    <!-- Helpdesk (HelpdeskScreens.kt) -->
+    <string name="helpdesk_filter_live">Live</string>
+    <string name="helpdesk_filter_waiting">Waiting for you</string>
+    <string name="helpdesk_filter_all">All</string>
+    <string name="helpdesk_raise_ticket_action">Raise a ticket</string>
+    <string name="helpdesk_raise_ticket_content_description">Describe a new problem for HR or IT</string>
+    <string name="helpdesk_total_settled_label">Settled</string>
+    <string name="helpdesk_show_filter_content_description">Show %1$s tickets</string>
+    <string name="helpdesk_empty_waiting_title">Nothing is waiting for you</string>
+    <string name="helpdesk_empty_live_title">No open tickets</string>
+    <string name="helpdesk_empty_all_title">No tickets yet</string>
+    <string name="helpdesk_empty_description">Anything you raise with HR or IT appears here, with where it has got to.</string>
+    <string name="helpdesk_send_error_title">This was not sent</string>
+    <string name="helpdesk_offline_description">A ticket needs a connection so the response clock starts when you raised it. Nothing has been lost — try again when you have signal.</string>
+    <string name="helpdesk_generic_send_error_fallback">Please try again.</string>
+    <string name="helpdesk_subject_field_label">Subject</string>
+    <string name="helpdesk_subject_hint_fallback">A short summary — what is wrong</string>
+    <string name="helpdesk_priority_label">Priority</string>
+    <string name="helpdesk_priority_content_description">%1$s priority</string>
+    <string name="helpdesk_urgent_explainer">Urgent is for something that stops you working today. The helpdesk may change the priority once they have read it.</string>
+    <string name="helpdesk_body_field_label">What is happening?</string>
+    <string name="helpdesk_body_hint_fallback">What you were doing, what you expected, and what happened instead</string>
+    <string name="helpdesk_send_action">Send to the helpdesk</string>
+    <string name="helpdesk_reply_empty_error">Write something before sending</string>
+    <string name="helpdesk_reply_send_error_fallback">Your reply was not sent. Please try again.</string>
+    <string name="helpdesk_overdue_notified_description">The helpdesk has been notified. You do not need to do anything.</string>
+    <string name="helpdesk_reported_label">What you reported</string>
+    <string name="helpdesk_replies_heading">Replies</string>
+    <string name="helpdesk_no_replies_yet">No replies yet.</string>
+    <string name="helpdesk_comment_author_you">You</string>
+    <string name="helpdesk_comment_author_helpdesk_prefix">The helpdesk</string>
+    <string name="helpdesk_comment_author_helpdesk_label">Helpdesk</string>
+    <string name="helpdesk_comment_content_description">%1$s wrote: %2$s</string>
+    <string name="helpdesk_closed_ticket_title">This ticket is closed</string>
+    <string name="helpdesk_closed_ticket_description">If the problem comes back, raise a new ticket so it gets a fresh response time.</string>
+    <string name="helpdesk_reply_field_label">Add a reply</string>
+    <string name="helpdesk_send_reply_action">Send reply</string>
+
+    <!-- Learning (LearningScreens.kt) -->
+    <string name="learning_empty_title">No courses yet</string>
+    <string name="learning_empty_description">Courses assigned to you, and any you are free to take, appear here.</string>
+    <string name="learning_in_progress_heading">In progress</string>
+    <string name="learning_available_heading">Available</string>
+    <string name="learning_course_fallback">Course</string>
+    <string name="learning_enrolment_content_description">%1$s, %2$d percent complete, %3$s</string>
+    <string name="learning_progress_percent_complete">%1$d%% complete</string>
+    <string name="learning_due_on_suffix">" · due %1$s"</string>
+    <string name="learning_required_label">Required</string>
+    <plurals name="learning_module_count">
+        <item quantity="one">%1$d module</item>
+        <item quantity="other">%1$d modules</item>
+    </plurals>
+    <string name="learning_that_did_not_work_title">That did not work</string>
+    <string name="learning_cannot_start_title">You cannot start this yet</string>
+    <string name="learning_start_course_action">Start this course</string>
+    <string name="learning_modules_heading">Modules</string>
+    <string name="learning_module_completed_status">completed</string>
+    <string name="learning_module_not_started_status">not started</string>
+    <string name="learning_module_content_description">%1$s, %2$s</string>
+    <string name="learning_module_optional_label">Optional</string>
+    <string name="learning_module_done_status">Done</string>
+    <string name="learning_mark_done_action">Mark done</string>
+    <string name="learning_mark_done_content_description">Mark %1$s as done</string>
+
+    <!-- Shared -->
+    <string-array name="month_abbreviations">
+        <item>Jan</item>
+        <item>Feb</item>
+        <item>Mar</item>
+        <item>Apr</item>
+        <item>May</item>
+        <item>Jun</item>
+        <item>Jul</item>
+        <item>Aug</item>
+        <item>Sep</item>
+        <item>Oct</item>
+        <item>Nov</item>
+        <item>Dec</item>
+    </string-array>
+    <string-array name="month_names_full">
+        <item>January</item>
+        <item>February</item>
+        <item>March</item>
+        <item>April</item>
+        <item>May</item>
+        <item>June</item>
+        <item>July</item>
+        <item>August</item>
+        <item>September</item>
+        <item>October</item>
+        <item>November</item>
+        <item>December</item>
+    </string-array>
+
+    <!-- Loans (LoansScreen.kt) -->
+    <string name="loans_type_salary_advance">Salary advance</string>
+    <string name="loans_type_personal">Personal</string>
+    <string name="loans_type_housing">Housing</string>
+    <string name="loans_type_vehicle">Vehicle</string>
+    <string name="loans_type_education">Education</string>
+    <string name="loans_type_medical">Medical</string>
+    <string name="loans_request_advance_action">Request an advance</string>
+    <string name="loans_amount_field_label">Amount (₹)</string>
+    <string name="loans_repay_over_field_label">Repay over (months)</string>
+    <string name="loans_purpose_field_label">What it is for</string>
+    <string name="loans_sending_label">Sending…</string>
+    <string name="loans_send_request_action">Send request</string>
+    <string name="loans_request_success_message">Requested. Recovery starts the month after approval.</string>
+    <string name="loans_request_error_fallback">The request could not be sent.</string>
+    <string name="loans_your_loans_heading">Your loans</string>
+    <string name="loans_empty_title">No loans or advances</string>
+    <string name="loans_empty_description">Anything you borrow through payroll appears here, with what is left to repay.</string>
+    <string name="loans_outstanding_content_description">%1$s, %2$s outstanding</string>
+    <string name="loans_borrowed_label">Borrowed</string>
+    <string name="loans_left_to_repay_label">Left to repay</string>
+    <string name="loans_each_month_label">Each month</string>
+    <string name="loans_instalments_recovered">%1$d of %2$d instalments recovered</string>
+    <string name="loans_interest_free_suffix">, interest free</string>
+    <string name="loans_interest_rate_suffix">" at %1$s%%"</string>
+    <string name="loans_taxable_benefit_title">Taxable benefit %1$s this year</string>
+    <string name="loans_taxable_benefit_description">A loan below the benchmark rate is a taxable perquisite. This is added to your income, not deducted from your pay.</string>
+    <string name="loans_taxable_benefit_unknown_title">Taxable benefit not yet known</string>
+    <string name="loans_hide_schedule_action">Hide schedule</string>
+    <string name="loans_show_schedule_action">Show schedule</string>
+    <string name="loans_schedule_left_balance">left %1$s</string>
+
+    <!-- Attendance regularisation (RegularisationScreen.kt) -->
+    <string name="regularisation_reason_missed_punch">I forgot to clock in or out</string>
+    <string name="regularisation_reason_wrong_time">The recorded time is wrong</string>
+    <string name="regularisation_reason_on_duty">I was working elsewhere, on duty</string>
+    <string name="regularisation_reason_work_from_home">I worked from home</string>
+    <string name="regularisation_reason_system_error">The reader or app failed</string>
+    <string name="regularisation_reason_shift_change">My shift changed</string>
+    <string name="regularisation_what_you_can_correct_title">What you can correct</string>
+    <string name="regularisation_window_and_limit_description">Days from the last %1$d days, and up to %2$d corrections a month.</string>
+    <string name="regularisation_correct_a_day_action">Correct a day</string>
+    <string name="regularisation_date_field_label">Date (YYYY-MM-DD)</string>
+    <string name="regularisation_what_happened_label">What happened</string>
+    <string name="regularisation_in_time_field_label">In (HH:MM)</string>
+    <string name="regularisation_out_time_field_label">Out (HH:MM)</string>
+    <string name="regularisation_say_what_happened_field_label">Say what happened</string>
+    <string name="regularisation_can_provide_evidence_label">I can provide evidence</string>
+    <string name="regularisation_sending_label">Sending…</string>
+    <string name="regularisation_send_for_approval_action">Send for approval</string>
+    <string name="regularisation_sent_adjustment_message">Sent. This month has already been paid, so the correction will come through the next run.</string>
+    <string name="regularisation_sent_success_message">Sent for approval.</string>
+    <string name="regularisation_send_error_fallback">The correction could not be sent.</string>
+    <string name="regularisation_your_corrections_heading">Your corrections</string>
+    <string name="regularisation_empty_title">Nothing to correct</string>
+    <string name="regularisation_empty_description">Corrections you raise appear here with where they have got to.</string>
+    <string name="regularisation_time_range_template">%1$s to %2$s</string>
+    <string name="regularisation_adjustment_note">Comes through the next payroll run as an adjustment.</string>
+    <string name="regularisation_decision_reason_template">Reason: %1$s</string>
+
+    <!-- Work arrangement (WorkArrangementScreen.kt) -->
+    <string name="work_arrangement_not_leave_title">This is not leave</string>
+    <string name="work_arrangement_not_leave_description">A day worked from home or on duty elsewhere counts as a day worked. Nothing comes off your leave balance.</string>
+    <string name="work_arrangement_request_action">Request a day away</string>
+    <string name="work_arrangement_from_home_toggle_label">From home</string>
+    <string name="work_arrangement_kind_on_duty">On duty</string>
+    <string name="work_arrangement_kind_wfh">Working from home</string>
+    <string name="work_arrangement_first_day_field_label">First day (YYYY-MM-DD)</string>
+    <string name="work_arrangement_last_day_field_label">Last day (YYYY-MM-DD)</string>
+    <string name="work_arrangement_location_field_label">Where you will be</string>
+    <string name="work_arrangement_reason_field_label">Why (optional)</string>
+    <string name="work_arrangement_sending_label">Sending…</string>
+    <string name="work_arrangement_send_for_approval_action">Send for approval</string>
+    <string name="work_arrangement_sent_success_message">Sent for approval.</string>
+    <string name="work_arrangement_send_error_fallback">The request could not be sent.</string>
+    <string name="work_arrangement_your_requests_heading">Your requests</string>
+    <string name="work_arrangement_empty_title">Nothing requested</string>
+    <string name="work_arrangement_empty_description">Days you ask to work from home or elsewhere appear here.</string>
+    <string name="work_arrangement_content_description">%1$s, %2$s to %3$s, %4$s</string>
+    <string name="work_arrangement_at_location_template">at %1$s</string>
+    <string name="work_arrangement_decision_reason_template">Reason: %1$s</string>
 </resources>

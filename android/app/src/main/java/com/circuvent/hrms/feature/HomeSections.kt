@@ -24,6 +24,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
@@ -65,7 +67,7 @@ fun HomeShortcuts(onNavigate: (String) -> Unit) {
     ) {
         QuickAction(
             modifier = Modifier.weight(1f),
-            label = "Apply leave",
+            label = stringResource(R.string.home_quick_action_apply_leave),
             glyph = Glyph.Drawable(painterResource(R.drawable.ic_action_leave)),
             tone = AccentTone.Violet,
             onClick = { onNavigate("leave/apply") },
@@ -73,7 +75,7 @@ fun HomeShortcuts(onNavigate: (String) -> Unit) {
 
         QuickAction(
             modifier = Modifier.weight(1f),
-            label = "Work away",
+            label = stringResource(R.string.home_quick_action_work_away),
             glyph = Glyph.Drawable(painterResource(R.drawable.ic_action_wfh)),
             tone = AccentTone.Teal,
             onClick = { onNavigate("work-away") },
@@ -81,7 +83,7 @@ fun HomeShortcuts(onNavigate: (String) -> Unit) {
 
         QuickAction(
             modifier = Modifier.weight(1f),
-            label = "Payslip",
+            label = stringResource(R.string.home_quick_action_payslip),
             glyph = Glyph.Drawable(painterResource(R.drawable.ic_action_payslip)),
             tone = AccentTone.Blue,
             onClick = { onNavigate("payslips") },
@@ -89,7 +91,7 @@ fun HomeShortcuts(onNavigate: (String) -> Unit) {
 
         QuickAction(
             modifier = Modifier.weight(1f),
-            label = "Expense",
+            label = stringResource(R.string.home_quick_action_expense),
             glyph = Glyph.Drawable(painterResource(R.drawable.ic_action_expense)),
             tone = AccentTone.Amber,
             onClick = { onNavigate("expenses") },
@@ -97,7 +99,7 @@ fun HomeShortcuts(onNavigate: (String) -> Unit) {
 
         QuickAction(
             modifier = Modifier.weight(1f),
-            label = "Balance",
+            label = stringResource(R.string.home_quick_action_balance),
             glyph = Glyph.Drawable(painterResource(R.drawable.ic_action_balance)),
             tone = AccentTone.Green,
             onClick = { onNavigate("leave") },
@@ -151,23 +153,31 @@ fun HomeFeed(container: AppContainer, onNavigate: (String) -> Unit) {
         }
     }
 
-    val celebrations = remember(pulse) {
+    val celebrations = run {
         val birthdays = pulse?.birthdays.orEmpty().map {
             Celebration(
                 name = it.name,
                 // Whose day it is *today* is the only version anybody acts on.
                 // The rest are a heads-up, so they carry their date.
-                occasion = if (it.isToday) "Birthday today" else "Birthday · ${it.on}",
+                occasion = if (it.isToday) {
+                    stringResource(R.string.home_birthday_today)
+                } else {
+                    stringResource(R.string.home_birthday_on_date, it.on)
+                },
                 tone = AccentTone.Rose,
                 icon = Icons.Filled.Cake,
                 today = it.isToday,
             )
         }
         val anniversaries = pulse?.anniversaries.orEmpty().map {
-            val years = if (it.years == 1) "1 year" else "${it.years} years"
+            val years = pluralStringResource(R.plurals.home_anniversary_years, it.years, it.years)
             Celebration(
                 name = it.name,
-                occasion = if (it.isToday) "$years today" else "$years · ${it.on}",
+                occasion = if (it.isToday) {
+                    stringResource(R.string.home_anniversary_today, years)
+                } else {
+                    "$years · ${it.on}"
+                },
                 tone = AccentTone.Amber,
                 icon = Icons.Filled.WorkspacePremium,
                 today = it.isToday,
@@ -181,8 +191,8 @@ fun HomeFeed(container: AppContainer, onNavigate: (String) -> Unit) {
 
     if (celebrations.isNotEmpty()) {
         HomeSection(
-            title = "Wish them",
-            actionLabel = "My team",
+            title = stringResource(R.string.home_section_wish_them_title),
+            actionLabel = stringResource(R.string.home_section_action_my_team),
             onAction = { onNavigate("my-team") },
         ) {
             Row(
@@ -198,8 +208,8 @@ fun HomeFeed(container: AppContainer, onNavigate: (String) -> Unit) {
 
     if (away.isNotEmpty()) {
         HomeSection(
-            title = "Off this week",
-            actionLabel = "My team",
+            title = stringResource(R.string.home_section_off_this_week_title),
+            actionLabel = stringResource(R.string.home_section_action_my_team),
             onAction = { onNavigate("my-team") },
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
@@ -218,7 +228,7 @@ fun HomeFeed(container: AppContainer, onNavigate: (String) -> Unit) {
                                     // what changes who you ask; a date range
                                     // alone makes the reader work that out.
                                     if (absence.today) {
-                                        "Away today · ${absence.leaveType}"
+                                        stringResource(R.string.home_away_today_with_type, absence.leaveType)
                                     } else {
                                         rememberFormattedRange(absence.startDate, absence.endDate)
                                     },
@@ -236,15 +246,18 @@ fun HomeFeed(container: AppContainer, onNavigate: (String) -> Unit) {
 
     if (announcements.isNotEmpty()) {
         HomeSection(
-            title = "Announcements",
-            actionLabel = "All",
+            title = stringResource(R.string.home_section_announcements_title),
+            actionLabel = stringResource(R.string.home_section_action_all),
             onAction = { onNavigate("announcements") },
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                 announcements.forEach { announcement ->
                     AppCard(
                         onClick = { onNavigate("announcements") },
-                        contentDescription = "${announcement.title}. Open announcements",
+                        contentDescription = stringResource(
+                            R.string.home_announcement_content_description,
+                            announcement.title,
+                        ),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             AccentBadge(
@@ -277,8 +290,8 @@ fun HomeFeed(container: AppContainer, onNavigate: (String) -> Unit) {
 
     if (holidays.isNotEmpty()) {
         HomeSection(
-            title = "Coming up",
-            actionLabel = "All",
+            title = stringResource(R.string.home_section_coming_up_title),
+            actionLabel = stringResource(R.string.home_section_action_all),
             onAction = { onNavigate("holidays") },
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
@@ -298,7 +311,10 @@ fun HomeFeed(container: AppContainer, onNavigate: (String) -> Unit) {
                                     // claimed; somebody who reads it as a closure
                                     // does not come to work.
                                     if (holiday.isOptional) {
-                                        "${rememberFormattedDate(holiday.holidayDate)} · Optional, must be claimed"
+                                        stringResource(
+                                            R.string.home_holiday_optional_note,
+                                            rememberFormattedDate(holiday.holidayDate),
+                                        )
                                     } else {
                                         rememberFormattedDate(holiday.holidayDate)
                                     },
@@ -382,7 +398,7 @@ private fun HomeSection(
                 // "All" on its own is meaningless read aloud, and "All Coming
                 // up" — the label followed by the heading — is worse. The
                 // description says what the button actually opens.
-                contentDescription = "See all ${title.lowercase()}",
+                contentDescription = stringResource(R.string.home_section_see_all_content_description, title.lowercase()),
             )
         }
         Spacer(Modifier.height(Theme.spacing.sm))

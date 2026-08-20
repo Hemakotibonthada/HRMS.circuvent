@@ -21,10 +21,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -59,18 +62,20 @@ import kotlinx.coroutines.launch
 // the benchmark rate has not been configured the screen says the value is
 // unknown rather than showing a zero that reads as "nothing to pay".
 
-private val LOAN_TYPES = listOf(
-    "salary_advance" to "Salary advance",
-    "personal" to "Personal",
-    "housing" to "Housing",
-    "vehicle" to "Vehicle",
-    "education" to "Education",
-    "medical" to "Medical",
+private val LOAN_TYPE_CODES = listOf(
+    "salary_advance", "personal", "housing", "vehicle", "education", "medical",
 )
 
-private fun typeLabel(code: String): String =
-    LOAN_TYPES.firstOrNull { it.first == code }?.second
-        ?: code.replace('_', ' ').replaceFirstChar { it.uppercase() }
+@Composable
+private fun typeLabel(code: String): String = when (code) {
+    "salary_advance" -> stringResource(R.string.loans_type_salary_advance)
+    "personal" -> stringResource(R.string.loans_type_personal)
+    "housing" -> stringResource(R.string.loans_type_housing)
+    "vehicle" -> stringResource(R.string.loans_type_vehicle)
+    "education" -> stringResource(R.string.loans_type_education)
+    "medical" -> stringResource(R.string.loans_type_medical)
+    else -> code.replace('_', ' ').replaceFirstChar { it.uppercase() }
+}
 
 private fun rupees(minor: String?): String {
     val value = minor?.toLongOrNull() ?: return "₹0"
@@ -89,24 +94,22 @@ private fun statusTone(status: String): PillTone = when (status) {
     else -> PillTone.WARNING
 }
 
-private val MONTHS = listOf(
-    "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-)
-
 @Composable
 fun LoansScreen(container: AppContainer) {
     var state by remember { mutableStateOf<Loaded<LoansResponse>>(Loaded.Loading) }
     var showForm by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<Pair<BannerTone, String>?>(null) }
 
-    var loanType by remember { mutableStateOf(LOAN_TYPES.first().first) }
+    var loanType by remember { mutableStateOf(LOAN_TYPE_CODES.first()) }
     var amount by remember { mutableStateOf("") }
     var months by remember { mutableStateOf("12") }
     var purpose by remember { mutableStateOf("") }
     var submitting by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
+
+    val requestSuccessMessage = stringResource(R.string.loans_request_success_message)
+    val requestErrorFallback = stringResource(R.string.loans_request_error_fallback)
 
     suspend fun load() {
         state = try {
@@ -135,12 +138,19 @@ fun LoansScreen(container: AppContainer) {
                     message?.let { (tone, text) -> Banner(tone, text) }
 
                     if (!showForm) {
-                        AppButton(label = "Request an advance", onClick = { showForm = true })
+                        AppButton(
+                            label = stringResource(R.string.loans_request_advance_action),
+                            onClick = { showForm = true },
+                        )
                     } else {
                         AppCard {
-                            AppText("Request an advance", weight = FontWeight.SemiBold)
+                            AppText(
+                                stringResource(R.string.loans_request_advance_action),
+                                weight = FontWeight.SemiBold,
+                            )
 
-                            LOAN_TYPES.forEach { (code, label) ->
+                            LOAN_TYPE_CODES.forEach { code ->
+                                val label = typeLabel(code)
                                 Row(
                                     Modifier.fillMaxWidth().padding(vertical = 2.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -162,7 +172,7 @@ fun LoansScreen(container: AppContainer) {
                             OutlinedTextField(
                                 value = amount,
                                 onValueChange = { amount = it.filter(Char::isDigit) },
-                                label = { Text("Amount (₹)") },
+                                label = { Text(stringResource(R.string.loans_amount_field_label)) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
@@ -170,7 +180,7 @@ fun LoansScreen(container: AppContainer) {
                             OutlinedTextField(
                                 value = months,
                                 onValueChange = { months = it.filter(Char::isDigit) },
-                                label = { Text("Repay over (months)") },
+                                label = { Text(stringResource(R.string.loans_repay_over_field_label)) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
@@ -178,12 +188,16 @@ fun LoansScreen(container: AppContainer) {
                             OutlinedTextField(
                                 value = purpose,
                                 onValueChange = { purpose = it },
-                                label = { Text("What it is for") },
+                                label = { Text(stringResource(R.string.loans_purpose_field_label)) },
                                 modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
                             )
 
                             AppButton(
-                                label = if (submitting) "Sending…" else "Send request",
+                                label = if (submitting) {
+                                    stringResource(R.string.loans_sending_label)
+                                } else {
+                                    stringResource(R.string.loans_send_request_action)
+                                },
                                 enabled = !submitting &&
                                     (amount.toLongOrNull() ?: 0L) > 0L &&
                                     (months.toIntOrNull() ?: 0) > 0,
@@ -206,11 +220,10 @@ fun LoansScreen(container: AppContainer) {
                                             showForm = false
                                             amount = ""; purpose = ""
                                             load()
-                                            message = BannerTone.SUCCESS to
-                                                "Requested. Recovery starts the month after approval."
+                                            message = BannerTone.SUCCESS to requestSuccessMessage
                                         } catch (e: Throwable) {
                                             message = BannerTone.ERROR to
-                                                (e.message ?: "The request could not be sent.")
+                                                (e.message ?: requestErrorFallback)
                                         } finally {
                                             submitting = false
                                         }
@@ -218,14 +231,14 @@ fun LoansScreen(container: AppContainer) {
                                 },
                             )
                             AppButton(
-                                label = "Cancel",
+                                label = stringResource(R.string.expenses_cancel_action),
                                 variant = ButtonVariant.SECONDARY,
                                 onClick = { showForm = false },
                             )
                         }
                     }
 
-                    SectionLabel("Your loans")
+                    SectionLabel(stringResource(R.string.loans_your_loans_heading))
                 }
             }
         }
@@ -235,8 +248,8 @@ fun LoansScreen(container: AppContainer) {
             if (ready.value.loans.isEmpty()) {
                 item {
                     EmptyState(
-                        title = "No loans or advances",
-                        description = "Anything you borrow through payroll appears here, with what is left to repay.",
+                        title = stringResource(R.string.loans_empty_title),
+                        description = stringResource(R.string.loans_empty_description),
                     )
                 }
             } else {
@@ -249,10 +262,14 @@ fun LoansScreen(container: AppContainer) {
 @Composable
 private fun LoanCard(loan: LoanDto) {
     var showSchedule by remember { mutableStateOf(false) }
+    val monthAbbreviations = stringArrayResource(R.array.month_abbreviations)
 
     AppCard(
-        contentDescription =
-            "${typeLabel(loan.loanType)}, ${rupees(loan.outstandingMinor)} outstanding",
+        contentDescription = stringResource(
+            R.string.loans_outstanding_content_description,
+            typeLabel(loan.loanType),
+            rupees(loan.outstandingMinor),
+        ),
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -269,23 +286,42 @@ private fun LoanCard(loan: LoanDto) {
 
         Row(Modifier.fillMaxWidth().padding(top = Theme.spacing.xs)) {
             Column(Modifier.weight(1f)) {
-                AppText("Borrowed", tone = TextTone.MUTED, size = Theme.type.caption)
+                AppText(
+                    stringResource(R.string.loans_borrowed_label),
+                    tone = TextTone.MUTED,
+                    size = Theme.type.caption,
+                )
                 AppText(rupees(loan.principalMinor), weight = FontWeight.Medium)
             }
             Column(Modifier.weight(1f)) {
-                AppText("Left to repay", tone = TextTone.MUTED, size = Theme.type.caption)
+                AppText(
+                    stringResource(R.string.loans_left_to_repay_label),
+                    tone = TextTone.MUTED,
+                    size = Theme.type.caption,
+                )
                 AppText(rupees(loan.outstandingMinor), weight = FontWeight.SemiBold)
             }
             Column(Modifier.weight(1f)) {
-                AppText("Each month", tone = TextTone.MUTED, size = Theme.type.caption)
+                AppText(
+                    stringResource(R.string.loans_each_month_label),
+                    tone = TextTone.MUTED,
+                    size = Theme.type.caption,
+                )
                 AppText(rupees(loan.instalmentMinor), weight = FontWeight.Medium)
             }
         }
 
         AppText(
-            "${loan.instalmentsPaid} of ${loan.tenureMonths} instalments recovered" +
-                if (loan.interestRatePercent == 0.0) ", interest free"
-                else " at ${loan.interestRatePercent}%",
+            stringResource(
+                R.string.loans_instalments_recovered,
+                loan.instalmentsPaid,
+                loan.tenureMonths,
+            ) +
+                if (loan.interestRatePercent == 0.0) {
+                    stringResource(R.string.loans_interest_free_suffix)
+                } else {
+                    stringResource(R.string.loans_interest_rate_suffix, loan.interestRatePercent)
+                },
             tone = TextTone.MUTED,
             size = Theme.type.caption,
             modifier = Modifier.padding(top = Theme.spacing.xs),
@@ -295,10 +331,11 @@ private fun LoanCard(loan: LoanDto) {
         if (loan.perquisite.known && !loan.perquisite.exempt) {
             Banner(
                 BannerTone.INFO,
-                "Taxable benefit ${rupees(loan.perquisite.taxableMinor)} this year",
-                description =
-                    "A loan below the benchmark rate is a taxable perquisite. This is " +
-                        "added to your income, not deducted from your pay.",
+                stringResource(
+                    R.string.loans_taxable_benefit_title,
+                    rupees(loan.perquisite.taxableMinor),
+                ),
+                description = stringResource(R.string.loans_taxable_benefit_description),
             )
         } else if (loan.perquisite.known && loan.perquisite.exempt) {
             loan.perquisite.note?.let {
@@ -306,13 +343,21 @@ private fun LoanCard(loan: LoanDto) {
             }
         } else if (!loan.perquisite.known) {
             loan.perquisite.note?.let {
-                Banner(BannerTone.WARNING, "Taxable benefit not yet known", description = it)
+                Banner(
+                    BannerTone.WARNING,
+                    stringResource(R.string.loans_taxable_benefit_unknown_title),
+                    description = it,
+                )
             }
         }
 
         if (loan.schedule.isNotEmpty()) {
             AppButton(
-                label = if (showSchedule) "Hide schedule" else "Show schedule",
+                label = if (showSchedule) {
+                    stringResource(R.string.loans_hide_schedule_action)
+                } else {
+                    stringResource(R.string.loans_show_schedule_action)
+                },
                 variant = ButtonVariant.SECONDARY,
                 onClick = { showSchedule = !showSchedule },
                 modifier = Modifier.padding(top = Theme.spacing.xs),
@@ -325,13 +370,16 @@ private fun LoanCard(loan: LoanDto) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         AppText(
-                            "${MONTHS.getOrElse(row.month) { "" }} ${row.year}",
+                            "${monthAbbreviations.getOrNull(row.month - 1) ?: ""} ${row.year}",
                             size = Theme.type.caption,
                             tone = TextTone.MUTED,
                         )
                         AppText(rupees(row.totalMinor), size = Theme.type.caption)
                         AppText(
-                            "left ${rupees(row.closingBalanceMinor)}",
+                            stringResource(
+                                R.string.loans_schedule_left_balance,
+                                rupees(row.closingBalanceMinor),
+                            ),
                             size = Theme.type.caption,
                             tone = TextTone.MUTED,
                         )
