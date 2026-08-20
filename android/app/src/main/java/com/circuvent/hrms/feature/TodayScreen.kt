@@ -353,19 +353,25 @@ fun TodayScreen(
                     )
                 }
 
-                AppButton(
-                    label = if (clockedIn) "Clock out" else "Clock in",
-                    onClick = { punch(if (clockedIn) "out" else "in") },
-                    variant = ButtonVariant.ON_HERO,
-                    busy = busy,
-                    enabled = !finished,
-                    contentDescription = if (clockedIn) {
-                        "Records the end of your working day using your current location"
-                    } else {
-                        "Records the start of your working day using your current location"
-                    },
-                    modifier = Modifier.padding(top = Theme.spacing.xl),
-                )
+                // No button once the day is closed. It used to render disabled
+                // and still say "Clock in", which is the most prominent control
+                // on the screen inviting a tap that does nothing — and worse,
+                // naming the opposite of what had just happened. The card
+                // already says "Day complete" and shows both times.
+                if (!finished) {
+                    AppButton(
+                        label = if (clockedIn) "Clock out" else "Clock in",
+                        onClick = { punch(if (clockedIn) "out" else "in") },
+                        variant = ButtonVariant.ON_HERO,
+                        busy = busy,
+                        contentDescription = if (clockedIn) {
+                            "Records the end of your working day using your current location"
+                        } else {
+                            "Records the start of your working day using your current location"
+                        },
+                        modifier = Modifier.padding(top = Theme.spacing.xl),
+                    )
+                }
             }
         }
 

@@ -370,7 +370,10 @@ private fun HomeSection(
                 onClick = onAction,
                 variant = com.circuvent.hrms.core.ui.ButtonVariant.GHOST,
                 fullWidth = false,
-                contentDescription = "$actionLabel $title",
+                // "All" on its own is meaningless read aloud, and "All Coming
+                // up" — the label followed by the heading — is worse. The
+                // description says what the button actually opens.
+                contentDescription = "See all ${title.lowercase()}",
             )
         }
         Spacer(Modifier.height(Theme.spacing.sm))
