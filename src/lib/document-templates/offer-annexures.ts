@@ -1,19 +1,50 @@
 // OFFER LETTER ANNEXURES
 //
-// The offer letter is the one document in this suite that creates a contract,
-// and it was the shortest serious thing in the catalog: about 13,800 characters
-// of visible text, which renders to four pages. A four-page offer is not a
-// stylistic problem. It is an offer that has not said what the notice period
-// obligation actually is, what happens if a background check comes back
-// adverse, who owns work the employee creates, or which statute each deduction
-// is taken under. Every one of those omissions is resolved against the drafter
-// when it is disputed, and the drafter is us.
+// The offer letter's main letter and its Annexures A-F live inline in
+// `catalog.ts`, built to the founder's own clause-by-clause specification -
+// compensation, statutory benefits, the numbered terms, code of conduct, data
+// protection, joining checklist. Annexures G and H, and the acceptance page,
+// are assembled from the three exports below and interpolated into the same
+// letter by `catalog.ts` - they live in this separate file only because their
+// clause text is long enough that it does not belong in the same file as the
+// document catalogue itself (see "still stands on its own merits" below).
+// This file used to also carry a second,
+// independently-drafted set of blocks covering the same ground: a second
+// terms-and-conditions annexure, a second statutory-benefits annexure, a
+// second code-of-conduct annexure, and a second data-protection annexure. All
+// four were spliced into the letter after the candidate's acceptance page,
+// which is worse than the duplication itself - an annexure a candidate has
+// already signed past is not obviously part of what they agreed to, and a
+// second "Annexure 3" appearing under a letter that already has a "Annexure
+// B" covering the identical statute is exactly the kind of disagreement
+// between two clauses on one subject that gets construed against the drafter,
+// which is us.
 //
-// These blocks are kept out of `catalog.ts` deliberately. That file is a
-// register of what documents exist; this file is the legal body of one of them.
-// Mixing the two produced a 1,300-line file where the catalog entries - the
-// part a person edits most often - sat below several hundred lines of clause
-// text they never needed to read.
+// Those four blocks were deleted, not merely left unexported, once a clause-
+// by-clause comparison against the inline Annexures B/C/D/E confirmed real
+// duplication in every case, with the inline versions consistently the more
+// precise ones (they cite specific sections - Article 276, Income Tax Act
+// section 192 and 115BAC, POSH Act sections 4 and 16 - where the deleted
+// blocks named only the Act). Nothing in them was thrown away silently: the
+// handful of facts they carried that the inline annexures genuinely lacked -
+// the Labour Welfare Fund deduction, a Deductions-from-salary clause under the
+// Payment of Wages Act 1936, an Unauthorised-absence clause, and five code-of-
+// conduct items (integrity, non-discrimination, insider information,
+// substance misuse, raising a concern) - were folded into the inline
+// annexures directly, so that fact exists exactly once in the letter instead
+// of zero or two times.
+//
+// What remains here are the three blocks that were genuinely additive rather
+// than duplicative: a full confidentiality-and-intellectual-property annexure
+// (the inline letter had only two brief clauses on this, clauses 11 and 12 of
+// Annexure C, which now point here instead of restating it), a full leave and
+// attendance annexure (the inline letter committed the company to "the
+// leave policy" without ever stating an entitlement), and the acceptance page
+// itself, which has to be the true last page of the document for the reason
+// its own comment below explains. Splitting this out of `catalog.ts` still
+// stands on its own merits even with three blocks instead of seven: that file
+// is a register of what documents exist, and clause text this long belongs
+// somewhere a person is not scrolling past every time they add a template.
 //
 // TOKENS
 // Only tokens already present in the offer letter body are used here. That is
@@ -26,11 +57,14 @@
 // starts promising an intern a gratuity provision fails the build rather than
 // reaching a candidate.
 //
-// STATUTE REFERENCES
-// Each statutory clause names the Act it derives from. This is how the source
-// offer this was modelled on is written, and the reason is practical: an
-// employee who wants to check their provident fund entitlement can look up the
-// Act, whereas "as per company policy" tells them only to ask us.
+// CROSS-REFERENCES
+// Every "Annexure X" reference in the three blocks below points to the letter
+// as it is actually lettered in `catalog.ts` (A through H, in the order the
+// letter presents them) rather than to a numbering scheme private to this
+// file. A cross-reference that only makes sense against a draft nobody signs
+// is worse than no cross-reference, because a candidate who checks it finds
+// nothing.
+
 
 /**
  * Numbered terms and conditions.
@@ -451,15 +485,16 @@ export const OFFER_DATA_PROTECTION = `
 /**
  * Confidentiality and intellectual property.
  *
- * The longest annexure, and deliberately so: this is the part that is litigated.
- * Clause 16 of Annexure 2 incorporates it by reference.
+ * The longest annexure, and deliberately so: this is the part that is
+ * litigated. Clauses 11 and 12 of Annexure C incorporate it by reference,
+ * rather than restating what follows at half the length and creating a
+ * second, slightly different version of the same undertaking.
  */
 export const OFFER_CONFIDENTIALITY_IP = `
       <div class="section">
-        <p class="section-title">Annexure 6 — Confidentiality and intellectual property</p>
         <div class="section-body">
           <p>
-            This annexure is incorporated into your contract by clause 16 of Annexure 2. In it,
+            This annexure is incorporated into your contract by clauses 11 and 12 of Annexure C. In it,
             "Company" means {{company_name}} and "you" means {{full_name}}.
           </p>
 
@@ -566,13 +601,14 @@ export const OFFER_CONFIDENTIALITY_IP = `
 /**
  * Acceptance page.
  *
- * Kept as the last block so it is the last page. An acceptance signature at the
- * end of the annexures is evidence the annexures were part of what was signed;
- * a signature on page two is not.
+ * Kept as the true last block so it is the last page. An acceptance signature
+ * at the end of every annexure is evidence the annexures were part of what was
+ * signed; a signature that comes before some of them, as this document's
+ * wiring used to place it, is evidence of nothing and invites the candidate to
+ * argue the later annexures were never part of the deal they agreed to.
  */
 export const OFFER_ACCEPTANCE = `
       <div class="section">
-        <p class="section-title">Acceptance</p>
         <div class="section-body">
           <p>
             To accept this offer, sign below and return the complete letter, including every
@@ -580,11 +616,11 @@ export const OFFER_ACCEPTANCE = `
           </p>
           <p>
             I, {{full_name}}, accept the offer of employment as {{position_title}} with
-            {{company_name}} on the terms set out in this letter and in Annexures 1 to 6. I confirm
+            {{company_name}} on the terms set out in this letter and in Annexures A to H. I confirm
             that I have read those annexures; that the information I gave during the recruitment
             process is true and complete; that I am not subject to any obligation to a former
             employer that would prevent me performing this role; and that I will produce the
-            documents listed in Annexure 5 on my first day.
+            documents listed in Annexure F on my first day.
           </p>
 
           <div class="details">
@@ -635,7 +671,6 @@ export const OFFER_ACCEPTANCE = `
  */
 export const OFFER_LEAVE_AND_ATTENDANCE = `
       <div class="section">
-        <p class="section-title">Annexure 7 — Leave, holidays and attendance</p>
         <div class="section-body">
           <p>
             Entitlements below are for a full leave year worked in full. In your first year they
@@ -674,7 +709,7 @@ export const OFFER_LEAVE_AND_ATTENDANCE = `
 
           <p><strong>6. Maternity, paternity and adoption leave.</strong>
             Maternity leave is granted under the Maternity Benefit Act 1961 as described in
-            Annexure 3, and no company policy reduces it. Paternity and adoption leave are granted
+            Annexure B, and no company policy reduces it. Paternity and adoption leave are granted
             under the company's leave policy.</p>
 
           <p><strong>7. Bereavement leave.</strong>
@@ -702,28 +737,13 @@ export const OFFER_LEAVE_AND_ATTENDANCE = `
 `;
 
 /**
- * The annexures this file contributes, in the order the letter references them.
- *
- * Only three of the seven blocks defined above are exported into the letter. The
- * catalog body already carries its own compensation break-up, statutory
- * summary, conduct, data-protection and joining-checklist sections, and saying
- * the same thing twice in a signed contract is worse than saying it once: where
- * two clauses on one subject differ even slightly, the difference is an
- * ambiguity to be argued over, and it is construed against us as the drafter.
- *
- * What the catalog body genuinely lacked was the heaviest parts - a numbered set
- * of employment terms (it had a terms heading with no numbered clauses under it
- * at all), any assignment of intellectual property or definition of confidential
- * information whatsoever, and any statement of leave entitlement despite
- * committing the company to a leave policy. Those are the clauses that are
- * actually litigated, and they are what this file is for.
- *
- * The other blocks are kept, not deleted: they are the fuller treatment, and if
- * the summaries in the catalog body are ever replaced they can be exported here
- * instead of rewritten.
+ * These three blocks are consumed directly by `catalog.ts`, each under its own
+ * `<h2>` heading (Annexure G, Annexure H, and the final Acceptance page), the
+ * same way Annexures A through F are headed. There is deliberately no combined
+ * `OFFER_ANNEXURES` string here any more: the previous version pre-joined the
+ * blocks and spliced the result in one place, which is exactly how a
+ * duplicate terms-and-conditions annexure and a signature page ended up
+ * sandwiched in the wrong order in the first place. Importing each block by
+ * name and placing it explicitly means the order in `catalog.ts` is the order
+ * that renders, with nothing hidden in a `.join()` call.
  */
-export const OFFER_ANNEXURES = [
-  OFFER_TERMS_AND_CONDITIONS,
-  OFFER_CONFIDENTIALITY_IP,
-  OFFER_LEAVE_AND_ATTENDANCE,
-].join("\n");

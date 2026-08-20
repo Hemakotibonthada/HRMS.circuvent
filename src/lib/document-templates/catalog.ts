@@ -106,7 +106,7 @@ import {
   row,
   table,
 } from "./letter-kit.mjs";
-import { OFFER_ANNEXURES } from "./offer-annexures";
+import { OFFER_TERMS_AND_CONDITIONS, OFFER_CONFIDENTIALITY_IP, OFFER_LEAVE_AND_ATTENDANCE, OFFER_ACCEPTANCE } from "./offer-annexures";
 
 export { COMPANY_TOKENS };
 
@@ -139,7 +139,7 @@ export interface TemplateSeed {
 // candidate block, the salary, the deadline — that this candidate needs to
 // read first and read fastest.
 //
-// Six annexures, each answering one question a signed offer has to answer
+// Eight annexures, each answering one question a signed offer has to answer
 // somewhere:
 //   A — Compensation:        what does each rupee of the CTC become?
 //   B — Statutory benefits:  which Act requires which deduction, and how much?
@@ -147,6 +147,8 @@ export interface TemplateSeed {
 //   D — Code of conduct:     what standard of behaviour is expected, and against what law?
 //   E — Data protection:     what personal data is processed, and what rights exist over it?
 //   F — Joining checklist:   what must physically arrive on day one?
+//   G — Confidentiality and IP: what happens to information and inventions during and after?
+//   H — Leave and attendance:  what entitlement does "the leave policy" in clause 6 actually mean?
 // followed by a candidate acceptance page that names every annexure by
 // letter, so "I accept" cannot later be read as accepting only the page it
 // is printed on.
@@ -229,8 +231,10 @@ ${letterhead(
             <li><strong>Annexure D — Code of conduct and workplace policy.</strong> The standards of behaviour expected of you and of the company.</li>
             <li><strong>Annexure E — Data protection.</strong> What personal data of yours we process, why, and your rights over it.</li>
             <li><strong>Annexure F — Joining checklist.</strong> What to bring, and what to complete, on your date of joining.</li>
+            <li><strong>Annexure G — Confidentiality and intellectual property.</strong> What you may not disclose, and who owns what you create.</li>
+            <li><strong>Annexure H — Leave, holidays and attendance.</strong> The entitlement behind "the leave policy" referred to in Annexure C.</li>
           </ul>
-          <p>Please read all six before you sign the acceptance page at the end of this offer.</p>
+          <p>Please read all eight before you sign the acceptance page at the end of this offer.</p>
         </div>
       </div>
 
@@ -434,6 +438,19 @@ ${letterhead(
       </div>
 
       <div class="section">
+        <p class="section-title">Labour welfare fund</p>
+        <div class="section-body">
+          <p>
+            Where the State in which you work operates a labour welfare fund, the employee
+            contribution to it is deducted from your salary at the rate that State notifies, and
+            the company pays the matching employer contribution and remits both on your behalf.
+            Not every State operates such a fund; where yours does not, no deduction is made under
+            this paragraph.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
         <p class="section-title">Other benefits</p>
         <div class="section-body">
           <ul class="bullet">
@@ -461,14 +478,14 @@ ${letterhead(
             <li><strong>Confirmation.</strong> Your employment is confirmed by a separate written communication once your probation is satisfactorily completed; the company may extend your probation once, by written notice stating the reason, where more time is genuinely needed to assess you.</li>
             <li><strong>Training.</strong> Any training required for your role, whether before or after confirmation, is treated as time worked, and satisfactory completion of it is itself a condition of confirmation.</li>
             <li><strong>Working hours and week.</strong> Your standard working hours are {{working_hours}}, exclusive of any additional hours reasonably required by your role from time to time, across the standard working week your location and function follow.</li>
-            <li><strong>Attendance.</strong> You are expected to record your attendance through the company's attendance system for every working day; unrecorded or unexplained absence is treated as leave without pay and, if it continues, as abandonment of employment.</li>
-            <li><strong>Leave.</strong> Your leave entitlement is as set out in the company's leave policy in force from time to time, which the letter of appointment referred to in clause 24 states in full for your grade and location.</li>
+            <li><strong>Attendance.</strong> You are expected to record your attendance through the company's attendance system for every working day; unrecorded or unexplained absence is treated as leave without pay and, if it continues without response, as abandonment of employment under clause 32.</li>
+            <li><strong>Leave.</strong> Your leave entitlement — earned, casual, sick and other leave, and how each accrues, carries forward or is encashed — is set out in Annexure H; the letter of appointment referred to in clause 24 states anything specific to your grade or location.</li>
             <li><strong>Notice period during probation.</strong> During probation, either party may end this employment by giving {{probation_notice_period}} written notice, or pay in lieu of that notice.</li>
             <li><strong>Notice period after confirmation.</strong> After confirmation, either party may end this employment by giving {{notice_period}} written notice, or pay in lieu of that notice.</li>
             <li><strong>Mobility and transfer.</strong> The company may transfer you to another department, function, location or group company, in India or abroad, as it considers necessary, without changing the substance of this offer; where a transfer requires relocation, the company's relocation policy in force at the time applies.</li>
             <li><strong>No alternative employment or conflicting engagement.</strong> You will not, during your employment, take up any other employment, business, trade or consultancy, paid or unpaid, or any engagement that conflicts with the company's interests, without the company's prior written consent.</li>
-            <li><strong>Intellectual property.</strong> All work product, inventions, designs, code and other intellectual property you create in the course of your employment, using the company's resources or time, belongs to the company, and you assign all rights in it to the company as they arise; this survives the end of your employment for anything created during it.</li>
-            <li><strong>Confidentiality.</strong> You will keep confidential all information about the company, its clients and its business that comes to you during your employment, and will not disclose or use it for any purpose other than the company's business, both during your employment and after it ends, for as long as the information remains confidential; you will execute the company's confidentiality undertaking on or before joining.</li>
+            <li><strong>Intellectual property.</strong> Ownership of, and your assignment to the company of, intellectual property you create in the course of your employment is set out in full in Annexure G, and is a condition of this offer; that annexure, not this summary, governs if the two are ever read as differing.</li>
+            <li><strong>Confidentiality.</strong> Your obligations of confidentiality, both during your employment and after it ends, are set out in full in Annexure G; you will execute the company's confidentiality undertaking, which records those obligations, on or before joining.</li>
             <li><strong>Non-solicitation.</strong> For {{notice_period}} after your employment ends, you will not solicit the company's employees to leave the company, or solicit the company's clients with whom you dealt during your employment, for a competing business.</li>
             <li><strong>Background verification.</strong> This offer is subject to satisfactory verification of the education, employment and other particulars you have provided; a discrepancy discovered before joining is grounds for withdrawing this offer, and one discovered after joining is grounds for terminating your employment without notice.</li>
             <li><strong>Pre-employment medical.</strong> This offer is subject to your being found medically fit by a physician nominated by the company.</li>
@@ -487,6 +504,8 @@ ${letterhead(
             <li><strong>Governing law and jurisdiction.</strong> This offer, and your employment under it, is governed by the laws of India, and the courts having jurisdiction over the company's registered office at {{company_address}} have exclusive jurisdiction over any dispute arising from it.</li>
             <li><strong>Entire agreement.</strong> This offer, its annexures and the letter of appointment that follows it together record the entire agreement between you and the company on the subject; anything said or promised during the selection process that is not written here does not bind the company.</li>
             <li><strong>Severability and amendment.</strong> If any clause in this offer is found unenforceable, the rest continues to apply, and no amendment to this offer binds either of us unless it is in writing and signed by both.</li>
+            <li><strong>Deductions from salary.</strong> The company may deduct from your salary any sum you owe it, including overpaid salary, the value of an unreturned company asset, an outstanding advance, and salary in lieu of notice not served under clause 7 or clause 8; deductions are made in accordance with the Payment of Wages Act 1936, and where that Act requires your consent, the company will obtain it.</li>
+            <li><strong>Unauthorised absence.</strong> Absence without approval or explanation for eight consecutive working days is treated as abandonment of employment, after the company has written to your last known address and given you seven days to respond; absence is not treated as abandonment where you are unable to make contact for reasons beyond your control.</li>
           </ol>
         </div>
       </div>
@@ -558,6 +577,60 @@ ${letterhead(
             statement on the company's behalf, or in a way that identifies you as its employee on
             a matter concerning the company's business, without the prior approval of the
             company's communications function.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Integrity</p>
+        <div class="section-body">
+          <p>
+            You will act honestly in your dealings with the company, its customers, suppliers and
+            regulators, and will not falsify a record, a timesheet, an expense claim or a
+            qualification.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Non-discrimination</p>
+        <div class="section-body">
+          <p>
+            Employment decisions are made on merit. Discrimination or harassment on the grounds of
+            sex, gender identity, religion, caste, disability, marital status, sexual orientation
+            or place of origin is prohibited and is a disciplinary matter.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Insider information</p>
+        <div class="section-body">
+          <p>
+            You will not deal in the securities of any company, nor pass information to another
+            person to deal, on the basis of unpublished price-sensitive information obtained
+            through your employment.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Substance misuse</p>
+        <div class="section-body">
+          <p>
+            You will not attend work impaired by alcohol or an unlawful substance where doing so
+            affects your ability to work safely or competently.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Raising a concern</p>
+        <div class="section-body">
+          <p>
+            You may raise a concern about suspected wrongdoing through the company's whistleblowing
+            channel, including anonymously. A person who raises a concern honestly is protected
+            from detriment even if the concern turns out to be mistaken.
           </p>
         </div>
       </div>
@@ -640,22 +713,17 @@ ${letterhead(
         </div>
       </div>
 
+      <h2>Annexure G — Terms and conditions of employment</h2>
+${OFFER_TERMS_AND_CONDITIONS}
+
+      <h2>Annexure H — Confidentiality and intellectual property</h2>
+${OFFER_CONFIDENTIALITY_IP}
+
+      <h2>Annexure I — Leave, holidays and attendance</h2>
+${OFFER_LEAVE_AND_ATTENDANCE}
+
       <h2>Acceptance</h2>
-      <div class="section">
-        <p class="section-title">Candidate's acceptance</p>
-        <div class="section-body">
-          <p>
-            I have read and understood this offer of employment in full, including Annexure A
-            (Compensation), Annexure B (Statutory benefits and deductions), Annexure C (Terms and
-            conditions), Annexure D (Code of conduct and workplace policy), Annexure E (Data
-            protection) and Annexure F (Joining checklist), and I accept the offer on those terms.
-          </p>
-          <p>Signature: ______________________ &nbsp;&nbsp;&nbsp; Date: ______________________</p>
-          <p>Name: {{full_name}}</p>
-          <p>Place: ______________________</p>
-        </div>
-      </div>
-${OFFER_ANNEXURES}
+${OFFER_ACCEPTANCE}
 ${LETTER_CLOSE}`;
 
 // ─── 2. Payslip statement ────────────────────────────────────
