@@ -36,6 +36,7 @@ SOURCES = [
     ("03_INTEGRATIONS_AND_ECOSYSTEM.md", "Integrations & Ecosystem"),
     ("04_MAINTENANCE_AND_OPERATIONS.md", "Maintenance & Operations"),
     ("05_AREAS_OF_ENHANCEMENT.md", "Areas of Enhancement"),
+    ("06_ARCHITECTURE_DIAGRAMS.md", "Architecture Diagram Atlas"),
 ]
 
 TITLE = "hrms.circuvent.com"

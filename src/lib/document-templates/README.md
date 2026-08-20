@@ -150,37 +150,77 @@ visible angle brackets.
 
 Widening the renderer to trust tokens ending in `_html` would have reopened
 exactly the hole the escaping closes. Instead, the offer letter was rewritten
-to the same structure a real one needs — reference number and acceptance
-deadline, itemised compensation and benefits, performance pay, retirals
-(provident fund under the EPF Act 1952, gratuity under the Payment of Gratuity
-Act 1972), numbered terms and conditions, and a signature block — with the
-parts that vary as plain tokens, and the fixed markup (the policy clauses, the
-retirals wording, the acceptance paragraph) written directly into the
-template. **Annexure 1**, the compensation break-up a candidate actually reads
-against their payslip, is a `ledgerTable()` (see `letter-kit.mjs`) built in
-`catalog.ts` from individual scalar tokens — `{{basic_salary}}`, `{{hra}}`,
-`{{special_allowance}}`, `{{conveyance_allowance}}`, `{{medical_allowance}}`,
-`{{lta_allowance}}`, `{{other_allowances}}` summing to `{{gross_salary}}`, and
-`{{gross_salary}}` plus `{{employer_pf_contribution}}` plus
-`{{gratuity_provision}}` summing to `{{annual_ctc}}` — each of which lines up
-with a field `calculateSalaryStructure` in `payroll-engine.ts` already
-produces. `annual_ctc` deliberately excludes employer ESI and the group
-insurance premium that `calculateSalaryStructure`'s own `ctc` field folds in:
-ESI only applies below a wage threshold, and the premium is disclosed
-separately under "Other benefits" — including either again here would inflate
-the one number Annexure 1 promises is gross salary plus the two retirals,
-nothing else. `catalog.test.ts` renders this table with real
-`calculateSalaryStructure` output and checks the totals agree with the rows
-feeding them, because a total that disagrees with its rows on a signed offer
-is a dispute.
+as a main letter plus six lettered annexures and an acceptance page — the
+structure a genuine offer of this length is actually built from, not one long
+scroll of headings — with the parts that vary as plain tokens, and the fixed
+markup (the policy clauses, the retirals wording, the acceptance paragraph)
+written directly into the template:
 
-An **Internship Offer Letter** follows the same structure with a stipend in
-place of a salary, a fixed term with an end date, no provident fund or
-gratuity line (an internship does not attract either), and conversion-to-
-permanent wording instead of a promise of continued employment —
-`offer-rules.ts`'s `forbiddenTokens` for the `internship` engagement type is
-what keeps `annual_ctc` and the rest of the salaried vocabulary out of it for
-good, not just this file's discipline.
+- The **main letter** carries the reference number, the candidate's postal
+  address, the subject, position/grade/business unit, gross annual salary
+  with a pointer to Annexure A, the acceptance deadline and what happens if
+  it lapses, and the signatory block.
+- **Annexure A — Compensation** is the table a candidate actually reads
+  against their payslip: a `ledgerTable()` (see `letter-kit.mjs`) built in
+  `catalog.ts` from individual scalar tokens — `{{basic_salary}}`, `{{hra}}`,
+  `{{special_allowance}}`, `{{conveyance_allowance}}`, `{{medical_allowance}}`,
+  `{{lta_allowance}}`, `{{food_card_allowance}}` and `{{other_allowances}}`
+  summing to `{{gross_salary}}`, then `{{gross_salary}}` plus
+  `{{employer_pf_contribution}}` plus `{{gratuity_provision}}` plus
+  `{{employer_esi_contribution}}` summing to `{{annual_ctc}}` — each of which
+  lines up with a field `calculateSalaryStructure` in `payroll-engine.ts`
+  already produces. `annual_ctc` deliberately excludes the group insurance
+  premium that `calculateSalaryStructure`'s own `ctc` field folds in: the
+  premium is disclosed separately, as a benefit, in Annexure B, and including
+  it again here would inflate the one number Annexure A promises is gross
+  salary plus the three retirals, nothing else. `employer_esi_contribution`
+  reads as a rupee figure only where the candidate's gross salary is at or
+  below the ESI wage ceiling, and as "Not applicable" above it — the row is
+  always present, because a document that sometimes has four retiral rows and
+  sometimes three depending on the tenant would be a harder template to keep
+  correct than one that always has four and sometimes says one does not
+  apply. `catalog.test.ts` renders this table with real
+  `calculateSalaryStructure` output at two salary levels — one above the ESI
+  ceiling and one below it, so both branches of that row are actually
+  exercised — and checks the totals agree with the rows feeding them, because
+  a total that disagrees with its rows on a signed offer is a dispute.
+- **Annexure B — Statutory benefits and deductions** grounds every row in
+  Annexure A in the actual statute: the EPF Act 1952 for provident fund, the
+  Payment of Gratuity Act 1972 for gratuity (and its five-year vesting), the
+  ESI Act 1948 for the threshold-dependent row above, the Maternity Benefit
+  Act 1961 as amended in 2017, the Payment of Bonus Act 1965, and
+  professional tax and TDS under the Income Tax Act 1961.
+- **Annexure C — Terms and conditions** is thirty numbered clauses —
+  probation, working hours, leave, transfer, no alternative employment, IP
+  assignment, confidentiality surviving termination, non-solicitation,
+  background verification and the consequence of a discrepancy, notice
+  period, retirement age, disciplinary process and termination for cause
+  among them.
+- **Annexure D — Code of conduct and workplace policy** covers anti-
+  harassment under the POSH Act 2013 (naming the Internal Committee), anti-
+  bribery, conflict of interest and information security.
+- **Annexure E — Data protection** states what personal data is processed,
+  why, for how long, and the employee's rights under the DPDP Act 2023.
+- **Annexure F — Joining checklist** lists the documents to produce on day
+  one and the formalities to complete before joining.
+- The **acceptance page** is a signature-and-date block that names every
+  annexure by letter, so a candidate's signature is on a document that
+  identifies exactly what they agreed to, not a vague "the above."
+
+An **Internship Offer Letter** follows an equivalent structure, correctly cut
+down for what an internship actually is: a stipend in place of a salary, a
+fixed term with an end date, no provident fund or gratuity line (gratuity
+does not vest below five years and an internship is shorter than that; PF
+does not apply to a bona fide stipend), and conversion-to-permanent wording
+instead of a promise of continued employment — `offer-rules.ts`'s
+`forbiddenTokens` for the `internship` engagement type is what keeps
+`annual_ctc` and the rest of the salaried vocabulary out of it for good, not
+just this file's discipline. Its own numbered "Terms of the internship"
+section is honest about the statutory position: PF, ESI and gratuity do not
+apply to the stipend as paid, but would apply prospectively if the
+relationship were ever recharacterised as employment — a claim an internship
+letter should be able to survive being read literally, not one that hopes
+nobody checks.
 
 Nothing that was legitimately part of the original letter was lost, and the
 injection surface is gone.
@@ -209,7 +249,7 @@ built from one shared module, `letter-kit.mjs`:
   masthead and the same `COMPANY_LOGO_SLOT`;
 - `row()`/`table()` for a plain two-column detail table, and
   `ledgerRow()`/`ledgerTotalRow()`/`ledgerTable()` for a monthly/annual
-  compensation break-up with totals set in bold — the vocabulary Annexure 1
+  compensation break-up with totals set in bold — the vocabulary Annexure A
   is built from.
 
 It is plain JavaScript (`.mjs`), not TypeScript, because
@@ -251,11 +291,15 @@ edited, not on any choice anyone made. `catalog.ts`'s version was kept because
 - every offer letter matches the engagement it is for — the right
   compensation token, none of the tokens `offer-rules.ts` forbids, an end date
   on every fixed-term engagement and none on open-ended employment;
-- **Annexure 1's arithmetic** — rendered with real `calculateSalaryStructure`
-  output, the gross salary and annual cost-to-company Annexure 1 prints agree
-  with the rows that are supposed to sum to them, and the annual figure is
-  never `calculateSalaryStructure`'s own `ctc` field (which also folds in
-  employer ESI and the insurance premium this letter discloses separately).
+- **Annexure A's arithmetic**, checked at two salary levels — one above the
+  ESI wage ceiling and one below it, so the employer-ESI row is exercised on
+  both branches, not just the branch where it says "Not applicable" — the
+  eight compensation rows sum to the gross salary row, and gross salary plus
+  the three retiral rows sums to the total cost-to-company row, using real
+  `calculateSalaryStructure` output rather than hand-picked numbers that
+  happen to add up. The annual figure is never `calculateSalaryStructure`'s
+  own `ctc` field, which also folds in the group insurance premium this
+  letter discloses separately in Annexure B.
 
 `branding.test.ts` covers the logo mechanism directly: `isAbsoluteHttpUrl`
 accepts `http(s)` and rejects `cid:`, `javascript:`, relative paths and

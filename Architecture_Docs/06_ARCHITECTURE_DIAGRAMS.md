@@ -802,7 +802,8 @@ atlas must diagram (ats, payroll), and the rest for scale or an unusual auth sha
 ```mermaid
 flowchart TB
     subgraph pub["No credential at all — 11 routes"]
-        p1["health, icon<br/>auth/sso, auth/sso/start, auth/callback<br/>auth/login, auth/register<br/>auth/forgot-password, auth/passkey/login<br/>v1/openapi, scim/ServiceProviderConfig"]
+        p1["health, icon, v1/openapi<br/>scim/ServiceProviderConfig"]
+        p1b["auth/sso, auth/sso/start, auth/callback<br/>auth/login, auth/register<br/>auth/forgot-password, auth/passkey/login"]
     end
     subgraph resToken["Per-resource single-use token — 3 routes"]
         r1["sign/[id] — 256-bit, hash-compared<br/>public/referral/[token] — 256-bit, rate-limited<br/>auth/reset-password — single-use reset token"]
@@ -3239,14 +3240,16 @@ sequenceDiagram
     WT->>Tx: BEGIN
     rect rgb(230, 245, 255)
     WT->>Tx: SET LOCAL app.org_id = orgId<br/>SET LOCAL app.user_id = userId<br/>SET LOCAL app.superuser = off
-    Note over Tx: set_config(..., true) - the "true"<br/>argument means transaction-local.<br/>Parameterised, not string-interpolated:<br/>an attacker-controlled orgId cannot<br/>inject SQL into the GUC statement.
+    Note over Tx: set_config(..., true) - the "true"<br/>argument means transaction-local.
+    Note over Tx: Parameterised, not string-interpolated:<br/>an attacker-controlled orgId cannot<br/>inject SQL into the GUC statement.
     end
     Route->>Tx: fn(tx) - the actual query
     Tx->>RLS: every row checked against<br/>org_id = app_current_org()
     RLS-->>Tx: only this tenant's rows
     Tx-->>Route: result
     WT->>Tx: COMMIT
-    Note over Tx: SET LOCAL is discarded here.<br/>Connection returns to the pool bare -<br/>the next request's SET LOCAL starts<br/>from nothing, never from a leftover org_id.
+    Note over Tx: SET LOCAL is discarded here.<br/>Connection returns to the pool bare -
+    Note over Tx: the next request's SET LOCAL starts<br/>from nothing, never from a leftover org_id.
 ```
 
 ```
@@ -3389,11 +3392,13 @@ sequenceDiagram
     participant App as withTenant()
     participant DB as Production Postgres<br/>(role: neondb_owner)
 
-    Note over App,DB: hrms_app existed with the CORRECT property<br/>(rolbypassrls=false) but had never been<br/>granted LOGIN - so it could never be the<br/>role DATABASE_URL actually connected as.
+    Note over App,DB: hrms_app existed with the CORRECT property<br/>(rolbypassrls=false) but had never been granted LOGIN -
+    Note over App,DB: so it could never be the role DATABASE_URL actually connected as.
     OrgA->>App: withTenant({orgId: A}, ...)
     App->>DB: SET LOCAL app.org_id = 'A'; SELECT * FROM hrms.departments
     rect rgb(255, 230, 230)
-    Note over DB: connected as neondb_owner - the DATABASE<br/>OWNER, which Postgres exempts from RLS<br/>regardless of FORCE. tenant_isolation is<br/>still listed by \d, still "present", inert.
+    Note over DB: connected as neondb_owner - the DATABASE<br/>OWNER, which Postgres exempts from RLS regardless of FORCE.
+    Note over DB: tenant_isolation is still listed by \d, still "present", inert.
     DB-->>App: ALL rows, every org, not just A
     end
     App-->>OrgA: org B's payroll, salary, Aadhaar numbers too
@@ -3424,17 +3429,21 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-    FOUND["Discovered by asking the actual-deployment question:<br/>connect as whoever DATABASE_URL names, plant a row<br/>in tenant A, ask as tenant B, see if it comes back"]
-    FIX1["drizzle/0028_app_role_login.sql:<br/>ALTER ROLE hrms_app WITH LOGIN<br/>ALTER ROLE hrms_app WITH NOBYPASSRLS (explicit)<br/>re-grants table/sequence/function privileges"]
+    FOUND["Discovered by asking the actual-deployment question:<br/>connect as whoever DATABASE_URL names, plant a row"]
+    FOUNDB["in tenant A, ask as tenant B, see if it comes back"]
+    FIX1["drizzle/0028_app_role_login.sql:<br/>ALTER ROLE hrms_app WITH LOGIN<br/>ALTER ROLE hrms_app WITH NOBYPASSRLS (explicit)"]
+    FIX1B["re-grants table, sequence and function<br/>privileges hrms_app needs once it can log in"]
     FIX2["Operator sets a password, repoints DATABASE_URL<br/>at hrms_app (never committed - own incident class)"]
     GUARD["assertConnectionIsolatesTenants() added to<br/>src/db/client.ts - fails closed on every future<br/>withTenant() call if the connected role bypasses RLS"]
     STILLOPEN["db:verify:live and db:verify:reach: written,<br/>exist in package.json, STILL NOT in verify.yml (18)"]
-    NEVERRUN["The cross-tenant assertion inside<br/>verify-live-isolation.ts itself: only executes<br/>its two real checks if 2+ organisations exist -<br/>this deployment has exactly one, so that branch<br/>has NEVER actually run, in CI or otherwise"]
+    NEVERRUN["The cross-tenant assertion inside<br/>verify-live-isolation.ts itself only executes<br/>its two real checks if 2+ organisations exist"]
+    NEVERRUN2["This deployment has exactly one organisation,<br/>so that branch has NEVER actually run,<br/>in CI or otherwise"]
 
-    FOUND --> FIX1 --> FIX2
-    FIX1 --> GUARD
+    FOUND --> FOUNDB --> FIX1 --> FIX1B --> FIX2
+    FIX1B --> GUARD
     GUARD -.->|"protects the NEXT incident"| STILLOPEN
     STILLOPEN -.->|"even if run manually"| NEVERRUN
+    NEVERRUN --> NEVERRUN2
 
     style FIX1 fill:#ECFDF5,stroke:#15803D
     style GUARD fill:#ECFDF5,stroke:#15803D
@@ -3467,3 +3476,552 @@ flowchart TB
 ```
 
 ---
+
+## 16. The ATS/HRMS shared-schema boundary
+
+ATS.circuvent is a separate repository, a separate Firebase-hosted deploy,
+and a separate database client (hand-written SQL over `pg`, no ORM) — but it
+points at the same Neon Postgres database as this application and writes
+directly into the same `hrms` schema. HRMS's own integration inventory (`03
+_INTEGRATIONS_AND_ECOSYSTEM.md:379`) lists ATS as "**none**" beyond a nav
+link — the database-level dependency below is invisible from this
+repository's own documentation and surfaces only by reading both codebases
+side by side.
+
+### 16.1 One Postgres schema, two applications
+
+```mermaid
+flowchart TB
+    HCODE["HRMS.circuvent -- this repository<br/>src/db/schema/*.ts (Drizzle)<br/>drizzle/*.sql, 41+ ledgered migrations"]
+    ACODE["ATS.circuvent -- separate repository<br/>hand-written SQL over pg 8.22, no ORM<br/>migrations/*.sql (10) + scripts/*.sql (12, unledgered)"]
+
+    subgraph PG["ONE Neon Postgres database -- schema hrms"]
+        HOWN["117 HRMS-only tables<br/>departments, locations, resignations,<br/>employee_documents, payroll, identity..."]
+        SHARED["7 SHARED TABLES<br/>employees * job_postings * candidates<br/>applications * interviews * offers<br/>diversity_responses"]
+        AOWN["22 ATS-only tables<br/>audit_log * doc_store * api_keys<br/>webhook_* * user_totp * candidate_credentials..."]
+    end
+
+    HCODE ==>|"migrates + reads/writes"| HOWN
+    HCODE ==>|"migrates 6 of 7 (all but<br/>diversity_responses), reads/writes"| SHARED
+    ACODE ==>|"the actual day-to-day writer,<br/>cannot migrate any of the 6"| SHARED
+    ACODE -.->|"migration \"010\": ALTER TABLE employees,<br/>added 2 columns out of band"| SHARED
+    ACODE ==>|"migrates + reads/writes"| AOWN
+
+    style SHARED fill:#FEF3C7,stroke:#B45309,stroke-width:2px
+    style ACODE fill:#FEE2E2,stroke:#B91C1C
+```
+
+```
+   ╔════════════════════════════════════════════════════════════════════════════╗
+   ║ ONE POSTGRES DATABASE  ·  SCHEMA `hrms`  ·  TWO UNRELATED CODEBASES        ║
+   ╠════════════════════════════════════════════════════════════════════════════╣
+   ║ HRMS.circuvent (this repo)           ATS.circuvent (separate repo)         ║
+   ║ Drizzle-managed, ledgered             hand-written SQL, own pg client,     ║
+   ║ migrations in drizzle/*.sql           migrations/*.sql (10, ledgered)      ║
+   ║                                       + scripts/*.sql (12, UNLEDGERED)     ║
+   ║                                                                            ║
+   ║ OWNS, DDL + writer, NOT shared:       OWNS, DDL + writer, NOT shared:      ║
+   ║   departments, locations,               audit_log, doc_store, api_keys,    ║
+   ║   resignations, employee_documents,      webhook_endpoints/_deliveries,    ║
+   ║   + 113 further HRMS-only tables         user_totp, user_recovery_codes,   ║
+   ║   (117 total, §7.1-7.6, 7.8-7.15)          user_sessions, candidate_       ║
+   ║                                         credentials, email_schedule,       ║
+   ║                                         schema_migrations, + 12 ad-hoc     ║
+   ║                                         candidate-portal tables (22 own)   ║
+   ║                                                                            ║
+   ║ SHARED -- 7 TABLES, ONE SCHEMA, NO CONTRACT TEST BETWEEN THEM:             ║
+   ║   employees            HRMS creates the row; ATS migration "010" bolted    ║
+   ║                        on application_id/candidate_id columns this         ║
+   ║                        repo's own drizzle/*.sql has no record of.          ║
+   ║   job_postings         DDL owned by HRMS (§7.7); ATS is the actual         ║
+   ║   candidates           day-to-day writer for all five -- HRMS's own        ║
+   ║   applications         recruitment UI on these tables is the minor,        ║
+   ║   interviews           possibly-unused path (see D-13 dead code).          ║
+   ║   offers                                                                   ║
+   ║   diversity_responses  ORPHANED: in neither drizzle/*.sql nor any          ║
+   ║                        src/db/schema/*.ts here. ATS's own doc calls        ║
+   ║                        it HRMS-owned. Whether apply_tenant_rls() ever      ║
+   ║                        covered it depends on whether it existed            ║
+   ║                        before migration 0003 ran -- unanswerable now.      ║
+   ╚════════════════════════════════════════════════════════════════════════════╝
+```
+
+### 16.2 The seven borrowed tables and which way each write goes
+
+Five of the seven (`job_postings`, `candidates`, `applications`,
+`interviews`, `offers`) are HRMS's own recruitment domain (§7.7) — this
+repository's migrations create them, index them, and enforce integrity
+constraints on them (append-only `application_events`, immutable submitted
+`interview_scorecards`, a separate-approver check on `offers`). ATS is the
+day-to-day writer for all five regardless. `employees` is HRMS's core people
+table (§7.1) with two columns ATS bolted on. `diversity_responses` belongs to
+neither side's tracked migration history.
+
+```mermaid
+flowchart TB
+    HRMSDDL["HRMS.circuvent<br/>drizzle/*.sql -- DDL owner"]
+    ATSWRITE["ATS.circuvent<br/>hand-written SQL -- primary writer"]
+    HRMSUI["HRMS's own recruitment UI (§7.7)<br/>minor, possibly-unused path (D-13)"]
+
+    subgraph SIX["6 tables -- HRMS-DDL, ATS-primary-writer"]
+        T1["employees"]
+        T2["job_postings"]
+        T3["candidates"]
+        T4["applications"]
+        T5["interviews"]
+        T6["offers"]
+    end
+
+    T7["diversity_responses<br/>DDL owner: UNKNOWN"]
+
+    HRMSDDL ==>|"CREATE TABLE, ALTER TABLE"| SIX
+    ATSWRITE ==>|"INSERT / UPDATE, day to day"| SIX
+    HRMSUI -.->|"also reads/writes"| SIX
+    ATSWRITE -.->|"migration \"010\": ALTER TABLE<br/>employees, out of band"| T1
+    ATSWRITE ==>|"CREATE, sole owner,<br/>never ledgered by either side"| T7
+
+    style T7 fill:#FEE2E2,stroke:#B91C1C
+    style SIX fill:#FEF3C7,stroke:#B45309
+```
+
+```
+   SEVEN SHARED TABLES -- DDL OWNER vs DAY-TO-DAY WRITER
+   ──────────────────────────────────────────────────────────────────────────────
+   TABLE                 DDL OWNER   PRIMARY WRITER    NOTE
+   ──────────────────────────────────────────────────────────────────────────────
+   employees             HRMS        both              ATS migration "010"
+                                                        added 2 columns HRMS's
+                                                        own schema does not
+                                                        model (§16.1).
+   job_postings           HRMS        ATS, day to day   HRMS's own §7.7 UI on
+   candidates             HRMS        ATS, day to day   these same 5 tables is
+   applications           HRMS        ATS, day to day   the minor, possibly-
+   interviews             HRMS        ATS, day to day   unused path (D-13 dead
+   offers                 HRMS        ATS, day to day   code).
+   diversity_responses    UNKNOWN     ATS (assumed)     absent from every
+                                                        ledger on either side.
+   ──────────────────────────────────────────────────────────────────────────────
+   No migration on either side asserts the other side's expected shape.
+   That is the contract test that does not exist (§16.3).
+```
+
+### 16.3 Four outages, and where the contract test should sit
+
+```mermaid
+flowchart TB
+    HDEV["HRMS developer changes the shape of<br/>candidates / applications / offers / employees"]
+    HCI["HRMS verify.yml (§18)<br/>typecheck, lint, db:verify*, test, build"]
+    HDEPLOY["Deployed -- shape now differs from what<br/>ATS's hand-written SQL still assumes"]
+    AQUERY["ATS queries a column that<br/>moved, was renamed, or was dropped"]
+    PGERR["Postgres 42703: undefined_column"]
+    OUTAGE["Generic 500 in production<br/>(4 outages recorded in ATS's own<br/>migrations/README.md)"]
+    GAP["NO STEP, IN EITHER CI,<br/>EVER CHECKS THE OTHER SIDE'S ASSUMPTIONS"]
+    PROPOSED["WHERE IT SHOULD SIT: a step that runs ATS's<br/>required-column list against information_schema<br/>and fails loud -- does not exist today"]
+
+    HDEV --> HCI --> HDEPLOY --> AQUERY --> PGERR --> OUTAGE
+    HDEPLOY -.-> GAP
+    GAP -.->|"does not exist today"| PROPOSED
+
+    style OUTAGE fill:#FEE2E2,stroke:#B91C1C
+    style GAP fill:#FEE2E2,stroke:#B91C1C
+    style PROPOSED fill:#ECFDF5,stroke:#15803D,stroke-dasharray: 5 5
+```
+
+```
+   ╔════════════════════════════════════════════════════════════════════════════╗
+   ║ FOUR OUTAGES ON RECORD  ·  ZERO CONTRACT TEST ON EITHER SIDE               ║
+   ╠════════════════════════════════════════════════════════════════════════════╣
+   ║ ATS's own migrations/README.md records FOUR production outages             ║
+   ║ caused by exactly this gap: an HRMS-side schema change silently            ║
+   ║ moved or removed a column ATS's hand-written SQL still assumed             ║
+   ║ was there. Postgres returns 42703 (undefined_column); ATS's own            ║
+   ║ data-layer risk register calls the result "a generic 500" --               ║
+   ║ there is no typed error, because there is no compile-time link             ║
+   ║ between the two codebases at all.                                          ║
+   ║                                                                            ║
+   ║ WHY NEITHER CI CATCHES IT:                                                 ║
+   ║   HRMS verify.yml (§18) checks HRMS's OWN migrations, types and            ║
+   ║   tests. It has no step that reads ATS's assumptions about column          ║
+   ║   names, so a rename that breaks ATS compiles and tests green here.        ║
+   ║                                                                            ║
+   ║   ATS's own CI (.github/workflows/ci.yml) is, on its own docs'             ║
+   ║   account, "the best-designed CI in the Circuvent suite" --                ║
+   ║   and it has never once completed a run: 65 / 65 startup failures,         ║
+   ║   on both branches, back to the earliest history. Even a contract          ║
+   ║   test written into ATS's workflow today would not execute.                ║
+   ║                                                                            ║
+   ║ WHERE IT SHOULD SIT, AND DOES NOT:                                         ║
+   ║   a step -- in HRMS's verify.yml, or a scheduled job, or on ATS's          ║
+   ║   side once its CI can start at all -- that reads the 6 HRMS-DDL           ║
+   ║   shared tables' actual information_schema shape and fails loud            ║
+   ║   the moment it no longer matches what the OTHER repository's              ║
+   ║   source code expects. Nothing in either repository does this.             ║
+   ╚════════════════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+## 17. The four transactional outboxes, and the audit log that is not one thing
+
+HRMS hands things to systems it does not control on a schedule it does not
+control: an employee record to Paystub, a group membership to
+`auth.circuvent.com`, a signed document's PDF to R2. All three are recorded
+as durable intent inside the same transaction that made them true, so none
+of the three can fail the request that created the intent just because the
+other side is unreachable at that moment. Separately, `identity.audit_log`
+is a hash-chained, append-only ledger — good design, verified below, and
+almost entirely unused.
+
+### 17.1 Four outboxes, one nightly sweep, one route wearing three hats
+
+```mermaid
+flowchart TB
+    subgraph WRITE["Inside the transaction that makes it true"]
+        HIRE["Employee created / bank<br/>details or role changed"]
+        JOIN["Onboarding group<br/>assignment queued"]
+        LEAVEQ["Exit processing<br/>accepted (0041)"]
+        SIGN["Signature envelope<br/>reaches completed"]
+    end
+
+    HIRE --> OB1["paystub_employee_sync_outbox (0029)<br/>FK employees, unique (org_id, employee_id)"]
+    JOIN --> OB2["directory_group_join_outbox (0033)<br/>FK employees, unique (org_id, employee_id, group)"]
+    LEAVEQ --> OB3["directory_group_leave_outbox (0041)<br/>FK employees, unique (org_id, employee_id, group)"]
+    SIGN --> OB4["document_pdf_storage_outbox (0037)<br/>FK generated_documents, unique (org_id, document_id)"]
+
+    CRON["GET /api/cron -- daily 0 3 * * *<br/>CRON_SECRET via timingSafeEqual (10.3)"]
+    SWEEP["sweepOutboxes() -- src/lib/outbox-sweep.ts<br/>per org, SEQUENTIAL: paystub -&gt; joins -&gt; leaves -&gt; pdfs"]
+
+    OB1 -.->|"status='pending'<br/>next_attempt_at due"| SWEEP
+    OB2 -.-> SWEEP
+    OB3 -.-> SWEEP
+    OB4 -.-> SWEEP
+    CRON ==> SWEEP
+
+    SWEEP --> PAYSTUB["Paystub API"]
+    SWEEP --> AUTHSVC["auth.circuvent.com<br/>identity-provider groups"]
+    SWEEP --> R2["R2 object storage"]
+
+    CRON -.-> DEVICE["syncDeviceAttendanceForAllOrgs()<br/>unrelated -- same route, same schedule"]
+    CRON -.-> INTERN["sweepInternReminders()<br/>unrelated -- ON CONFLICT DO NOTHING, never re-sends"]
+
+    style OB3 fill:#FEF3C7,stroke:#B45309,stroke-width:2px
+```
+
+```
+   ╔════════════════════════════════════════════════════════════════════════════════╗
+   ║ FOUR OUTBOXES -- SAME SHAPE, SAME SWEEP, DIFFERENT EXTERNAL TARGET            ║
+   ╠════════════════════════════════════════════════════════════════════════════════╣
+   ║ TABLE                            MIGR  OWNER FK          EXTERNAL TARGET      ║
+   ║ paystub_employee_sync_outbox     0029  employees          Paystub API         ║
+   ║ directory_group_join_outbox      0033  employees          auth.circuvent.com  ║
+   ║ directory_group_leave_outbox     0041  employees          auth.circuvent.com  ║
+   ║ document_pdf_storage_outbox      0037  generated_documents  R2 object storage ║
+   ║                                                                                ║
+   ║ ALL FOUR SHARE: status enum (pending/processing/succeeded/failed),            ║
+   ║ attempt_count, next_attempt_at, last_attempt_at, last_error, a UNIQUE index   ║
+   ║ that makes a retry idempotent (reopens the same row, never a second one),     ║
+   ║ and SELECT apply_tenant_rls() (14.1).                                         ║
+   ║                                                                                ║
+   ║ THE LEAVER BUG THAT MOTIVATED TWO OF THE FOUR (0041's own migration header):  ║
+   ║ a JOIN failure gets an accidental safety net for free -- the next unrelated   ║
+   ║ edit to that employee re-queues it. A LEAVE failure does not: nobody edits    ║
+   ║ an ex-employee's row again. Before outbox-sweep.ts existed, a failed group    ║
+   ║ removal waited forever, and the account that should have been dropped from    ║
+   ║ all@circuvent.com kept receiving company mail. directory_group_leave_outbox   ║
+   ║ plus this cron sweep is the fix; the PDF storage outbox (0037) was built      ║
+   ║ with the sweep already in place, so it never had the gap at all.              ║
+   ║                                                                                ║
+   ║ ONE ROUTE, THREE JOBS: GET /api/cron runs sweepOutboxes(), THEN               ║
+   ║ syncDeviceAttendanceForAllOrgs(), THEN sweepInternReminders() -- squeezed     ║
+   ║ onto one path because the Vercel Hobby plan permits one cron invocation per   ║
+   ║ day per path. Each is caught independently so one failing cannot take down    ║
+   ║ the others' response. CRON_SECRET gate, timingSafeEqual: 10.3.                ║
+   ║                                                                                ║
+   ║ DRAIN ORDER IS SEQUENTIAL, PER TENANT, ON PURPOSE: paystub -> group joins     ║
+   ║ -> group leaves -> document PDFs, one organisation at a time --               ║
+   ║ outbox-sweep.ts's own comment: running every tenant at once "would turn a     ║
+   ║ daily tidy-up into a burst against all three" externals. One tenant's         ║
+   ║ throw is caught and recorded in `problems`; the rest still run.               ║
+   ╚════════════════════════════════════════════════════════════════════════════════╝
+```
+
+### 17.2 The hash-chained, append-only audit log — one writer, zero readers
+
+```mermaid
+flowchart TB
+    APP["Application code<br/>ONLY 1 call site in src/: employee.neon.ts,<br/>bank_details update"]
+    INS["INSERT INTO identity.audit_log<br/>hash: 'pending' -- placeholder only, satisfies NOT NULL"]
+    TRIG1["BEFORE INSERT trigger: audit_log_chain()<br/>drizzle/0001_row_level_security.sql:120-153"]
+    HASH["previous_hash := last row's hash, same org_id<br/>hash := sha256(previous_hash||org_id||actor_id||<br/>action||entity_type||entity_id||after||created_at)"]
+    ROW[("identity.audit_log row<br/>stored, chained -- placeholder never reaches disk")]
+
+    APP --> INS --> TRIG1 --> HASH --> ROW
+
+    UPD["UPDATE or DELETE attempted<br/>by ANY role, including hrms_app"]
+    TRIG2["BEFORE UPDATE OR DELETE trigger:<br/>audit_log_is_append_only()"]
+    REJECT["RAISE EXCEPTION -- always rejected"]
+    REVOKEN["REVOKE UPDATE, DELETE ... FROM hrms_app<br/>belt AND suspenders, same reasoning as FORCE RLS (14)"]
+
+    UPD --> TRIG2 --> REJECT
+    REVOKEN -.->|"privilege removed before<br/>the trigger would even fire"| UPD
+
+    NOBODY["Nothing in src/ ever SELECTs<br/>from identity.audit_log -- verified by grep"]
+    ROW -.-> NOBODY
+
+    style NOBODY fill:#FEE2E2,stroke:#B91C1C
+    style REJECT fill:#FEE2E2,stroke:#B91C1C
+```
+
+```
+   ╔════════════════════════════════════════════════════════════════════════════════╗
+   ║ identity.audit_log -- HASH-CHAINED, APPEND-ONLY, ALMOST NEVER WRITTEN         ║
+   ╠════════════════════════════════════════════════════════════════════════════════╣
+   ║ COLUMNS: id, org_id, actor_id, actor_email, app, action, entity_type,         ║
+   ║ entity_id, before jsonb, after jsonb, ip_address inet, user_agent,            ║
+   ║ request_id, previous_hash, hash NOT NULL, created_at.                         ║
+   ║                                                                                ║
+   ║ CHAIN: a BEFORE INSERT trigger, audit_log_chain(), reads the previous row's   ║
+   ║ hash for the SAME org_id (ORDER BY created_at DESC, id DESC LIMIT 1), writes  ║
+   ║ it into NEW.previous_hash, then computes                                      ║
+   ║   hash = sha256(previous_hash || org_id || actor_id || action ||              ║
+   ║                 entity_type || entity_id || after || created_at)              ║
+   ║ using Postgres 11+'s built-in sha256() -- no extension required. Altering     ║
+   ║ or deleting any row breaks every hash computed after it.                      ║
+   ║                                                                                ║
+   ║ APPEND-ONLY, TWO INDEPENDENT WAYS: a BEFORE UPDATE OR DELETE trigger          ║
+   ║ (audit_log_is_append_only()) RAISEs an exception on either operation, AND     ║
+   ║ REVOKE UPDATE, DELETE ... FROM hrms_app removes the privilege outright --     ║
+   ║ the same "the connection itself must not have the power" reasoning as         ║
+   ║ FORCE RLS (14), applied here to one table instead of the tenant boundary.     ║
+   ║                                                                                ║
+   ║ VERIFIED BY GREP, NOT ASSUMED:                                                ║
+   ║   WRITERS  exactly 1 call site in the whole of src/ -- employee.neon.ts's     ║
+   ║            bank-details update. Its own comment explains the hash:            ║
+   ║            "pending" placeholder: the column is NOT NULL with no default,     ║
+   ║            so Drizzle's insert type needs something, but the BEFORE INSERT    ║
+   ║            trigger overwrites both hash and previous_hash unconditionally     ║
+   ║            before the NOT NULL check ever runs -- the placeholder never       ║
+   ║            reaches disk.                                                      ║
+   ║   READERS  zero. No route, page, or test SELECTs from identity.audit_log,     ║
+   ║            and no test references previous_hash or audit_log_chain -- the     ║
+   ║            chain has never been programmatically verified, only trusted       ║
+   ║            to exist.                                                          ║
+   ╚════════════════════════════════════════════════════════════════════════════════╝
+```
+
+### 17.3 Two things named "audit" — the real ledger and the one the UI shows
+
+```mermaid
+flowchart LR
+    subgraph REAL["THE REAL ONE -- nobody looks at it (17.2)"]
+        RT["identity.audit_log"]
+        RP["hash-chained,<br/>append-only by<br/>trigger + REVOKE"]
+        RW["1 writer (bank_details only)<br/>0 readers anywhere in src/"]
+    end
+
+    subgraph FAKE["WHAT THE DASHBOARD'S \"AUDIT\" PAGE ACTUALLY SHOWS"]
+        FT["hrms.doc_store<br/>WHERE collection = 'auditLog'"]
+        FP["ordinary jsonb rows --<br/>NO hash chain,<br/>NO append-only guard"]
+        FW["writer: ANY authenticated user of ANY role,<br/>via POST /api/collections/auditLog<br/>(same generic route as goals/kudos/wellness)"]
+    end
+
+    PAGE["src/app/(dashboard)/audit/page.tsx"] -->|"COLLECTIONS.auditLog<br/>collection-service.ts -&gt; genericService"| FT
+
+    style RW fill:#FEE2E2,stroke:#B91C1C
+    style FW fill:#FEE2E2,stroke:#B91C1C
+    style FT fill:#FEE2E2,stroke:#B91C1C
+```
+
+```
+   ╔════════════════════════════════════════════════════════════════════════════════╗
+   ║ THE DASHBOARD'S "AUDIT" PAGE DOES NOT READ THE HASH-CHAINED TABLE             ║
+   ╠════════════════════════════════════════════════════════════════════════════════╣
+   ║                      identity.audit_log          hrms.doc_store,              ║
+   ║                      (17.2, the real one)        collection='auditLog'        ║
+   ║ -------------------- --------------------------- ---------------------------- ║
+   ║ Tamper-evident       yes -- sha256 chain +       no -- ordinary jsonb row,    ║
+   ║                      append-only trigger         UPDATE/DELETE both allowed   ║
+   ║ Who can write        1 code path (employee.      ANY authenticated user of    ║
+   ║                      neon.ts bank_details)       ANY role -- requireApi-      ║
+   ║                                                  Context() with no            ║
+   ║                                                  allowedRoles argument        ║
+   ║ Backing route        no dedicated route --       POST /api/collections/       ║
+   ║                      SQL insert only             auditLog -- the SAME         ║
+   ║                                                  generic CRUD route as        ║
+   ║                                                  goals, kudos, wellness       ║
+   ║ Read by              nothing in src/             audit/page.tsx, via          ║
+   ║                                                  COLLECTIONS.auditLog         ║
+   ║                                                                                ║
+   ║ Two tables share the word "audit"; only one is forensically meaningful, and   ║
+   ║ it is the one no UI, route, or test ever reads. An administrator opening the  ║
+   ║ "Audit" page is looking at freely-POST-able documents, not the                ║
+   ║ tamper-evident trail 17.2 describes. Confirmed by grep: zero SELECT of        ║
+   ║ identity.audit_log anywhere in src/; ALLOWED_COLLECTIONS in                   ║
+   ║ collection-service.ts and api/collections/[collection]/route.ts both list     ║
+   ║ "auditLog" as an ordinary free-form collection name, gated by nothing more    ║
+   ║ than a valid session of any role.                                             ║
+   ╚════════════════════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+## 18. The CI pipeline — the only one that works in the suite
+
+Eight applications, one `verify.yml` that has ever reliably gone green. HRMS's
+is not exotic: one workflow file, two jobs, no `needs:`, no matrix, no deploy
+step of any kind — this pipeline verifies; it does not ship. But it runs on
+every push and every pull request, it fails when it should, and every fact
+this document cites about migrations, RLS, encryption, and dead persistence
+routes is a fact this pipeline actively checks on a schedule, not a fact some
+document merely asserts. That is the whole difference between HRMS and the
+rest of the suite.
+
+### 18.1 `verify.yml`, job by job
+
+```mermaid
+flowchart TB
+    TRIG["push / pull_request<br/>branches: develop, main"]
+    CONC["concurrency group = workflow + ref<br/>cancel-in-progress: true"]
+
+    TRIG --> CONC
+    CONC --> VJOB
+    CONC --> SJOB
+
+    subgraph VJOB["JOB verify -- 14 steps, sequential, no needs:"]
+        direction TB
+        V1["checkout -&gt; setup-node@22 -&gt; npm ci"]
+        V2["Typecheck (tsc)<br/>-&gt; Lint strict, 0 warnings (allowlisted paths)<br/>-&gt; Lint whole-repo, informational"]
+        V3["db:verify -&gt; db:verify:encryption<br/>-&gt; db:verify:modules -&gt; db:verify:plans"]
+        V4["audit:data-paths -&gt; audit:fabricated"]
+        V5["Test (vitest, 2,664 tests)<br/>-&gt; Build (next build)"]
+        V1 --> V2 --> V3 --> V4 --> V5
+    end
+
+    subgraph SJOB["JOB secrets -- 2 steps, PARALLEL to verify"]
+        direction TB
+        S1["checkout (fetch-depth: 0)"]
+        S2["gitleaks-action@v2"]
+        S1 --> S2
+    end
+
+    VJOB --> GREEN["Both jobs succeed<br/>-&gt; workflow reports green"]
+    SJOB --> GREEN
+```
+
+```
+   ╔════════════════════════════════════════════════════════════════════════════════╗
+   ║ verify.yml -- ONE WORKFLOW, TWO PARALLEL JOBS                                 ║
+   ╠════════════════════════════════════════════════════════════════════════════════╣
+   ║ TRIGGERS: push to develop|main, pull_request to develop|main.                 ║
+   ║ CONCURRENCY: group per (workflow, ref), cancel-in-progress -- a new push      ║
+   ║ cancels its own branch's still-running check, not another branch's.           ║
+   ║                                                                                ║
+   ║ JOB verify (ubuntu-latest) -- 14 STEPS, ALL SEQUENTIAL, NO needs:, NO MATRIX: ║
+   ║  1  actions/checkout@v4                                                       ║
+   ║  2  actions/setup-node@v4 -- node 22, npm cache                               ║
+   ║  3  npm ci                                                                    ║
+   ║  4  Typecheck              tsc --noEmit                                       ║
+   ║  5  Lint (new code)        lint:strict -- explicit path allowlist,            ║
+   ║                            --max-warnings 0, zero tolerance                   ║
+   ║  6  Lint (whole repo)      lint -- continue-on-error: true; ~925 warnings     ║
+   ║                            tracked as a Phase 2 cleanup backlog               ║
+   ║  7  Verify migrations      db:verify -- applies every migration to an         ║
+   ║                            in-memory Postgres, asserts RLS actually blocks    ║
+   ║                            cross-tenant reads/writes (§14, §15)               ║
+   ║  8  Verify encryption      db:verify:encryption -- backfill + key rotation    ║
+   ║                            against a real Postgres engine (§10.2)             ║
+   ║  9  Verify persistence     db:verify:modules -- catches routes that once      ║
+   ║                            returned 201 and wrote nothing                     ║
+   ║ 10  Verify query plans     db:verify:plans -- asserts the planner actually    ║
+   ║                            chooses the list-query indexes                     ║
+   ║ 11  Audit data paths       audit:data-paths                                   ║
+   ║ 12  Audit fabricated data  audit:fabricated                                   ║
+   ║ 13  Test                   vitest run -- 2,664 tests (Doc 04)                 ║
+   ║ 14  Build                  next build                                         ║
+   ║                                                                                ║
+   ║ JOB secrets (ubuntu-latest) -- 2 STEPS, RUNS IN PARALLEL WITH verify:         ║
+   ║  1  actions/checkout@v4 (fetch-depth: 0 -- full history, not one commit)      ║
+   ║  2  gitleaks-action@v2 -- added after the April audit found live              ║
+   ║     credentials committed to source                                           ║
+   ╚════════════════════════════════════════════════════════════════════════════════╝
+```
+
+Two jobs, zero coupling between them: `secrets` does not need `verify` to pass
+first, and `verify` does not need a clean `gitleaks` scan — both simply run,
+and the workflow as a whole is green only when both are. There is no matrix
+(one Node version, one OS), no `needs:` anywhere in the file, and no deploy
+job — this is a gate on merge, not a release mechanism; nothing in this
+repository automates what happens after `main` goes green (Doc 04). The lint
+split (step 5 vs step 6) is a ratchet: `lint:strict` names an explicit,
+growing allowlist of paths held to `--max-warnings 0`, while `lint` runs the
+whole repository at `continue-on-error: true` so the ~925 pre-existing
+warnings do not block anyone — new code is held to a higher bar than old code,
+one directory at a time.
+
+### 18.2 What fourteen green steps do not prove
+
+```mermaid
+flowchart LR
+    subgraph INCI["Step 7, IN CI -- db:verify"]
+        EPHEMERAL["Ephemeral in-memory Postgres,<br/>created fresh by the script itself"]
+        POLICIES["91 policies correct,<br/>75 isolation tests pass"]
+        EPHEMERAL --> POLICIES
+    end
+
+    subgraph LIVE["NOT in verify.yml at all"]
+        REALDB["The ACTUAL configured<br/>DATABASE_URL"]
+        REACH["db:verify:live, db:verify:reach --<br/>exist in package.json, never wired in"]
+        REALDB -.-> REACH
+    end
+
+    POLICIES -.->|"green in CI"| GREEN["Merge looks safe"]
+    REACH -.->|"never runs, anywhere"| GAP["BYPASSRLS incident (§15)<br/>invisible to this pipeline either way"]
+
+    style GAP fill:#FEE2E2,stroke:#B91C1C
+    style REACH fill:#FEE2E2,stroke:#B91C1C
+```
+
+```
+   ╔════════════════════════════════════════════════════════════════════════════════╗
+   ║ WHAT verify.yml DOES NOT RUN, AND WHY IT MATTERS (§15)                        ║
+   ╠════════════════════════════════════════════════════════════════════════════════╣
+   ║ db:verify:live      scripts/verify-live-isolation.ts -- checks isolation      ║
+   ║                     against the ACTUAL configured DATABASE_URL, not an        ║
+   ║                     ephemeral one. Its cross-tenant test has NEVER            ║
+   ║                     executed because only one organisation exists (§15).      ║
+   ║ db:verify:reach     scripts/verify-credential-reach.ts -- checks what the     ║
+   ║                     configured credential can ACTUALLY reach (BYPASSRLS,      ║
+   ║                     other databases). This is the check that would have       ║
+   ║                     caught the incident in §15.                               ║
+   ║ audit:unwired       scripts/audit-unwired.ts -- a THIRD audit script,         ║
+   ║                     package.json-defined, never called from CI either.        ║
+   ║                                                                                ║
+   ║ db:verify (step 7, IN CI) proves RLS policies are correct against a           ║
+   ║ throwaway Postgres it creates itself -- it cannot prove anything about the    ║
+   ║ ACTUAL DATABASE_URL the running application uses, because CI never points     ║
+   ║ at it. That is precisely the gap 91 correct policies and 75 passing           ║
+   ║ isolation tests sat inside of during the BYPASSRLS incident (§15).            ║
+   ║                                                                                ║
+   ║ SUITE CONTRAST: ATS's own CI (.github/workflows/ci.yml) is, on its own        ║
+   ║ docs' account, "the best-designed CI in the Circuvent suite" -- and it        ║
+   ║ has never once completed a run: 65 / 65 startup failures, on both             ║
+   ║ branches, back to the earliest history (§16.3). HRMS's verify.yml has         ║
+   ║ real gaps too, listed above -- but it runs, and green means something.        ║
+   ║ It is the only one of the suite's eight applications where that is true.      ║
+   ╚════════════════════════════════════════════════════════════════════════════════╝
+```
+
+This is the honest limit of the "only working CI in the suite" claim: working
+means it runs and its failures are real, not that its 14 steps are complete.
+`db:verify` (§14) builds its own throwaway Postgres and proves the RLS
+policies are self-consistent — it cannot prove anything about the credential
+`DATABASE_URL` actually resolves to in a deployed environment, because CI
+never points at that environment. `db:verify:live` and `db:verify:reach` are
+the two scripts written specifically to close that gap, and neither is a step
+in `verify.yml`. Running them today, by hand, against production, is the only
+way this suite would find a second BYPASSRLS-shaped credential problem before
+a query does.
+
+---
+
+*Back to [`README.md`](./README.md) · [`01_SYSTEM_OVERVIEW.md`](./01_SYSTEM_OVERVIEW.md) · [`02_DATABASE_AND_DATA_MODELS.md`](./02_DATABASE_AND_DATA_MODELS.md) · [`03_INTEGRATIONS_AND_ECOSYSTEM.md`](./03_INTEGRATIONS_AND_ECOSYSTEM.md) · [`04_MAINTENANCE_AND_OPERATIONS.md`](./04_MAINTENANCE_AND_OPERATIONS.md) · [`05_AREAS_OF_ENHANCEMENT.md`](./05_AREAS_OF_ENHANCEMENT.md)*
