@@ -49,7 +49,34 @@ export interface PlanRecord {
   isEligible?: boolean;
   /** Why the plan cannot be elected right now, if it cannot. */
   unavailableReason?: string;
+  /**
+   * The currently open enrolment window for this plan, if one is open.
+   *
+   * `unavailableReason` only ever describes a window that is *not* open
+   * (`not_yet_open` / `closed` / `no_window`) — there was no field at all for
+   * "a window is open, and here is its deadline". An employee cannot be told
+   * to act before a closing date the API never sent, so this is populated
+   * straight from `windowFor`'s own `window` whenever `verdict.open` is true.
+   */
+  enrolmentWindow?: { opensOn: string; closesOn: string };
   documentUrl?: string;
+}
+
+export interface ClaimRecord {
+  id: string;
+  enrolmentId: string;
+  employeeId: string;
+  dependantId?: string;
+  claimNumber: string;
+  claimedAmount: number;
+  approvedAmount?: number;
+  incidentDate: string;
+  description?: string;
+  documents: string[];
+  status: string;
+  providerReference?: string;
+  settledAt?: string;
+  createdAt: string;
 }
 
 export interface EnrolmentRecord {
@@ -147,6 +174,9 @@ export class NeonBenefitsRepository {
           isAutoEnrolled: plan.isAutoEnrolled,
           isEligible: eligible,
           unavailableReason,
+          enrolmentWindow: verdict.open
+            ? { opensOn: verdict.window.opensOn, closesOn: verdict.window.closesOn }
+            : undefined,
           documentUrl: plan.documentUrl ?? undefined,
         };
       });
@@ -569,7 +599,7 @@ export class NeonBenefitsRepository {
     });
   }
 
-  async listClaims(q: ListQuery = {}): Promise<Page<typeof benefitClaims.$inferSelect>> {
+  async listClaims(q: ListQuery = {}): Promise<Page<ClaimRecord>> {
     const page = Math.max(1, q.page ?? 1);
     const pageSize = Math.min(200, Math.max(1, q.pageSize ?? 50));
 
@@ -591,7 +621,30 @@ export class NeonBenefitsRepository {
         .where(where);
 
       return {
-        items: rows,
+        // Raw rows carry `claimedAmountMinor`/`approvedAmountMinor` as
+        // `bigint`, which `JSON.stringify` refuses ("Do not know how to
+        // serialize a BigInt"). The route's `NextResponse.json(page)` has no
+        // idea that happened — it throws inside serialization, past the
+        // route's own try/catch, so the client only ever saw an opaque
+        // failed fetch. Mapped through the same `toMajor()` every other money
+        // field in this file already uses, same as `PlanRecord`/`EnrolmentRecord`.
+        items: rows.map((r) => ({
+          id: r.id,
+          enrolmentId: r.enrolmentId,
+          employeeId: r.employeeId,
+          dependantId: r.dependantId ?? undefined,
+          claimNumber: r.claimNumber,
+          claimedAmount: toMajor(r.claimedAmountMinor),
+          approvedAmount:
+            r.approvedAmountMinor === null ? undefined : toMajor(r.approvedAmountMinor),
+          incidentDate: r.incidentDate,
+          description: r.description ?? undefined,
+          documents: (r.documents as string[]) ?? [],
+          status: r.status,
+          providerReference: r.providerReference ?? undefined,
+          settledAt: r.settledAt ? r.settledAt.toISOString() : undefined,
+          createdAt: r.createdAt.toISOString(),
+        })),
         total,
         page,
         pageSize,

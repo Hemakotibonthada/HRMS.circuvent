@@ -692,6 +692,53 @@ export const documentSignatures = hrms.table(
   ]
 );
 
+/**
+ * Durable intent to render a completed envelope to PDF and put it in R2.
+ *
+ * Same shape and the same idea as `paystub_employee_sync_outbox` and
+ * `directory_group_join_outbox`: the signature itself is recorded and
+ * final the moment `documentSignatures.signedAt` is set, but turning that
+ * into a stored, downloadable PDF is a second step that talks to an object
+ * store, and an object store can be unreachable for reasons that have
+ * nothing to do with whether the signature is valid. A person who signed
+ * must never be told, or have it silently become true, that the document
+ * was archived when it was not — so that step gets exactly the retry
+ * discipline the other two integrations already have, rather than a
+ * best-effort call made once from inside the signing request.
+ *
+ * `blob_url` on `generated_documents` is the single source of truth for
+ * where the artifact lives; this table only tracks whether it has been put
+ * there yet, so the object key is never duplicated across two places that
+ * could disagree.
+ */
+export const documentPdfStorageOutbox = hrms.table(
+  "document_pdf_storage_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => generatedDocuments.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One outbox row per document: re-queuing a completed envelope (a retry,
+    // or a second signatory finishing the envelope) reopens the same row
+    // rather than racing two uploads of the same content.
+    uniqueIndex("document_pdf_storage_outbox_document_key").on(t.orgId, t.documentId),
+    index("document_pdf_storage_outbox_retry_idx").on(t.status, t.nextAttemptAt),
+  ]
+);
+
 // ─── Inferred types ──────────────────────────────────────────
 
 export type Referral = typeof referrals.$inferSelect;
@@ -708,6 +755,7 @@ export type Certification = typeof certifications.$inferSelect;
 export type DocumentTemplate = typeof documentTemplates.$inferSelect;
 export type GeneratedDocument = typeof generatedDocuments.$inferSelect;
 export type DocumentSignature = typeof documentSignatures.$inferSelect;
+export type DocumentPdfStorageOutboxRow = typeof documentPdfStorageOutbox.$inferSelect;
 
 // ─── Referral invites ────────────────────────────────────────
 

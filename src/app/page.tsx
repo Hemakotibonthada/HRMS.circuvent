@@ -283,39 +283,35 @@ export default function LandingPage() {
 
           {/* Dashboard Preview */}
           <ScrollReveal delay={500} className="mt-16">
-            <div className="relative mx-auto max-w-5xl rounded-2xl border border-border/60 bg-card/50 p-2 shadow-2xl backdrop-blur-sm">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40">
-                <div className="flex gap-1.5">
-                  <div className="h-3 w-3 rounded-full bg-red-400" />
-                  <div className="h-3 w-3 rounded-full bg-amber-400" />
-                  <div className="h-3 w-3 rounded-full bg-emerald-400" />
-                </div>
-                <div className="mx-auto h-6 w-64 rounded-md bg-muted/60" />
-              </div>
-              <div className="grid grid-cols-4 gap-3 p-4">
-                {[
-                  { label: "Total Employees", value: "1,248", change: "+12", color: "from-violet-500 to-purple-600" },
-                  { label: "Present Today", value: "1,189", change: "95.3%", color: "from-emerald-500 to-green-600" },
-                  { label: "On Leave", value: "42", change: "-3", color: "from-amber-500 to-orange-500" },
-                  { label: "Open Positions", value: "18", change: "+5", color: "from-blue-500 to-cyan-500" },
-                ].map((stat, i) => (
-                  <div key={i} className="rounded-xl bg-gradient-to-br p-[1px] animate-scale-in" style={{ animationDelay: `${600 + i * 100}ms` }}>
-                    <div className={`rounded-xl bg-gradient-to-br ${stat.color} p-4 text-white`}>
-                      <p className="text-xs font-medium opacity-80">{stat.label}</p>
-                      <p className="mt-1 text-2xl font-bold">{stat.value}</p>
-                      <p className="mt-0.5 text-xs opacity-70">{stat.change} this month</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-3 gap-3 px-4 pb-4">
-                <div className="col-span-2 h-48 rounded-xl bg-muted/40 border border-border/30 flex items-center justify-center text-muted-foreground text-sm">
-                  <BarChart3 className="h-8 w-8 mr-2 opacity-30" /> Workforce Analytics Chart
-                </div>
-                <div className="h-48 rounded-xl bg-muted/40 border border-border/30 flex items-center justify-center text-muted-foreground text-sm">
-                  <Users className="h-8 w-8 mr-2 opacity-30" /> Team Activity
-                </div>
-              </div>
+            <div className="relative mx-auto max-w-5xl">
+              {/* Glow under the artwork, so it sits on the page rather than
+                  floating on top of it. Decorative, hence hidden from
+                  assistive technology. */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-x-10 -inset-y-6 -z-10 rounded-[2.5rem] bg-gradient-to-tr from-violet-500/20 via-purple-500/10 to-indigo-500/20 blur-3xl"
+              />
+              {/*
+                An abstract illustration rather than the mocked-up dashboard
+                that stood here before. That mock stated figures — 1,248
+                employees, 95.3% present today — which no deployment had
+                produced. This page is a public sales pitch, so those read as
+                claims about the product, and the repository ships an
+                audit:fabricated check precisely to keep invented numbers out.
+                Every element here is a shape, so it promises nothing.
+
+                Plain <img>: the file is an animated SVG, and next/image either
+                refuses SVG without dangerouslyAllowSVG or rasterises it, which
+                would leave a still frame.
+              */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/img/hero-dashboard.svg"
+                alt="Illustration of the Circuvent HRMS dashboard, showing headcount, attendance and team panels"
+                width={1000}
+                height={680}
+                className="h-auto w-full animate-float drop-shadow-2xl"
+              />
             </div>
           </ScrollReveal>
         </div>

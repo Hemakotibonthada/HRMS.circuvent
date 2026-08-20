@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 720" width="640" height="720" role="img" aria-label="">
+  <!--
+    Brand panel artwork for the sign-in and sign-up screens.
+
+    Drawn in white at varying opacity rather than in brand colour, because it
+    sits on top of the violet gradient panel and has to read against every stop
+    of it. Nothing here is a photograph of a person: an HR product showing stock
+    faces on its front door ages badly and implies customers it may not have.
+
+    The reduced-motion guard lives INSIDE this file on purpose. The page
+    stylesheet cannot reach into an <img>, so a guard written there would be
+    silently ignored and this would keep moving for someone who asked it not to.
+  -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="42%" r="52%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="cardFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.08"/>
+    </linearGradient>
+    <style>
+      .link  { stroke:#fff; stroke-opacity:.34; stroke-width:2; fill:none;
+               stroke-dasharray:220; stroke-dashoffset:220;
+               animation: draw 1.5s cubic-bezier(.16,1,.3,1) forwards; }
+      .l2 { animation-delay:.18s } .l3 { animation-delay:.36s }
+      .l4 { animation-delay:.54s } .l5 { animation-delay:.72s }
+
+      .node { transform-box: fill-box; transform-origin: center;
+              opacity:0; animation: pop .7s cubic-bezier(.16,1,.3,1) forwards; }
+      .n2 { animation-delay:.35s } .n3 { animation-delay:.5s }
+      .n4 { animation-delay:.65s } .n5 { animation-delay:.8s }
+
+      .drift  { animation: drift 7s ease-in-out infinite; }
+      .drift2 { animation: drift 9s ease-in-out infinite; animation-delay:-3s; }
+      .drift3 { animation: drift 8s ease-in-out infinite; animation-delay:-5s; }
+
+      .chip { transform-box: fill-box; transform-origin: center;
+              opacity:0; animation: rise .8s cubic-bezier(.16,1,.3,1) forwards; }
+      .c2 { animation-delay:1.05s } .c3 { animation-delay:1.3s }
+
+      .ring { transform-origin: 320px 300px;
+              animation: spin 26s linear infinite; }
+      .pulse { animation: pulse 3.4s ease-in-out infinite; }
+
+      @keyframes draw  { to { stroke-dashoffset:0 } }
+      @keyframes pop   { 0%{opacity:0;transform:scale(.6)} 100%{opacity:1;transform:scale(1)} }
+      @keyframes rise  { 0%{opacity:0;transform:translateY(14px)} 100%{opacity:1;transform:translateY(0)} }
+      @keyframes drift { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+      @keyframes spin  { to { transform: rotate(360deg) } }
+      @keyframes pulse { 0%,100%{opacity:.25} 50%{opacity:.6} }
+
+      @media (prefers-reduced-motion: reduce) {
+        .link,.node,.chip { animation: none; opacity:1; stroke-dashoffset:0; }
+        .drift,.drift2,.drift3,.ring,.pulse { animation: none; }
+      }
+    </style>
+  </defs>
+
+  <rect width="640" height="720" fill="url(#glow)"/>
+
+  <!-- slow orbit behind the cluster -->
+  <g class="ring" fill="none" stroke="#ffffff" stroke-opacity=".16" stroke-linecap="round">
+    <circle cx="320" cy="300" r="196" stroke-dasharray="10 26"/>
+    <circle cx="320" cy="300" r="248" stroke-dasharray="6 34" stroke-opacity=".10"/>
+  </g>
+
+  <!-- connections from the centre outward -->
+  <g>
+    <path class="link"    d="M320 300 L188 196"/>
+    <path class="link l2" d="M320 300 L470 205"/>
+    <path class="link l3" d="M320 300 L166 386"/>
+    <path class="link l4" d="M320 300 L472 400"/>
+    <path class="link l5" d="M320 300 L318 452"/>
+  </g>
+
+  <!-- centre -->
+  <g class="node">
+    <circle cx="320" cy="300" r="52" fill="#ffffff" fill-opacity=".22"/>
+    <circle cx="320" cy="300" r="52" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2"/>
+    <circle cx="320" cy="284" r="17" fill="#ffffff" fill-opacity=".92"/>
+    <path d="M320 306c20 0 33 12 33 28v6h-66v-6c0-16 13-28 33-28z" fill="#ffffff" fill-opacity=".92"/>
+  </g>
+
+  <!-- satellites -->
+  <g class="drift">
+    <g class="node n2">
+      <circle cx="188" cy="196" r="34" fill="#ffffff" fill-opacity=".16"/>
+      <circle cx="188" cy="196" r="34" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="1.5"/>
+      <circle cx="188" cy="187" r="11" fill="#fff" fill-opacity=".85"/>
+      <path d="M188 201c13 0 21 8 21 18v4h-42v-4c0-10 8-18 21-18z" fill="#fff" fill-opacity=".85"/>
+    </g>
+  </g>
+  <g class="drift2">
+    <g class="node n3">
+      <circle cx="470" cy="205" r="30" fill="#ffffff" fill-opacity=".16"/>
+      <circle cx="470" cy="205" r="30" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="1.5"/>
+      <circle cx="470" cy="197" r="10" fill="#fff" fill-opacity=".85"/>
+      <path d="M470 210c12 0 19 7 19 16v4h-38v-4c0-9 7-16 19-16z" fill="#fff" fill-opacity=".85"/>
+    </g>
+  </g>
+  <g class="drift3">
+    <g class="node n4">
+      <circle cx="166" cy="386" r="28" fill="#ffffff" fill-opacity=".16"/>
+      <circle cx="166" cy="386" r="28" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="1.5"/>
+      <circle cx="166" cy="379" r="9" fill="#fff" fill-opacity=".85"/>
+      <path d="M166 391c11 0 18 7 18 15v3h-36v-3c0-8 7-15 18-15z" fill="#fff" fill-opacity=".85"/>
+    </g>
+  </g>
+  <g class="drift">
+    <g class="node n5">
+      <circle cx="472" cy="400" r="32" fill="#ffffff" fill-opacity=".16"/>
+      <circle cx="472" cy="400" r="32" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="1.5"/>
+      <circle cx="472" cy="392" r="10" fill="#fff" fill-opacity=".85"/>
+      <path d="M472 405c12 0 20 7 20 16v4h-40v-4c0-9 8-16 20-16z" fill="#fff" fill-opacity=".85"/>
+    </g>
+  </g>
+
+  <!-- small status cards, the everyday output of an HR system -->
+  <g class="chip drift2">
+    <rect x="60" y="512" width="212" height="62" rx="16" fill="url(#cardFill)" stroke="#fff" stroke-opacity=".28"/>
+    <circle cx="96" cy="543" r="15" fill="#ffffff" fill-opacity=".9"/>
+    <path d="M89 543l5 5 10-11" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="122" y="530" width="118" height="9" rx="4.5" fill="#fff" fill-opacity=".82"/>
+    <rect x="122" y="548" width="76" height="8" rx="4" fill="#fff" fill-opacity=".45"/>
+  </g>
+
+  <g class="chip c2 drift3">
+    <rect x="356" y="486" width="216" height="62" rx="16" fill="url(#cardFill)" stroke="#fff" stroke-opacity=".28"/>
+    <rect x="380" y="512" width="14" height="16" rx="3" fill="#fff" fill-opacity=".9"/>
+    <rect x="400" y="503" width="14" height="25" rx="3" fill="#fff" fill-opacity=".7"/>
+    <rect x="420" y="496" width="14" height="32" rx="3" fill="#fff" fill-opacity=".9"/>
+    <rect x="448" y="503" width="104" height="9" rx="4.5" fill="#fff" fill-opacity=".82"/>
+    <rect x="448" y="520" width="64" height="8" rx="4" fill="#fff" fill-opacity=".45"/>
+  </g>
+
+  <g class="chip c3 drift">
+    <rect x="150" y="606" width="250" height="60" rx="16" fill="url(#cardFill)" stroke="#fff" stroke-opacity=".28"/>
+    <circle cx="184" cy="636" r="15" fill="#fff" fill-opacity=".9"/>
+    <path d="M184 628v9l6 4" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linecap="round"/>
+    <rect x="210" y="624" width="140" height="9" rx="4.5" fill="#fff" fill-opacity=".82"/>
+    <rect x="210" y="642" width="88" height="8" rx="4" fill="#fff" fill-opacity=".45"/>
+  </g>
+
+  <circle class="pulse" cx="546" cy="120" r="6" fill="#fff"/>
+  <circle class="pulse" cx="96" cy="118" r="4" fill="#fff" style="animation-delay:-1.2s"/>
+  <circle class="pulse" cx="588" cy="330" r="5" fill="#fff" style="animation-delay:-2.1s"/>
+</svg>

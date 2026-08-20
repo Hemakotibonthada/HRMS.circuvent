@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
+import { AuthBrandPanel } from "@/components/auth-brand-panel";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -68,30 +69,33 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center p-4">
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-violet-400/20 blur-3xl animate-blob" />
-        <div className="absolute -bottom-40 -right-40 h-[400px] w-[400px] rounded-full bg-purple-400/15 blur-3xl animate-blob animation-delay-2000" />
-      </div>
+    <div className="grid min-h-screen lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+      <AuthBrandPanel />
 
-      <div className="w-full max-w-md animate-scale-in">
-        <div className="mb-8 text-center">
-          <Link href="/" className="inline-flex items-center gap-2.5">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-lg">
-              <Building2 className="h-6 w-6" />
-            </div>
-            <span className="text-xl font-bold tracking-tight">
-              Circuvent <span className="text-primary">HRMS</span>
-            </span>
-          </Link>
+      <div className="relative flex items-center justify-center p-4 py-10">
+        <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden lg:hidden" aria-hidden="true">
+          <div className="absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-violet-400/20 blur-3xl animate-blob" />
+          <div className="absolute -bottom-40 -right-40 h-[400px] w-[400px] rounded-full bg-purple-400/15 blur-3xl animate-blob animation-delay-2000" />
         </div>
 
-        <Card className="border-0 shadow-xl">
-          <CardHeader className="text-center">
-            <CardTitle className="text-xl">Create your account</CardTitle>
-            <CardDescription>Start your 14-day free trial</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <div className="w-full max-w-md animate-scale-in">
+          <div className="mb-8 text-center lg:hidden">
+            <Link href="/" className="inline-flex items-center gap-2.5">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-lg">
+                <Building2 className="h-6 w-6" />
+              </div>
+              <span className="text-xl font-bold tracking-tight">
+                Circuvent <span className="text-primary">HRMS</span>
+              </span>
+            </Link>
+          </div>
+
+          <Card className="border-0 shadow-xl transition-shadow duration-500 hover:shadow-2xl">
+            <CardHeader className="text-center">
+              <CardTitle className="text-xl">Create your account</CardTitle>
+              <CardDescription>Start your 14-day free trial</CardDescription>
+            </CardHeader>
+            <CardContent>
             <form onSubmit={handleRegister} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
@@ -176,8 +180,9 @@ export default function RegisterPage() {
               <Link href="/terms" className="underline hover:text-foreground">Terms</Link> and{" "}
               <Link href="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
             </p>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

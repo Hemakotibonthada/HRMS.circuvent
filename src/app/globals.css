@@ -408,3 +408,37 @@ html:not(.dark) [data-slot="card"]:hover {
   background: linear-gradient(90deg, transparent 30%, rgba(139, 92, 246, 0.06) 50%, transparent 70%);
   animation: shimmer 1.8s ease-in-out infinite;
 }
+
+/* ── Reduced motion ─────────────────────────────────────────── */
+/*
+   Everything above this point moves: four blurred blobs orbit the landing page
+   and the auth screens for as long as they are open, cards float, gradients
+   drift and skeletons shimmer. Continuous motion is a genuine accessibility
+   problem — it is a migraine and vestibular-disorder trigger, and WCAG 2.3.3
+   asks that it be removable — and until now this stylesheet answered
+   `prefers-reduced-motion` with nothing at all.
+
+   Collapsing the durations rather than writing `animation: none` is deliberate,
+   and the difference is not cosmetic. Several rules here hide their element
+   first and rely on the animation to reveal it: `.stagger-children > *` and
+   `.page-enter` both set `opacity: 0`, and every entrance animation starts from
+   `opacity: 0` and is `forwards`. Switching those off would strand the content
+   at nought opacity, so a reader who asked for less motion would be served a
+   blank page. Running them at 0.01ms instead lets each one finish immediately
+   and hold its final frame, so the interface simply arrives already settled.
+
+   `animation-iteration-count: 1` is what stops the infinite decorative loops;
+   each ends on its 100% keyframe, which for every one of them is the resting
+   position. ScrollReveal is a transition rather than an animation, so it is
+   covered by the transition-duration line and still reveals its content.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

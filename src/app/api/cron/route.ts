@@ -43,6 +43,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
+import { syncDeviceAttendanceForAllOrgs } from "@/lib/attendance/device-sync";
 import { sweepOutboxes } from "@/lib/outbox-sweep";
 import { timingSafeEqual } from "@/lib/sso";
 
@@ -84,11 +85,34 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // Reconciles yesterday's device/RFID attendance register, the same way the
+  // sweep above re-drives outbox rows — added to this route rather than a
+  // second `crons` entry because the Vercel Hobby plan only permits one
+  // invocation per day per path (see this file's header comment). Caught
+  // independently so a device-side problem (an unreachable terminal, a bad
+  // token) can never take down the paystub/group sweep's own response; the
+  // two integrations share a schedule, not a failure mode. When no device
+  // token is configured this resolves instantly with an empty result, so
+  // deployments that do not use the device integration pay nothing for it.
+  let deviceSync: Awaited<ReturnType<typeof syncDeviceAttendanceForAllOrgs>> | { failed: string };
+  try {
+    deviceSync = await syncDeviceAttendanceForAllOrgs();
+    if (deviceSync.problems.length > 0) {
+      console.warn("[cron] device attendance sync completed with problems", {
+        problems: deviceSync.problems,
+      });
+    }
+  } catch (error) {
+    console.error("[cron] device attendance sync threw unexpectedly", error);
+    deviceSync = { failed: error instanceof Error ? error.message : String(error) };
+  }
+
   return NextResponse.json({
     ranAt: new Date().toISOString(),
     durationMs,
     organisations: result.organisations,
     ...result.totals,
     problems: result.problems,
+    deviceSync,
   });
 }
