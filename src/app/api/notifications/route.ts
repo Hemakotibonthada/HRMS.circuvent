@@ -172,18 +172,23 @@ export async function GET(request: NextRequest) {
       }
 
       // Everyone sees their own outstanding items, whatever their role.
+      // `ctx.userId` identifies the account; leave and expense rows are keyed
+      // by the employee record, so the employee id has to be resolved first.
+      // Comparing the two directly matches nothing, which is why none of these
+      // three notifications had ever fired.
       const mine = await tx
         .select({ id: employees.id })
         .from(employees)
-        .where(eq(employees.id, ctx.userId))
+        .where(eq(employees.userId, ctx.userId))
         .limit(1);
 
       if (mine[0]) {
+        const employeeId = mine[0].id;
         const [{ value: myPendingLeave }] = await tx
           .select({ value: count() })
           .from(leaveRequests)
           .where(
-            and(eq(leaveRequests.employeeId, ctx.userId), eq(leaveRequests.status, "pending"))
+            and(eq(leaveRequests.employeeId, employeeId), eq(leaveRequests.status, "pending"))
           );
 
         if (myPendingLeave > 0) {
@@ -203,7 +208,7 @@ export async function GET(request: NextRequest) {
           .select({ value: count() })
           .from(expenseClaims)
           .where(
-            and(eq(expenseClaims.employeeId, ctx.userId), eq(expenseClaims.status, "pending"))
+            and(eq(expenseClaims.employeeId, employeeId), eq(expenseClaims.status, "pending"))
           );
 
         if (myPendingExpenses > 0) {

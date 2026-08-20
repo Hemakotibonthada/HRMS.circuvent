@@ -8,6 +8,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { ACCESS_COOKIE, verifyAccessToken } from "@/lib/auth/tokens";
+import { currentEmployeeIdentity } from "@/lib/current-employee";
 
 export async function GET(request: NextRequest) {
   // Bearer first, then the cookie: native clients have no cookie jar, and a
@@ -31,6 +32,23 @@ export async function GET(request: NextRequest) {
   const displayName = (claims.name ?? "").trim();
   const [firstName = "", ...restOfName] = displayName ? displayName.split(/\s+/) : [];
 
+  // One indexed lookup, on a route the shell calls at mount. It buys the
+  // difference between an employment record and a login: `claims.sub` was sent
+  // here as the employee id on the assumption that the two are always equal,
+  // which holds only for accounts the owner-backfill script created. Everyone
+  // hired through the app got somebody else's idea of their identity — and the
+  // clients use this value to decide whether a request is their own, which is
+  // the check that stops a manager approving their own leave.
+  //
+  // A failure here degrades to null rather than failing the whole session:
+  // being unable to name your employee record is not a reason to be signed out.
+  let identity: { id: string; employeeCode: string } | null = null;
+  try {
+    identity = await currentEmployeeIdentity({ orgId: claims.org, userId: claims.sub });
+  } catch (error) {
+    console.error("Could not resolve the employee record for the session:", error);
+  }
+
   return NextResponse.json({
     user: {
       id: claims.sub,
@@ -38,11 +56,11 @@ export async function GET(request: NextRequest) {
       // The mobile clients read `organizationId`. Sent under both names because
       // renaming the field would break every build already installed.
       organizationId: claims.org,
-      // An employee id equal to the user id is this app's current convention —
-      // the routes pass `ctx.userId` straight through where an employee id is
-      // wanted, and registration writes the employee row with the user's id to
-      // match. Sent explicitly so a client does not have to know that.
-      employeeId: claims.sub,
+      // Null when the account has no employment record — service mailboxes are
+      // the usual case. Null is honest; the account id was not.
+      employeeId: identity?.id ?? null,
+      // What a person actually quotes to HR or reads off a badge.
+      employeeCode: identity?.employeeCode ?? null,
       role: claims.role,
       email: claims.email,
       displayName,

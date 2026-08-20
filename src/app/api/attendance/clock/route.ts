@@ -27,6 +27,7 @@ import { deleteObject, putObject, sha256Hex } from "@/lib/storage/object-store";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
 
 const schema = z.object({
   action: z.enum(["in", "out"]),
@@ -158,10 +159,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const repo = new NeonAttendanceRepository(ctx);
+    const employeeId = await requireCurrentEmployeeId(ctx);
     const record =
       action === "in"
         ? await repo.clockIn({
-            employeeId: ctx.userId,
+            employeeId,
             method,
             latitude,
             longitude,
@@ -171,7 +173,7 @@ export async function POST(request: NextRequest) {
             photoUrl,
             ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
           })
-        : await repo.clockOut({ employeeId: ctx.userId, method, latitude, longitude });
+        : await repo.clockOut({ employeeId, method, latitude, longitude });
 
     if (storedSelfie) {
       await attachSelfie(ctx, record.id, action, storedSelfie);
@@ -196,6 +198,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof RepositoryError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
@@ -215,7 +220,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { record, fence } = await new NeonAttendanceRepository(ctx).todayWithFence(ctx.userId);
+    const employeeId = await requireCurrentEmployeeId(ctx);
+    const { record, fence } = await new NeonAttendanceRepository(ctx).todayWithFence(employeeId);
     // 200 with null rather than 404: "not clocked in yet" is the expected
     // state at the start of a day, not an error.
     //
@@ -226,6 +232,9 @@ export async function GET(request: NextRequest) {
     // where the office is to do it.
     return NextResponse.json({ record, fence });
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof RepositoryError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

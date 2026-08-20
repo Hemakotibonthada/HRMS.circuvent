@@ -62,11 +62,21 @@ export async function GET(request: NextRequest) {
 
   try {
     const payload = await withTenant(ctx, async (tx) => {
+      // `ctx.userId` is the identity account; `employees.id` is the employee
+      // row. They are different UUIDs joined by `employees.user_id`, and
+      // comparing them directly matches nothing at all — which is what this
+      // route did, so every team here was empty and no birthday ever showed.
       const [me] = await tx
         .select({ id: employees.id, reportingToId: employees.reportingToId })
         .from(employees)
-        .where(eq(employees.id, ctx.userId))
+        .where(eq(employees.userId, ctx.userId))
         .limit(1);
+
+      // An account with no employee record has no colleagues to report on.
+      // Several real accounts are in exactly this state — billing and abuse
+      // mailboxes, for instance — and they should get an empty answer rather
+      // than the whole organisation.
+      if (!me) return { team: [], away: [] };
 
       // Peers share a manager; reports report to me. A person with neither is
       // shown their own record only, which is honest — an organisation of one
@@ -85,10 +95,10 @@ export async function GET(request: NextRequest) {
           and(
             eq(employees.status, "active"),
             or(
-              eq(employees.reportingToId, ctx.userId),
-              me?.reportingToId ? eq(employees.reportingToId, me.reportingToId) : undefined,
-              me?.reportingToId ? eq(employees.id, me.reportingToId) : undefined,
-              eq(employees.id, ctx.userId)
+              eq(employees.reportingToId, me.id),
+              me.reportingToId ? eq(employees.reportingToId, me.reportingToId) : undefined,
+              me.reportingToId ? eq(employees.id, me.reportingToId) : undefined,
+              eq(employees.id, me.id)
             )
           )
         )

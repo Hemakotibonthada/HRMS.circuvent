@@ -25,6 +25,11 @@ import { withTenant } from "@/db/client";
 // day: people close tabs, sessions expire, and a laptop lid comes down at
 // lunch. Clocking out stays a deliberate act.
 //
+// **It does not open a day where the organisation requires a punch
+// photograph.** That policy exists to make attendance evidence rather than
+// assertion, and a row opened here carries no photograph, no location and no
+// geofence result. Where it is switched on, punching stays deliberate.
+//
 // **It never fails a sign-in.** Everything below is wrapped so a problem with
 // attendance cannot stop somebody logging in. An authentication system that
 // refuses a valid password because a bookkeeping insert failed is a far worse
@@ -34,7 +39,7 @@ export type WorkLogOutcome =
   | { started: true; employeeId: string; workDate: string }
   | {
       started: false;
-      reason: "no-employee" | "not-a-working-day" | "already-open" | "error";
+      reason: "no-employee" | "not-a-working-day" | "already-open" | "photograph-required" | "error";
       detail?: string;
     };
 
@@ -102,6 +107,31 @@ export async function startWorkLogOnSignIn(input: {
       );
       if (holiday.rows.length > 0) {
         return { started: false, reason: "not-a-working-day" as const, detail: "public holiday" };
+      }
+
+      /*
+       * An organisation that requires a photograph on every punch does not get
+       * silent, unphotographed ones from the back door.
+       *
+       * The clock endpoint holds the rule that a punch requiring a photograph
+       * must never exist without one — it stores the image before it writes the
+       * record, and deletes the image if the record is refused. Opening a day
+       * here would create exactly the row that rule exists to prevent: marked
+       * present, with no photograph, no location and no geofence result, from
+       * somebody who may have signed in from home.
+       *
+       * So where the photograph is required, the punch stays a deliberate act.
+       * The absence of a policy row means the feature is off, which is the
+       * common case and leaves this behaviour untouched for everybody else.
+       */
+      const requiresPhoto = await tx.execute(
+        sql`SELECT 1 FROM hrms.attendance_policies
+             WHERE org_id = ${input.orgId}::uuid
+               AND require_selfie_on_punch = true
+             LIMIT 1`
+      );
+      if (requiresPhoto.rows.length > 0) {
+        return { started: false, reason: "photograph-required" as const };
       }
 
       /*

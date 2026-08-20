@@ -14,6 +14,7 @@ import { NeonLeaveRepository } from "@/db/repositories/leave.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 import { notifyEmployee } from "@/lib/notifications/notify";
 
 const schema = z
@@ -65,10 +66,17 @@ export async function POST(
       return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
     }
 
+    // `existing.employeeId` is an employment record; `ctx.userId` is the login.
+    // Comparing the two directly is always false for anyone hired through the
+    // app, which quietly disarmed both checks below — self-approval was
+    // permitted, and nobody could withdraw their own leave.
+    const myEmployeeId = await currentEmployeeId(ctx);
+
     if (parsed.data.action === "cancel") {
       // Employees withdraw their own; HR can cancel on anyone's behalf.
       const mayCancel =
-        existing.employeeId === ctx.userId || ["owner", "admin", "hr"].includes(ctx.role);
+        (myEmployeeId !== null && existing.employeeId === myEmployeeId) ||
+        ["owner", "admin", "hr"].includes(ctx.role);
       if (!mayCancel) {
         return NextResponse.json(
           { error: "You can only cancel your own leave" },
@@ -83,7 +91,7 @@ export async function POST(
     }
 
     // Self-approval defeats the control entirely, regardless of role.
-    if (existing.employeeId === ctx.userId) {
+    if (myEmployeeId !== null && existing.employeeId === myEmployeeId) {
       return NextResponse.json(
         { error: "You cannot approve your own leave request" },
         { status: 403 }
