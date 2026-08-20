@@ -24,12 +24,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -73,6 +76,7 @@ fun ApprovalsScreen(container: AppContainer, user: SessionUser?) {
     var error by remember { mutableStateOf<Pair<String, String?>?>(null) }
 
     val scope = rememberCoroutineScope()
+    val decisionErrorTitle = stringResource(R.string.approvals_decision_error)
 
     suspend fun load() {
         state = try {
@@ -98,7 +102,7 @@ fun ApprovalsScreen(container: AppContainer, user: SessionUser?) {
                 // decision on an already-decided request.
                 load()
             } catch (e: Exception) {
-                error = "The decision was not recorded" to e.message
+                error = decisionErrorTitle to e.message
             } finally {
                 busyId = null
             }
@@ -120,8 +124,8 @@ fun ApprovalsScreen(container: AppContainer, user: SessionUser?) {
                 is Loaded.Failed -> Banner(BannerTone.ERROR, current.title, description = current.description)
                 is Loaded.Ready -> if (current.value.isEmpty()) {
                     EmptyState(
-                        title = "Nothing is waiting for you",
-                        description = "Leave requests needing your decision appear here as soon as they are submitted.",
+                        title = stringResource(R.string.approvals_empty_title),
+                        description = stringResource(R.string.approvals_empty_description),
                     )
                 }
             }
@@ -131,7 +135,9 @@ fun ApprovalsScreen(container: AppContainer, user: SessionUser?) {
             items(requests, key = { it.id }) { request ->
                 val isOwn = request.employeeId == user?.employeeId || request.employeeId == user?.id
                 val busy = busyId == request.id
-                val who = request.employeeName ?: "An employee"
+                val who = request.employeeName ?: stringResource(R.string.approvals_unknown_employee)
+                val dateRange = rememberFormattedRange(request.startDate, request.endDate)
+                val reasonRequiredMessage = stringResource(R.string.approvals_reason_required)
 
                 AppCard {
                     Row(
@@ -140,13 +146,24 @@ fun ApprovalsScreen(container: AppContainer, user: SessionUser?) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         AppText(who, weight = FontWeight.SemiBold, maxLines = 1)
-                        if (isOwn) StatusPill("Yours", PillTone.INFO)
+                        if (isOwn) StatusPill(stringResource(R.string.approvals_yours_pill), PillTone.INFO)
                     }
 
                     AppText(
-                        "${request.leaveType.replaceFirstChar { it.uppercase() }} · " +
-                            "${rememberFormattedRange(request.startDate, request.endDate)} · " +
-                            if (request.isHalfDay) "half day" else "${request.totalDays.toInt()} days",
+                        if (request.isHalfDay)
+                            stringResource(
+                                R.string.approvals_item_half_day,
+                                request.leaveType.replaceFirstChar { it.uppercase() },
+                                dateRange,
+                            )
+                        else
+                            pluralStringResource(
+                                R.plurals.approvals_item_days,
+                                request.totalDays.toInt(),
+                                request.leaveType.replaceFirstChar { it.uppercase() },
+                                dateRange,
+                                request.totalDays.toInt(),
+                            ),
                         size = Theme.type.footnote,
                         lineHeight = Theme.type.footnoteLine,
                         tone = TextTone.MUTED,
@@ -157,7 +174,7 @@ fun ApprovalsScreen(container: AppContainer, user: SessionUser?) {
                         // The server refuses this outright. Saying so before
                         // the tap is better than a 403 that reads like a fault.
                         isOwn -> AppText(
-                            "This is your own request. Someone else has to decide it.",
+                            stringResource(R.string.approvals_own_request_note),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
                             tone = TextTone.MUTED,
@@ -168,7 +185,7 @@ fun ApprovalsScreen(container: AppContainer, user: SessionUser?) {
                             OutlinedTextField(
                                 value = reason,
                                 onValueChange = { reason = it.take(1000) },
-                                label = { Text("Reason for rejection") },
+                                label = { Text(stringResource(R.string.approvals_rejection_reason_label)) },
                                 supportingText = { reasonError?.let { Text(it) } },
                                 isError = reasonError != null,
                                 minLines = 2,
@@ -177,14 +194,14 @@ fun ApprovalsScreen(container: AppContainer, user: SessionUser?) {
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                                 AppButton(
-                                    label = "Confirm rejection",
+                                    label = stringResource(R.string.approvals_confirm_rejection_action),
                                     onClick = {
                                         // Matches the server, which refuses a
                                         // rejection under three characters.
                                         // Somebody told only "rejected" has
                                         // nothing to act on.
                                         if (reason.trim().length < 3) {
-                                            reasonError = "Give a reason. The person needs to know why."
+                                            reasonError = reasonRequiredMessage
                                         } else {
                                             reasonError = null
                                             decide(request.id, "reject", reason.trim())
@@ -195,7 +212,7 @@ fun ApprovalsScreen(container: AppContainer, user: SessionUser?) {
                                     busy = busy,
                                 )
                                 AppButton(
-                                    label = "Back",
+                                    label = stringResource(R.string.approvals_back_action),
                                     onClick = { rejecting = null; reasonError = null; reason = "" },
                                     variant = ButtonVariant.GHOST,
                                     fullWidth = false,
@@ -208,19 +225,27 @@ fun ApprovalsScreen(container: AppContainer, user: SessionUser?) {
                             horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm),
                         ) {
                             AppButton(
-                                label = "Approve",
+                                label = stringResource(R.string.approvals_approve_action),
                                 onClick = { decide(request.id, "approve", null) },
                                 fullWidth = false,
                                 busy = busy,
-                                contentDescription = "Approve $who's ${request.leaveType} leave",
+                                contentDescription = stringResource(
+                                    R.string.approvals_approve_content_description,
+                                    who,
+                                    request.leaveType,
+                                ),
                             )
                             AppButton(
-                                label = "Reject",
+                                label = stringResource(R.string.approvals_reject_action),
                                 onClick = { rejecting = request.id; reason = ""; reasonError = null },
                                 variant = ButtonVariant.SECONDARY,
                                 fullWidth = false,
                                 enabled = !busy,
-                                contentDescription = "Reject $who's ${request.leaveType} leave",
+                                contentDescription = stringResource(
+                                    R.string.approvals_reject_content_description,
+                                    who,
+                                    request.leaveType,
+                                ),
                             )
                         }
                     }
@@ -250,6 +275,10 @@ fun SettingsScreen(container: AppContainer, viewModel: AppViewModel, user: Sessi
 
     LaunchedEffect(Unit) { support = Biometrics.support(context) }
 
+    val biometricUnlockLabel = stringResource(R.string.settings_biometric_unlock_label)
+    val biometricConfirmPrompt = stringResource(R.string.settings_biometric_confirm_prompt)
+    val biometricNotEnabledMessage = stringResource(R.string.settings_biometric_not_enabled_message)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -260,7 +289,7 @@ fun SettingsScreen(container: AppContainer, viewModel: AppViewModel, user: Sessi
         if (user != null) {
             AppCard {
                 AppText(
-                    "${user.firstName} ${user.lastName}".trim(),
+                    stringResource(R.string.settings_user_full_name, user.firstName, user.lastName).trim(),
                     size = Theme.type.title3,
                     lineHeight = Theme.type.title3Line,
                     weight = FontWeight.SemiBold,
@@ -279,13 +308,13 @@ fun SettingsScreen(container: AppContainer, viewModel: AppViewModel, user: Sessi
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    AppText(support?.label ?: "Biometric unlock")
+                    AppText(support?.label ?: biometricUnlockLabel)
                     AppText(
                         when (val s = support) {
-                            null -> "Checking…"
-                            is Biometrics.Support.Available -> "Locks the app when you come back to it after a minute away."
-                            is Biometrics.Support.NotEnrolled -> "Set up a biometric in your device settings to use this."
-                            is Biometrics.Support.Unavailable -> "This device does not support biometric unlock."
+                            null -> stringResource(R.string.settings_biometric_checking)
+                            is Biometrics.Support.Available -> stringResource(R.string.settings_biometric_locks_note)
+                            is Biometrics.Support.NotEnrolled -> stringResource(R.string.settings_biometric_not_enrolled_note)
+                            is Biometrics.Support.Unavailable -> stringResource(R.string.settings_biometric_unavailable_note)
                         },
                         size = Theme.type.caption,
                         lineHeight = Theme.type.captionLine,
@@ -305,23 +334,23 @@ fun SettingsScreen(container: AppContainer, viewModel: AppViewModel, user: Sessi
                         }
                         scope.launch {
                             // Proved once before the setting is stored.
-                            val result = activity?.let { Biometrics.prompt(it, "Confirm it is you") }
+                            val result = activity?.let { Biometrics.prompt(it, biometricConfirmPrompt) }
                             if (result == Biometrics.Result.UNLOCKED) {
                                 container.tokens.biometricEnabled = true
                                 enabled = true
                             } else {
-                                note = "Biometric unlock was not turned on, because the check did not pass."
+                                note = biometricNotEnabledMessage
                             }
                         }
                     },
-                    modifier = Modifier.semantics { contentDescription = "Biometric unlock" },
+                    modifier = Modifier.semantics { contentDescription = biometricUnlockLabel },
                 )
             }
 
             // Said here rather than only in a document: somebody turning this
             // on should not believe it does more than it does.
             AppText(
-                "This unlocks a session you already have. It is not a way of signing in, and it proves nothing to the server.",
+                stringResource(R.string.settings_biometric_disclaimer),
                 size = Theme.type.caption,
                 lineHeight = Theme.type.captionLine,
                 tone = TextTone.MUTED,
@@ -329,10 +358,10 @@ fun SettingsScreen(container: AppContainer, viewModel: AppViewModel, user: Sessi
             )
         }
 
-        note?.let { Banner(BannerTone.ERROR, "Biometric unlock was not turned on", description = it) }
+        note?.let { Banner(BannerTone.ERROR, stringResource(R.string.settings_biometric_not_enabled_title), description = it) }
 
         AppButton(
-            label = "Sign out",
+            label = stringResource(R.string.settings_sign_out_action),
             onClick = viewModel::signOut,
             variant = ButtonVariant.SECONDARY,
             modifier = Modifier.padding(top = Theme.spacing.xl),
@@ -342,7 +371,7 @@ fun SettingsScreen(container: AppContainer, viewModel: AppViewModel, user: Sessi
             // Warned before the tap. Signing out with unsent work is a decision
             // that should be made knowingly.
             AppText(
-                if (pending == 1) "1 action has not been sent yet." else "$pending actions have not been sent yet.",
+                pluralStringResource(R.plurals.settings_pending_actions, pending, pending),
                 size = Theme.type.caption,
                 lineHeight = Theme.type.captionLine,
                 tone = TextTone.WARNING,
@@ -387,15 +416,15 @@ fun PayslipDetailScreen(container: AppContainer, payslipId: String) {
                 val payslip = current.value
                 if (payslip == null) {
                     EmptyState(
-                        title = "This payslip could not be found",
-                        description = "It may belong to a run that was withdrawn for correction.",
+                        title = stringResource(R.string.payslip_detail_not_found_title),
+                        description = stringResource(R.string.payslip_detail_not_found_description),
                     )
                 } else {
                     val period = if (payslip.periodMonth != null && payslip.periodYear != null) {
                         YearMonth.of(payslip.periodYear, payslip.periodMonth)
                             .format(DateTimeFormatter.ofPattern("LLLL yyyy"))
                     } else {
-                        "Payslip"
+                        stringResource(R.string.payslips_fallback_period)
                     }
 
                     AppText(period, tone = TextTone.MUTED, heading = true)
@@ -405,19 +434,40 @@ fun PayslipDetailScreen(container: AppContainer, payslipId: String) {
                         lineHeight = Theme.type.displayLine,
                         weight = FontWeight.Bold,
                     )
-                    AppText("Net pay", size = Theme.type.footnote, lineHeight = Theme.type.footnoteLine, tone = TextTone.MUTED)
+                    AppText(
+                        stringResource(R.string.payslips_net_pay_label),
+                        size = Theme.type.footnote,
+                        lineHeight = Theme.type.footnoteLine,
+                        tone = TextTone.MUTED,
+                    )
 
                     AppCard {
-                        DetailRow("Gross", "₹%,.2f".format(payslip.gross))
-                        DetailRow("Total deductions", "₹%,.2f".format(payslip.totalDeductions))
-                        DetailRow("Net pay", "₹%,.2f".format(payslip.netPay))
+                        DetailRow(stringResource(R.string.payslip_detail_gross_label), "₹%,.2f".format(payslip.gross))
+                        DetailRow(
+                            stringResource(R.string.payslip_detail_total_deductions_label),
+                            "₹%,.2f".format(payslip.totalDeductions),
+                        )
+                        DetailRow(stringResource(R.string.payslips_net_pay_label), "₹%,.2f".format(payslip.netPay))
                     }
 
                     AppCard {
-                        DetailRow("Working days", payslip.workingDays.toInt().toString())
-                        DetailRow("Days present", payslip.presentDays.toInt().toString())
+                        DetailRow(
+                            stringResource(R.string.payslip_detail_working_days_label),
+                            payslip.workingDays.toInt().toString(),
+                        )
+                        DetailRow(
+                            stringResource(R.string.payslip_detail_present_days_label),
+                            payslip.presentDays.toInt().toString(),
+                        )
                         if (payslip.lopDays > 0) {
-                            DetailRow("Loss of pay", "${payslip.lopDays.toInt()} days")
+                            DetailRow(
+                                stringResource(R.string.payslip_detail_loss_of_pay_label),
+                                pluralStringResource(
+                                    R.plurals.payslip_detail_lop_days_value,
+                                    payslip.lopDays.toInt(),
+                                    payslip.lopDays.toInt(),
+                                ),
+                            )
                         }
                     }
 
@@ -428,13 +478,13 @@ fun PayslipDetailScreen(container: AppContainer, payslipId: String) {
                         // whether they are right.
                         Banner(
                             BannerTone.WARNING,
-                            "Flagged for review",
+                            stringResource(R.string.payslip_detail_flagged_title),
                             description = payslip.anomalies.joinToString("\n"),
                         )
                     }
 
                     AppText(
-                        "If any figure here looks wrong, raise it with HR rather than recalculating it yourself — the amounts come from the payroll run and this screen does no arithmetic of its own.",
+                        stringResource(R.string.payslip_detail_disclaimer),
                         size = Theme.type.caption,
                         lineHeight = Theme.type.captionLine,
                         tone = TextTone.MUTED,

@@ -18,7 +18,7 @@ import {
   leaveBalances,
   leavePolicies,
 } from "@/db/schema/hrms";
-import { auditLog, users } from "@/db/schema/identity";
+import { auditLog, organizations, users } from "@/db/schema/identity";
 import {
   drainDueGroupJoins,
   drainDueGroupLeaves,
@@ -40,12 +40,12 @@ import {
   queuePaystubEmployeeSync,
 } from "@/lib/paystub-sync-outbox";
 import { employeeCodePrefixFor, PERMANENT_EMPLOYEE_CODE_PREFIX } from "@/lib/employee-code";
+import { companyEmailDomains, normaliseEmailDomains } from "@/lib/employee-rules";
 import {
   dispatchLifecycleDocuments,
   type LifecycleDocumentKind,
 } from "@/lib/intern-documents";
 import { decryptNullable, encryptNullable } from "@/lib/crypto/field-encryption";
-import { currentEmployeeId } from "@/lib/current-employee";
 import {
   canWriteBankDetails,
   toAuditSnapshot,
@@ -134,6 +134,61 @@ function toRecord(row: Row): EmployeeRecord {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+/**
+ * The work-email domains this organisation issues staff addresses on,
+ * falling back to `companyEmailDomains()` — the `COMPANY_EMAIL_DOMAINS` env
+ * var, then the built-in default — when the organisation has not set its own.
+ *
+ * `companyEmailDomains()` in `lib/employee-rules.ts` is one list for the
+ * entire process. That is fine for a single deployment, but this platform is
+ * multi-tenant: a second organisation whose staff are not on circuvent.com
+ * (or whatever `COMPANY_EMAIL_DOMAINS` names for this deployment) would have
+ * every one of their hires refused by `validateEmployeeFields` as a "personal
+ * address" — on a domain they simply do not own. Each organisation needs its
+ * own answer to "what is a work address here".
+ *
+ * Stored under `companyEmailDomains` in `identity.organizations.settings` —
+ * already a jsonb column with nothing else claiming that key — rather than a
+ * new column, so an organisation that has not configured this costs nothing
+ * extra to read and the feature needed no migration at all.
+ *
+ * Never throws: a bad connection or a malformed settings blob is exactly the
+ * situation the process-wide fallback exists for, not a reason to turn
+ * "add an employee" into a 500 the env-wide default would have avoided.
+ */
+export async function resolveCompanyEmailDomains(
+  ctx: TenantContext,
+  env: Record<string, string | undefined> = process.env,
+): Promise<readonly string[]> {
+  const fallback = companyEmailDomains(env);
+
+  try {
+    const [org] = await withTenant(ctx, async (tx) =>
+      tx
+        .select({ settings: organizations.settings })
+        .from(organizations)
+        .where(eq(organizations.id, ctx.orgId))
+        .limit(1),
+    );
+
+    const settings = (org?.settings ?? {}) as { companyEmailDomains?: unknown };
+    const configured = Array.isArray(settings.companyEmailDomains)
+      ? normaliseEmailDomains(settings.companyEmailDomains as string[])
+      : [];
+
+    return configured.length > 0 ? configured : fallback;
+  } catch (error) {
+    console.warn(
+      "[employee] Could not resolve this organisation's own work-email domains; using the process-wide default.",
+      {
+        orgId: ctx.orgId,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      },
+    );
+    return fallback;
+  }
 }
 
 export class NeonEmployeeRepository implements EmployeeRepository {
@@ -838,21 +893,25 @@ export class NeonEmployeeRepository implements EmployeeRepository {
   async updateBankDetails(
     employeeId: string,
     data: BankDetailsUpdate,
+    callerId: string | null,
   ): Promise<RawEmployeeBankDetails> {
     // The route this backs never accepts a target employeeId in its request
     // body at all — it always calls this with the caller's own resolved
-    // employee id — so this can only ever fire if some future caller (a
-    // script, an admin tool, a route refactored without re-reading this
-    // comment) passes a mismatched id. Checked here anyway: `canWriteBankDetails` is the one
-    // place this rule is written down, and a rule enforced at only one of its
-    // two possible call sites is a rule that quietly stops applying the day
-    // someone adds a second one.
+    // employee id, passed in as `callerId` too — so this can only ever refuse
+    // if some future caller (a script, an admin tool, a route refactored
+    // without re-reading this comment) passes a mismatched id. Checked here
+    // anyway: `canWriteBankDetails` is the one place this rule is written
+    // down, and a rule enforced at only one of its two possible call sites is
+    // a rule that quietly stops applying the day someone adds a second one.
     //
-    // `this.ctx.userId` is the signing-in account, not the employment record
-    // — see lib/current-employee.ts — so it has to be resolved before it can
-    // be compared against an `employees.id`.
-    const { orgId, userId } = this.ctx;
-    const callerId = userId ? await currentEmployeeId({ orgId, userId }) : null;
+    // `callerId` is resolved by the caller (`currentEmployeeId`/
+    // `requireCurrentEmployeeId` in lib/current-employee.ts) from
+    // `ctx.userId` — the signing-in account, not the employment record — and
+    // passed in rather than re-resolved here: re-resolving it opened a second
+    // `withTenant` transaction and repeated the same indexed lookup the
+    // caller had just run, doubling both for every PUT. `callerId ?? ""`
+    // keeps an unresolvable caller (no employee record at all) from ever
+    // equalling a real `employees.id`, so the check still fails closed.
     if (!canWriteBankDetails(callerId ?? "", employeeId)) {
       throw new RepositoryError("You can only update your own bank details", 403);
     }

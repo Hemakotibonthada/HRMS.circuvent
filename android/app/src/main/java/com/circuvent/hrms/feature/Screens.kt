@@ -18,9 +18,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -116,9 +119,9 @@ fun LeaveScreen(container: AppContainer, onApply: () -> Unit, onOpen: (String) -
     ) {
         item {
             AppButton(
-                label = "Apply for leave",
+                label = stringResource(R.string.leave_apply_action),
                 onClick = onApply,
-                contentDescription = "Opens the leave request form",
+                contentDescription = stringResource(R.string.leave_apply_content_description),
             )
         }
 
@@ -126,7 +129,7 @@ fun LeaveScreen(container: AppContainer, onApply: () -> Unit, onOpen: (String) -
             LoadedContent(state) { (requests, balances) ->
                 Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                     if (balances.isNotEmpty()) {
-                        SectionHeading("Your balance")
+                        SectionHeading(stringResource(R.string.leave_balance_heading))
                         // Entitlement first, and anything with none last. A list
                         // that opens with "Compensatory 0 of 0" buries the two
                         // numbers somebody actually came to read.
@@ -136,13 +139,13 @@ fun LeaveScreen(container: AppContainer, onApply: () -> Unit, onOpen: (String) -
                         }
                     }
 
-                    SectionHeading("Your requests")
+                    SectionHeading(stringResource(R.string.leave_requests_heading))
 
                     if (requests.isEmpty()) {
                         EmptyState(
-                            title = "No leave requests yet",
-                            description = "Anything you apply for appears here, with where it has got to in the approval chain.",
-                            action = { AppButton("Apply for leave", onApply, fullWidth = false) },
+                            title = stringResource(R.string.leave_empty_title),
+                            description = stringResource(R.string.leave_empty_description),
+                            action = { AppButton(stringResource(R.string.leave_apply_action), onApply, fullWidth = false) },
                         )
                     }
                 }
@@ -168,7 +171,12 @@ private fun LeaveRow(request: LeaveRequestDto, onOpen: (String) -> Unit) {
 
     AppCard(
         onClick = { onOpen(request.id) },
-        contentDescription = "${request.leaveType} leave, $dateRange, ${request.status}",
+        contentDescription = stringResource(
+            R.string.leave_item_content_description,
+            request.leaveType,
+            dateRange,
+            request.status,
+        ),
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -182,8 +190,15 @@ private fun LeaveRow(request: LeaveRequestDto, onOpen: (String) -> Unit) {
             StatusPill(request.status.replaceFirstChar { it.uppercase() }, tone)
         }
         AppText(
-            "$dateRange · " +
-                if (request.isHalfDay) "half day" else "${request.totalDays.toInt()} days",
+            if (request.isHalfDay)
+                stringResource(R.string.leave_item_half_day, dateRange)
+            else
+                pluralStringResource(
+                    R.plurals.leave_item_days,
+                    request.totalDays.toInt(),
+                    dateRange,
+                    request.totalDays.toInt(),
+                ),
             size = Theme.type.footnote,
             lineHeight = Theme.type.footnoteLine,
             tone = TextTone.MUTED,
@@ -216,10 +231,23 @@ private fun LeaveBalanceRow(balance: LeaveBalanceDto) {
 
     AppCard(
         contentDescription = if (hasEntitlement) {
-            "$name: ${available.toInt()} of ${entitled.toInt()} days available" +
-                if (spent > 0) ", ${spent.toInt()} taken or pending" else ""
+            if (spent > 0)
+                stringResource(
+                    R.string.leave_balance_content_description_spent,
+                    name,
+                    available.toInt(),
+                    entitled.toInt(),
+                    spent.toInt(),
+                )
+            else
+                stringResource(
+                    R.string.leave_balance_content_description,
+                    name,
+                    available.toInt(),
+                    entitled.toInt(),
+                )
         } else {
-            "$name: none granted"
+            stringResource(R.string.leave_balance_content_description_none, name)
         },
     ) {
         Row(
@@ -241,7 +269,7 @@ private fun LeaveBalanceRow(balance: LeaveBalanceDto) {
                         lineHeight = Theme.type.calloutLine,
                     )
                     AppText(
-                        " of ${entitled.trimZero()} days",
+                        stringResource(R.string.leave_balance_of_days_suffix, entitled.trimZero()),
                         tone = TextTone.MUTED,
                         size = Theme.type.footnote,
                         lineHeight = Theme.type.footnoteLine,
@@ -249,7 +277,7 @@ private fun LeaveBalanceRow(balance: LeaveBalanceDto) {
                 }
             } else {
                 AppText(
-                    "None granted",
+                    stringResource(R.string.leave_balance_none_granted),
                     tone = TextTone.MUTED,
                     size = Theme.type.footnote,
                     lineHeight = Theme.type.footnoteLine,
@@ -277,7 +305,7 @@ private fun LeaveBalanceRow(balance: LeaveBalanceDto) {
             if (spent > 0.0) {
                 Spacer(Modifier.height(Theme.spacing.xs))
                 AppText(
-                    "${spent.trimZero()} taken or awaiting a decision",
+                    stringResource(R.string.leave_balance_spent_note, spent.trimZero()),
                     tone = TextTone.MUTED,
                     size = Theme.type.caption,
                     lineHeight = Theme.type.captionLine,
@@ -298,6 +326,8 @@ fun ShiftsScreen(container: AppContainer) {
     var notice by remember { mutableStateOf<Pair<BannerTone, String>?>(null) }
     val today = remember { LocalDate.now() }
     val scope = rememberCoroutineScope()
+    val shiftOfferedMessage = stringResource(R.string.shifts_offer_success)
+    val shiftOfferFailedMessage = stringResource(R.string.shifts_offer_failed)
 
     LaunchedEffect(Unit) {
         state = try {
@@ -320,8 +350,8 @@ fun ShiftsScreen(container: AppContainer) {
             LoadedContent(state, skeletonRows = 4) { shifts ->
                 if (shifts.isEmpty()) {
                     EmptyState(
-                        title = "No shifts scheduled",
-                        description = "Nothing has been published for you in the next four weeks. Published rosters appear here as soon as your manager releases them.",
+                        title = stringResource(R.string.shifts_empty_title),
+                        description = stringResource(R.string.shifts_empty_description),
                     )
                 } else {
                     val rules = shifts.map { it.toRule() }
@@ -343,11 +373,10 @@ fun ShiftsScreen(container: AppContainer) {
                         scope.launch {
                             try {
                                 container.repository.requestSwap(shift.id, null)
-                                notice = BannerTone.SUCCESS to
-                                    "Offered. Somebody on your team can now take it, and your manager decides."
+                                notice = BannerTone.SUCCESS to shiftOfferedMessage
                             } catch (e: Exception) {
                                 notice = BannerTone.ERROR to
-                                    (e.message ?: "That shift could not be offered.")
+                                    (e.message ?: shiftOfferFailedMessage)
                             } finally {
                                 offering = null
                             }
@@ -379,25 +408,30 @@ private fun NextShiftCard(shift: ShiftRules.Shift, today: LocalDate) {
 
     AppCard(
         highlighted = true,
-        contentDescription = "${if (running) "On shift now" else "Next shift"}: $when_",
+        contentDescription = if (running)
+            stringResource(R.string.shifts_next_content_description_active, when_)
+        else
+            stringResource(R.string.shifts_next_content_description_upcoming, when_),
     ) {
         AppText(
-            if (running) "ON SHIFT NOW" else "NEXT SHIFT",
+            if (running) stringResource(R.string.shifts_next_badge_active) else stringResource(R.string.shifts_next_badge_upcoming),
             size = Theme.type.caption,
             lineHeight = Theme.type.captionLine,
             weight = FontWeight.SemiBold,
             tone = TextTone.PRIMARY,
         )
         AppText(
-            shift.patternName ?: "Shift",
+            shift.patternName ?: stringResource(R.string.shifts_default_name),
             size = Theme.type.title3,
             lineHeight = Theme.type.title3Line,
             weight = FontWeight.Bold,
         )
         AppText(when_, tone = TextTone.MUTED)
         AppText(
-            ShiftRules.formatDuration(shift.durationMinutes) +
-                if (overnight) " · finishes the next day" else "",
+            if (overnight)
+                stringResource(R.string.shifts_finishes_next_day_suffix, ShiftRules.formatDuration(shift.durationMinutes))
+            else
+                ShiftRules.formatDuration(shift.durationMinutes),
             size = Theme.type.footnote,
             lineHeight = Theme.type.footnoteLine,
             tone = TextTone.MUTED,
@@ -409,11 +443,16 @@ private fun NextShiftCard(shift: ShiftRules.Shift, today: LocalDate) {
 private fun ShiftRow(shift: ShiftRules.Shift, offering: Boolean = false, onOffer: (() -> Unit)? = null) {
     val state = ShiftRules.stateOf(shift, Instant.now())
     val times = "${ShiftRules.formatClock(shift.startsAt)} – ${ShiftRules.formatClock(shift.endsAt)}"
-    val name = shift.patternName ?: "Shift"
+    val name = shift.patternName ?: stringResource(R.string.shifts_default_name)
 
     AppCard(
         muted = state == ShiftRules.State.PAST,
-        contentDescription = "$name, $times, ${ShiftRules.formatDuration(shift.durationMinutes)}",
+        contentDescription = stringResource(
+            R.string.shifts_row_content_description,
+            name,
+            times,
+            ShiftRules.formatDuration(shift.durationMinutes),
+        ),
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -423,7 +462,7 @@ private fun ShiftRow(shift: ShiftRules.Shift, offering: Boolean = false, onOffer
             Column(Modifier.weight(1f)) {
                 AppText(name, weight = FontWeight.Medium)
                 AppText(
-                    "$times · ${ShiftRules.formatDuration(shift.durationMinutes)}",
+                    stringResource(R.string.shifts_row_summary, times, ShiftRules.formatDuration(shift.durationMinutes)),
                     size = Theme.type.footnote,
                     lineHeight = Theme.type.footnoteLine,
                     tone = TextTone.MUTED,
@@ -432,10 +471,10 @@ private fun ShiftRow(shift: ShiftRules.Shift, offering: Boolean = false, onOffer
             // The state in words. A past shift dimmed only by opacity is
             // indistinguishable from a disabled one.
             when (state) {
-                ShiftRules.State.IN_PROGRESS -> StatusPill("Now", PillTone.SUCCESS)
-                ShiftRules.State.PAST -> StatusPill("Finished", PillTone.NEUTRAL)
+                ShiftRules.State.IN_PROGRESS -> StatusPill(stringResource(R.string.shifts_status_now), PillTone.SUCCESS)
+                ShiftRules.State.PAST -> StatusPill(stringResource(R.string.shifts_status_finished), PillTone.NEUTRAL)
                 ShiftRules.State.UPCOMING ->
-                    if (ShiftRules.isOvernight(shift)) StatusPill("Overnight", PillTone.INFO)
+                    if (ShiftRules.isOvernight(shift)) StatusPill(stringResource(R.string.shifts_status_overnight), PillTone.INFO)
             }
         }
 
@@ -443,12 +482,12 @@ private fun ShiftRow(shift: ShiftRules.Shift, offering: Boolean = false, onOffer
         // worked, or already finished, is a request nobody can act on.
         if (onOffer != null && state == ShiftRules.State.UPCOMING) {
             AppButton(
-                label = "Offer this shift",
+                label = stringResource(R.string.shifts_offer_action),
                 variant = ButtonVariant.GHOST,
                 fullWidth = false,
                 busy = offering,
                 onClick = onOffer,
-                contentDescription = "Offer $name on ${shift.shiftDate} to a colleague",
+                contentDescription = stringResource(R.string.shifts_offer_content_description, name, shift.shiftDate),
             )
         }
     }
@@ -477,8 +516,8 @@ fun PayslipsScreen(container: AppContainer, onOpen: (String) -> Unit) {
             LoadedContent(state, skeletonRows = 5) { payslips ->
                 if (payslips.isEmpty()) {
                     EmptyState(
-                        title = "No payslips yet",
-                        description = "A payslip appears here once the payroll run covering it has been approved. Runs still being corrected are not shown.",
+                        title = stringResource(R.string.payslips_empty_title),
+                        description = stringResource(R.string.payslips_empty_description),
                     )
                 }
             }
@@ -499,11 +538,14 @@ private fun PayslipRow(payslip: PayslipDto, onOpen: (String) -> Unit) {
         java.time.YearMonth.of(payslip.periodYear, payslip.periodMonth)
             .format(java.time.format.DateTimeFormatter.ofPattern("LLLL yyyy"))
     } else {
-        "Payslip"
+        stringResource(R.string.payslips_fallback_period)
     }
     val amount = "₹%,.2f".format(payslip.netPay)
 
-    AppCard(onClick = { onOpen(payslip.id) }, contentDescription = "$period, net pay $amount") {
+    AppCard(
+        onClick = { onOpen(payslip.id) },
+        contentDescription = stringResource(R.string.payslips_content_description, period, amount),
+    ) {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -518,7 +560,10 @@ private fun PayslipRow(payslip: PayslipDto, onOpen: (String) -> Unit) {
             )
         }
         AppText(
-            "Net pay" + if (payslip.lopDays > 0) " · ${payslip.lopDays.toInt()} days loss of pay" else "",
+            if (payslip.lopDays > 0)
+                pluralStringResource(R.plurals.payslips_net_pay_with_lop, payslip.lopDays.toInt(), payslip.lopDays.toInt())
+            else
+                stringResource(R.string.payslips_net_pay_label),
             size = Theme.type.footnote,
             lineHeight = Theme.type.footnoteLine,
             tone = TextTone.MUTED,

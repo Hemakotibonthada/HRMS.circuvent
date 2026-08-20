@@ -37,4 +37,312 @@
     <string name="settings_dates_month_first">Month first</string>
     <string name="settings_language">Language</string>
     <string name="settings_language_system">Follow the device</string>
+
+    <!-- Staff directory. -->
+    <string name="directory_search_label">Search by name or email</string>
+    <string name="directory_empty_title">No colleagues listed</string>
+    <string name="directory_empty_description">The staff directory appears here.</string>
+    <string name="directory_no_results_title">Nobody found</string>
+    <string name="directory_no_results_description">No one matches \"%1$s\".</string>
+    <!-- %1$s: full name, %2$s: designation. -->
+    <string name="directory_person_content_description">%1$s, %2$s</string>
+
+    <!-- Company announcements. -->
+    <string name="announcements_pinned_pill">Pinned</string>
+    <string name="announcements_empty_title">Nothing announced</string>
+    <string name="announcements_empty_description">Notices from your company appear here.</string>
+
+    <!-- Holiday calendar. -->
+    <string name="holidays_optional_pill">Optional</string>
+    <string name="holidays_empty_title">No holidays listed</string>
+    <string name="holidays_empty_description">Your company\'s holiday calendar appears here once it is set.</string>
+    <!-- %1$s: holiday name, %2$s: date. -->
+    <string name="holidays_item_content_description">%1$s, %2$s</string>
+    <string name="holidays_item_content_description_optional">%1$s, %2$s, optional</string>
+
+    <!-- Expense claims. -->
+    <string name="expenses_claim_action">Claim an expense</string>
+    <string name="expenses_field_title">What was it for</string>
+    <string name="expenses_field_date">Date (YYYY-MM-DD)</string>
+    <string name="expenses_field_amount">Amount (₹)</string>
+    <string name="expenses_field_notes">Anything else</string>
+    <string name="expenses_category_label">Category</string>
+    <string name="expenses_category_travel">Travel</string>
+    <string name="expenses_category_meals">Meals</string>
+    <string name="expenses_category_accommodation">Accommodation</string>
+    <string name="expenses_receipt_note">Attach the receipt on the web before this is approved.</string>
+    <string name="expenses_submit_action">Submit claim</string>
+    <string name="expenses_submitting_action">Sending…</string>
+    <string name="expenses_claim_submitted">Claim submitted.</string>
+    <string name="expenses_claim_failed">The claim could not be submitted.</string>
+    <string name="expenses_cancel_action">Cancel</string>
+    <string name="expenses_section_claims">Your claims</string>
+    <string name="expenses_empty_title">No claims</string>
+    <string name="expenses_empty_description">Expenses you claim appear here with where they have got to.</string>
+    <!-- %1$s: claim title, %2$s: status. -->
+    <string name="expenses_item_content_description">%1$s, %2$s</string>
+    <!-- %1$s: amount, %2$s: category. -->
+    <string name="expenses_item_summary">₹%1$s · %2$s</string>
+    <!-- %1$s: amount, %2$s: category, %3$s: date. -->
+    <string name="expenses_item_summary_dated">₹%1$s · %2$s · %3$s</string>
+
+    <!-- Digital ID card. -->
+    <string name="id_card_signed_out_title">Not signed in</string>
+    <string name="id_card_signed_out_description">Sign in to see your identity card.</string>
+    <!-- %1$s: first name, %2$s: last name. -->
+    <string name="id_card_full_name">%1$s %2$s</string>
+    <string name="id_card_role_label">Role</string>
+    <string name="id_card_employee_label">Employee</string>
+    <string name="id_card_disclaimer">This card is drawn from your signed-in session and works without a connection. It is not a legal identity document.</string>
+
+    <!-- Leave (Screens.kt). -->
+    <string name="leave_apply_action">Apply for leave</string>
+    <string name="leave_apply_content_description">Opens the leave request form</string>
+    <string name="leave_balance_heading">Your balance</string>
+    <string name="leave_requests_heading">Your requests</string>
+    <string name="leave_empty_title">No leave requests yet</string>
+    <string name="leave_empty_description">Anything you apply for appears here, with where it has got to in the approval chain.</string>
+    <!-- %1$s: leave type, %2$s: date range, %3$s: status. -->
+    <string name="leave_item_content_description">%1$s leave, %2$s, %3$s</string>
+    <string name="leave_item_half_day">%1$s · half day</string>
+    <plurals name="leave_item_days">
+        <item quantity="one">%1$s · %2$d day</item>
+        <item quantity="other">%1$s · %2$d days</item>
+    </plurals>
+    <!-- %1$s: leave type, %2$d: available days, %3$d: entitled days. -->
+    <string name="leave_balance_content_description">%1$s: %2$d of %3$d days available</string>
+    <!-- %4$d: days taken or pending. -->
+    <string name="leave_balance_content_description_spent">%1$s: %2$d of %3$d days available, %4$d taken or pending</string>
+    <string name="leave_balance_content_description_none">%1$s: none granted</string>
+    <!-- Leading space is intentional: concatenated after a bold number, e.g. "5" + " of 10 days". -->
+    <string name="leave_balance_of_days_suffix">" of %1$s days"</string>
+    <string name="leave_balance_none_granted">None granted</string>
+    <string name="leave_balance_spent_note">%1$s taken or awaiting a decision</string>
+
+    <!-- Shifts (Screens.kt). -->
+    <string name="shifts_empty_title">No shifts scheduled</string>
+    <string name="shifts_empty_description">Nothing has been published for you in the next four weeks. Published rosters appear here as soon as your manager releases them.</string>
+    <string name="shifts_offer_success">Offered. Somebody on your team can now take it, and your manager decides.</string>
+    <string name="shifts_offer_failed">That shift could not be offered.</string>
+    <string name="shifts_default_name">Shift</string>
+    <string name="shifts_next_content_description_active">On shift now: %1$s</string>
+    <string name="shifts_next_content_description_upcoming">Next shift: %1$s</string>
+    <string name="shifts_next_badge_active">ON SHIFT NOW</string>
+    <string name="shifts_next_badge_upcoming">NEXT SHIFT</string>
+    <string name="shifts_finishes_next_day_suffix">%1$s · finishes the next day</string>
+    <!-- %1$s: shift name, %2$s: time range, %3$s: duration. -->
+    <string name="shifts_row_content_description">%1$s, %2$s, %3$s</string>
+    <string name="shifts_row_summary">%1$s · %2$s</string>
+    <string name="shifts_status_now">Now</string>
+    <string name="shifts_status_finished">Finished</string>
+    <string name="shifts_status_overnight">Overnight</string>
+    <string name="shifts_offer_action">Offer this shift</string>
+    <string name="shifts_offer_content_description">Offer %1$s on %2$s to a colleague</string>
+
+    <!-- Payslips (Screens.kt). -->
+    <string name="payslips_empty_title">No payslips yet</string>
+    <string name="payslips_empty_description">A payslip appears here once the payroll run covering it has been approved. Runs still being corrected are not shown.</string>
+    <string name="payslips_fallback_period">Payslip</string>
+    <!-- %1$s: period, %2$s: net pay amount. -->
+    <string name="payslips_content_description">%1$s, net pay %2$s</string>
+    <string name="payslips_net_pay_label">Net pay</string>
+    <plurals name="payslips_net_pay_with_lop">
+        <item quantity="one">Net pay · %1$d day loss of pay</item>
+        <item quantity="other">Net pay · %1$d days loss of pay</item>
+    </plurals>
+
+    <!-- Approvals (MoreScreens.kt). -->
+    <string name="approvals_empty_title">Nothing is waiting for you</string>
+    <string name="approvals_empty_description">Leave requests needing your decision appear here as soon as they are submitted.</string>
+    <string name="approvals_decision_error">The decision was not recorded</string>
+    <string name="approvals_unknown_employee">An employee</string>
+    <string name="approvals_yours_pill">Yours</string>
+    <!-- %1$s: leave type, %2$s: date range. -->
+    <string name="approvals_item_half_day">%1$s · %2$s · half day</string>
+    <!-- %1$s: leave type, %2$s: date range, %3$d: number of days. -->
+    <plurals name="approvals_item_days">
+        <item quantity="one">%1$s · %2$s · %3$d day</item>
+        <item quantity="other">%1$s · %2$s · %3$d days</item>
+    </plurals>
+    <string name="approvals_own_request_note">This is your own request. Someone else has to decide it.</string>
+    <string name="approvals_rejection_reason_label">Reason for rejection</string>
+    <string name="approvals_reason_required">Give a reason. The person needs to know why.</string>
+    <string name="approvals_confirm_rejection_action">Confirm rejection</string>
+    <string name="approvals_back_action">Back</string>
+    <string name="approvals_approve_action">Approve</string>
+    <!-- %1$s: employee name, %2$s: leave type. -->
+    <string name="approvals_approve_content_description">Approve %1$s\'s %2$s leave</string>
+    <string name="approvals_reject_action">Reject</string>
+    <string name="approvals_reject_content_description">Reject %1$s\'s %2$s leave</string>
+
+    <!-- Settings (MoreScreens.kt). -->
+    <!-- %1$s: first name, %2$s: last name. -->
+    <string name="settings_user_full_name">%1$s %2$s</string>
+    <string name="settings_biometric_unlock_label">Biometric unlock</string>
+    <string name="settings_biometric_checking">Checking…</string>
+    <string name="settings_biometric_locks_note">Locks the app when you come back to it after a minute away.</string>
+    <string name="settings_biometric_not_enrolled_note">Set up a biometric in your device settings to use this.</string>
+    <string name="settings_biometric_unavailable_note">This device does not support biometric unlock.</string>
+    <string name="settings_biometric_confirm_prompt">Confirm it is you</string>
+    <string name="settings_biometric_not_enabled_title">Biometric unlock was not turned on</string>
+    <string name="settings_biometric_not_enabled_message">Biometric unlock was not turned on, because the check did not pass.</string>
+    <string name="settings_biometric_disclaimer">This unlocks a session you already have. It is not a way of signing in, and it proves nothing to the server.</string>
+    <string name="settings_sign_out_action">Sign out</string>
+    <plurals name="settings_pending_actions">
+        <item quantity="one">%1$d action has not been sent yet.</item>
+        <item quantity="other">%1$d actions have not been sent yet.</item>
+    </plurals>
+
+    <!-- Payslip detail (MoreScreens.kt). -->
+    <string name="payslip_detail_not_found_title">This payslip could not be found</string>
+    <string name="payslip_detail_not_found_description">It may belong to a run that was withdrawn for correction.</string>
+    <string name="payslip_detail_gross_label">Gross</string>
+    <string name="payslip_detail_total_deductions_label">Total deductions</string>
+    <string name="payslip_detail_working_days_label">Working days</string>
+    <string name="payslip_detail_present_days_label">Days present</string>
+    <string name="payslip_detail_loss_of_pay_label">Loss of pay</string>
+    <plurals name="payslip_detail_lop_days_value">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <string name="payslip_detail_flagged_title">Flagged for review</string>
+    <string name="payslip_detail_disclaimer">If any figure here looks wrong, raise it with HR rather than recalculating it yourself — the amounts come from the payroll run and this screen does no arithmetic of its own.</string>
+
+    <!-- Benefits (BenefitsAssetsScreens.kt). -->
+    <string name="benefits_empty_title">No benefits set up</string>
+    <string name="benefits_empty_description">Plans your employer offers, and anything you are enrolled in, appear here.</string>
+    <string name="benefits_your_cover_heading">Your cover</string>
+    <string name="benefits_not_enrolled_note">You are not enrolled in any plan.</string>
+    <string name="benefits_plan_fallback_name">Plan</string>
+    <!-- %1$s: plan name, %2$s: enrolment status. -->
+    <string name="benefits_enrolment_content_description">%1$s, %2$s</string>
+    <string name="benefits_plan_year_label">Plan year %1$d</string>
+    <string name="benefits_coverage_from_prefix">from %1$s</string>
+    <string name="benefits_pay_amount">You pay %1$s</string>
+    <string name="benefits_available_plans_heading">Available plans</string>
+    <string name="benefits_automatic_pill">Automatic</string>
+    <string name="benefits_coverage_amount_label">cover %1$s</string>
+    <string name="benefits_enroll_on_web_title">Enrolling is done on the web</string>
+    <string name="benefits_enroll_on_web_description">Enrolment windows and the cost comparison need a bigger screen than this one. Sign in at hrms.circuvent.com.</string>
+    <string name="benefits_dependants_heading">Dependants</string>
+    <!-- %1$s: dependant full name, %2$s: relation. -->
+    <string name="benefits_dependant_content_description">%1$s, %2$s</string>
+    <string name="benefits_nominee_pill">Nominee</string>
+    <string name="benefits_nominee_share_label">%1$d%% share</string>
+
+    <!-- Assets (BenefitsAssetsScreens.kt). -->
+    <string name="assets_empty_title">Nothing issued to you</string>
+    <string name="assets_empty_description">Laptops, phones and other equipment assigned to you appear here.</string>
+    <!-- %1$s: asset name, %2$s: asset tag, %3$s: condition. -->
+    <string name="assets_item_content_description">%1$s, tag %2$s, %3$s</string>
+    <string name="assets_warranty_expires_template">Warranty expires %1$s</string>
+    <string name="assets_warranty_soon_fallback">soon</string>
+    <string name="assets_under_warranty_until_template">Under warranty until %1$s</string>
+
+    <!-- Check-ins (BenefitsAssetsScreens.kt). -->
+    <string name="checkins_empty_title">No check-ins recorded</string>
+    <string name="checkins_empty_description">Notes and agreed actions from your one-to-ones appear here once your manager records them.</string>
+    <string name="checkins_mood_rating">Mood %1$d of 5</string>
+    <string name="checkins_from_manager_label">From your manager</string>
+    <string name="checkins_your_notes_label">Your notes</string>
+    <string name="checkins_agreed_actions_label">Agreed actions</string>
+    <string name="checkins_action_due_suffix">" (by %1$s)"</string>
+
+    <!-- Tax declaration (TaxScreens.kt). -->
+    <!-- %1$d: financial year start (e.g. 2024), %2$d: 2-digit financial year end (e.g. 25). -->
+    <string name="tax_financial_year_label">Financial year %1$d-%2$d</string>
+    <string name="tax_declaration_intro">Declare what you will invest so tax is deducted against it each month, rather than all at once in March.</string>
+    <string name="tax_regime_heading">Tax regime</string>
+    <string name="tax_regime_new_label">New regime</string>
+    <string name="tax_regime_old_label">Old regime</string>
+    <string name="tax_regime_new_description">Lower rates. Almost nothing below counts.</string>
+    <string name="tax_regime_old_description">Higher rates, but your investments reduce the tax.</string>
+    <string name="tax_new_regime_warning_title">These will not reduce your tax</string>
+    <string name="tax_new_regime_warning_description">The new regime allows the standard deduction and your employer\'s NPS contribution, and nothing else on this form. Switch to the old regime to use them.</string>
+    <string name="tax_house_rent_heading">House rent</string>
+    <string name="tax_annual_rent_label">Annual rent paid (₹)</string>
+    <!-- The cities recognised as metros for HRA exemption purposes; statutory, do not reword. -->
+    <string name="tax_metro_cities_label">Delhi, Mumbai, Kolkata or Chennai</string>
+    <string name="tax_health_cover_heading">Health cover</string>
+    <string name="tax_senior_self_label">I or my family are 60 or over</string>
+    <string name="tax_senior_parents_label">My parents are 60 or over</string>
+    <string name="tax_claiming_heading">What you are claiming</string>
+    <string name="tax_cap_up_to_prefix">up to %1$s</string>
+    <string name="tax_amount_label">Amount (₹)</string>
+    <string name="tax_reason_not_allowed_new_regime">Not allowed under the new regime</string>
+    <string name="tax_reason_over_section_cap">Above this section\'s limit</string>
+    <string name="tax_reason_over_shared_cap">The shared limit is already used</string>
+    <string name="tax_reason_proof_missing">No proof was accepted</string>
+    <string name="tax_reason_excluded_by_other_section">Replaced by another section</string>
+    <string name="tax_counts_as_prefix">Counts as %1$s</string>
+    <string name="tax_proof_needed_pill">Proof needed</string>
+    <string name="tax_reduces_heading">What this reduces</string>
+    <string name="tax_claims_allowed_label">Claims allowed</string>
+    <string name="tax_standard_deduction_label">Standard deduction</string>
+    <string name="tax_total_relief_label">Total relief</string>
+    <string name="tax_saving_action">Saving…</string>
+    <string name="tax_save_declaration_action">Save declaration</string>
+    <string name="tax_declaration_saved">Declaration saved.</string>
+    <string name="tax_declaration_save_failed">The declaration could not be saved.</string>
+    <string name="tax_view_form16_action">View Form 16</string>
+
+    <!-- Form 16 (TaxScreens.kt). Section labels follow the statutory annexure; keep wording verbatim. -->
+    <string name="form16_empty_title">Nothing to certify yet</string>
+    <string name="form16_empty_description">Form 16 is built from approved payroll. Once a run for this year has been approved, it appears here.</string>
+    <string name="form16_assessment_year_label">Assessment year %1$s</string>
+    <string name="form16_covers_all_months">Covers all 12 months.</string>
+    <string name="form16_covers_partial_months">Covers %1$d month(s) of approved payroll.</string>
+    <string name="form16_reconciliation_mismatch_title">Deductions do not match the liability</string>
+    <string name="form16_gross_salary_heading">Gross salary</string>
+    <string name="form16_salary_under_17_1_label">Salary under 17(1)</string>
+    <string name="form16_hra_exempt_label">Less: HRA exempt, 10(13A)</string>
+    <string name="form16_net_salary_label">Net salary</string>
+    <string name="form16_section16_heading">Deductions under section 16</string>
+    <string name="form16_standard_deduction_label">Standard deduction, 16(ia)</string>
+    <string name="form16_professional_tax_label">Professional tax, 16(iii)</string>
+    <string name="form16_section16_total_label">Total</string>
+    <string name="form16_chapter_via_heading">Chapter VI-A</string>
+    <string name="form16_chapter_via_nothing_claimed">Nothing claimed.</string>
+    <string name="form16_claimed_amount_prefix">claimed %1$s</string>
+    <string name="form16_chapter_via_total_label">Total</string>
+    <string name="form16_tax_heading">Tax</string>
+    <string name="form16_taxable_income_label">Taxable income</string>
+    <string name="form16_tax_on_income_label">Tax on income</string>
+    <string name="form16_rebate_87a_label">Less: rebate 87A</string>
+    <string name="form16_surcharge_label">Surcharge</string>
+    <string name="form16_cess_label">Cess</string>
+    <string name="form16_tax_payable_label">Tax payable</string>
+    <string name="form16_relief_89_label">Less: relief under 89</string>
+    <string name="form16_net_tax_payable_label">Net tax payable</string>
+    <string name="form16_tax_deducted_label">Tax deducted</string>
+    <string name="form16_still_to_pay_label">Still to pay</string>
+    <string name="form16_refund_due_label">Refund due</string>
+    <string name="form16_quarterly_returns_heading">Quarterly returns</string>
+    <string name="form16_quarter_label">Q%1$d</string>
+    <string name="form16_form24q_note">These are the figures your employer files in Form 24Q.</string>
+    <string name="form16_part_a_title">Part A comes from TRACES</string>
+
+    <!-- Goals (GoalsScreen.kt) -->
+    <string name="goals_load_error_title">Your goals could not be loaded</string>
+    <string name="goals_progress_save_error_title">That progress was not saved</string>
+    <string name="goals_empty_cycle_title">No review cycle is open</string>
+    <string name="goals_empty_cycle_description">When HR opens a cycle, the goals set for you appear here and you can record progress against them.</string>
+    <string name="goals_cycle_fallback">Cycle</string>
+    <string name="goals_cycle_name_fallback">Review cycle</string>
+    <string name="goals_status_closed">Closed</string>
+    <string name="goals_self_review_due">Your self-review is due %1$s</string>
+    <string name="goals_empty_goals_title">No goals in this cycle</string>
+    <string name="goals_empty_goals_description">Goals are usually agreed with your manager. Once they are set, you can record progress here.</string>
+    <string name="goals_target_of_value">of %1$s</string>
+    <string name="goals_weight_percent">Weight %1$d%%</string>
+    <string name="goals_progress_content_description">Progress on %1$s, %2$d percent</string>
+    <string name="goals_due_date">Due %1$s</string>
+    <string name="goals_save_progress_action">Save progress</string>
+    <string name="goals_undo_action">Undo</string>
+    <string name="goals_saved_label">Saved</string>
+    <string name="goal_status_not_started">Not started</string>
+    <string name="goal_status_in_progress">In progress</string>
+    <string name="goal_status_at_risk">At risk</string>
+    <string name="goal_status_completed">Done</string>
+    <string name="goal_status_dropped">Dropped</string>
 </resources>

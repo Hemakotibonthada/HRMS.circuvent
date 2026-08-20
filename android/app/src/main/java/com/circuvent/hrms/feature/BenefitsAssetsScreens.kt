@@ -16,9 +16,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppText
@@ -86,15 +88,15 @@ fun BenefitsScreen(container: AppContainer) {
                     val (enrolments, plans, dependants) = current.value
                     if (enrolments.isEmpty() && plans.isEmpty() && dependants.isEmpty()) {
                         EmptyState(
-                            title = "No benefits set up",
-                            description = "Plans your employer offers, and anything you are enrolled in, appear here.",
+                            title = stringResource(R.string.benefits_empty_title),
+                            description = stringResource(R.string.benefits_empty_description),
                         )
                     } else {
                         Column {
-                            SectionLabel("Your cover")
+                            SectionLabel(stringResource(R.string.benefits_your_cover_heading))
                             if (enrolments.isEmpty()) {
                                 AppText(
-                                    "You are not enrolled in any plan.",
+                                    stringResource(R.string.benefits_not_enrolled_note),
                                     size = Theme.type.footnote,
                                     lineHeight = Theme.type.footnoteLine,
                                     tone = TextTone.MUTED,
@@ -108,15 +110,20 @@ fun BenefitsScreen(container: AppContainer) {
 
         (state as? Loaded.Ready)?.value?.let { (enrolments, plans, dependants) ->
             items(enrolments, key = { it.id }) { enrolment ->
+                val planName = enrolment.planName ?: stringResource(R.string.benefits_plan_fallback_name)
                 AppCard(
-                    contentDescription = "${enrolment.planName ?: "Plan"}, ${readableWord(enrolment.status)}",
+                    contentDescription = stringResource(
+                        R.string.benefits_enrolment_content_description,
+                        planName,
+                        readableWord(enrolment.status),
+                    ),
                 ) {
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        AppText(enrolment.planName ?: "Plan", weight = FontWeight.Medium)
+                        AppText(planName, weight = FontWeight.Medium)
                         StatusPill(
                             readableWord(enrolment.status),
                             when (enrolment.status) {
@@ -129,8 +136,8 @@ fun BenefitsScreen(container: AppContainer) {
                     }
                     AppText(
                         listOfNotNull(
-                            "Plan year ${enrolment.planYear}",
-                            enrolment.coverageFrom?.let { "from $it" },
+                            stringResource(R.string.benefits_plan_year_label, enrolment.planYear),
+                            enrolment.coverageFrom?.let { stringResource(R.string.benefits_coverage_from_prefix, it) },
                         ).joinToString(" · "),
                         size = Theme.type.caption,
                         lineHeight = Theme.type.captionLine,
@@ -138,7 +145,7 @@ fun BenefitsScreen(container: AppContainer) {
                     )
                     if (enrolment.employeeCost > 0) {
                         AppText(
-                            "You pay ₹%,.2f".format(enrolment.employeeCost),
+                            stringResource(R.string.benefits_pay_amount, "₹%,.2f".format(enrolment.employeeCost)),
                             size = Theme.type.footnote,
                             lineHeight = Theme.type.footnoteLine,
                         )
@@ -147,7 +154,7 @@ fun BenefitsScreen(container: AppContainer) {
             }
 
             if (plans.isNotEmpty()) {
-                item { SectionLabel("Available plans") }
+                item { SectionLabel(stringResource(R.string.benefits_available_plans_heading)) }
                 items(plans, key = { it.id }) { plan ->
                     AppCard(muted = plan.isEligible == false) {
                         Row(
@@ -156,13 +163,15 @@ fun BenefitsScreen(container: AppContainer) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AppText(plan.name, weight = FontWeight.Medium, maxLines = 2)
-                            if (plan.isAutoEnrolled) StatusPill("Automatic", PillTone.INFO)
+                            if (plan.isAutoEnrolled) StatusPill(stringResource(R.string.benefits_automatic_pill), PillTone.INFO)
                         }
                         AppText(
                             listOfNotNull(
                                 readableWord(plan.benefitType),
                                 plan.provider,
-                                plan.coverageAmount?.let { "cover ₹%,.0f".format(it) },
+                                plan.coverageAmount?.let {
+                                    stringResource(R.string.benefits_coverage_amount_label, "₹%,.0f".format(it))
+                                },
                             ).joinToString(" · "),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
@@ -185,17 +194,21 @@ fun BenefitsScreen(container: AppContainer) {
                     // conclude the app is broken.
                     Banner(
                         BannerTone.INFO,
-                        "Enrolling is done on the web",
-                        description = "Enrolment windows and the cost comparison need a bigger screen than this one. Sign in at hrms.circuvent.com.",
+                        stringResource(R.string.benefits_enroll_on_web_title),
+                        description = stringResource(R.string.benefits_enroll_on_web_description),
                     )
                 }
             }
 
             if (dependants.isNotEmpty()) {
-                item { SectionLabel("Dependants") }
+                item { SectionLabel(stringResource(R.string.benefits_dependants_heading)) }
                 items(dependants, key = { it.id }) { dependant ->
                     AppCard(
-                        contentDescription = "${dependant.fullName}, ${readableWord(dependant.relation)}",
+                        contentDescription = stringResource(
+                            R.string.benefits_dependant_content_description,
+                            dependant.fullName,
+                            readableWord(dependant.relation),
+                        ),
                     ) {
                         Row(
                             Modifier.fillMaxWidth(),
@@ -203,13 +216,15 @@ fun BenefitsScreen(container: AppContainer) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AppText(dependant.fullName, weight = FontWeight.Medium)
-                            if (dependant.isNominee) StatusPill("Nominee", PillTone.INFO)
+                            if (dependant.isNominee) StatusPill(stringResource(R.string.benefits_nominee_pill), PillTone.INFO)
                         }
                         AppText(
                             listOfNotNull(
                                 readableWord(dependant.relation),
                                 dependant.dateOfBirth,
-                                dependant.nomineeSharePercent?.let { "$it% share" },
+                                dependant.nomineeSharePercent?.let {
+                                    stringResource(R.string.benefits_nominee_share_label, it)
+                                },
                             ).joinToString(" · "),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
@@ -253,8 +268,8 @@ fun AssetsScreen(container: AppContainer) {
                 is Loaded.Failed -> Banner(BannerTone.ERROR, current.title, description = current.description)
                 is Loaded.Ready -> if (current.value.isEmpty()) {
                     EmptyState(
-                        title = "Nothing issued to you",
-                        description = "Laptops, phones and other equipment assigned to you appear here.",
+                        title = stringResource(R.string.assets_empty_title),
+                        description = stringResource(R.string.assets_empty_description),
                     )
                 }
             }
@@ -263,7 +278,12 @@ fun AssetsScreen(container: AppContainer) {
         (state as? Loaded.Ready)?.value?.let { assets ->
             items(assets, key = { it.id }) { asset ->
                 AppCard(
-                    contentDescription = "${asset.name}, tag ${asset.assetTag}, ${readableWord(asset.condition)}",
+                    contentDescription = stringResource(
+                        R.string.assets_item_content_description,
+                        asset.name,
+                        asset.assetTag,
+                        readableWord(asset.condition),
+                    ),
                 ) {
                     Row(
                         Modifier.fillMaxWidth(),
@@ -289,13 +309,19 @@ fun AssetsScreen(container: AppContainer) {
                     // paying for it next week.
                     when {
                         asset.warrantyExpiringSoon == true -> AppText(
-                            "Warranty expires ${asset.warrantyExpiresOn ?: "soon"}",
+                            stringResource(
+                                R.string.assets_warranty_expires_template,
+                                asset.warrantyExpiresOn ?: stringResource(R.string.assets_warranty_soon_fallback),
+                            ),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
                             tone = TextTone.WARNING,
                         )
                         asset.isUnderWarranty == true -> AppText(
-                            "Under warranty until ${asset.warrantyExpiresOn ?: "—"}",
+                            stringResource(
+                                R.string.assets_under_warranty_until_template,
+                                asset.warrantyExpiresOn ?: "—",
+                            ),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
                             tone = TextTone.MUTED,
@@ -338,8 +364,8 @@ fun CheckInsScreen(container: AppContainer) {
                 is Loaded.Failed -> Banner(BannerTone.ERROR, current.title, description = current.description)
                 is Loaded.Ready -> if (current.value.isEmpty()) {
                     EmptyState(
-                        title = "No check-ins recorded",
-                        description = "Notes and agreed actions from your one-to-ones appear here once your manager records them.",
+                        title = stringResource(R.string.checkins_empty_title),
+                        description = stringResource(R.string.checkins_empty_description),
                     )
                 }
             }
@@ -354,12 +380,14 @@ fun CheckInsScreen(container: AppContainer) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         AppText(checkIn.heldOn, weight = FontWeight.Medium)
-                        checkIn.moodRating?.let { StatusPill("Mood $it of 5", PillTone.NEUTRAL) }
+                        checkIn.moodRating?.let {
+                            StatusPill(stringResource(R.string.checkins_mood_rating, it), PillTone.NEUTRAL)
+                        }
                     }
 
                     checkIn.managerNotes?.let {
                         AppText(
-                            "From your manager",
+                            stringResource(R.string.checkins_from_manager_label),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
                             tone = TextTone.MUTED,
@@ -370,7 +398,7 @@ fun CheckInsScreen(container: AppContainer) {
 
                     checkIn.employeeNotes?.let {
                         AppText(
-                            "Your notes",
+                            stringResource(R.string.checkins_your_notes_label),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
                             tone = TextTone.MUTED,
@@ -381,7 +409,7 @@ fun CheckInsScreen(container: AppContainer) {
 
                     if (checkIn.agreedActions.isNotEmpty()) {
                         AppText(
-                            "Agreed actions",
+                            stringResource(R.string.checkins_agreed_actions_label),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
                             tone = TextTone.MUTED,
@@ -389,7 +417,8 @@ fun CheckInsScreen(container: AppContainer) {
                         )
                         checkIn.agreedActions.forEach { action ->
                             AppText(
-                                "• ${action.description}" + (action.dueOn?.let { " (by $it)" } ?: ""),
+                                "• ${action.description}" +
+                                    (action.dueOn?.let { stringResource(R.string.checkins_action_due_suffix, it) } ?: ""),
                                 size = Theme.type.footnote,
                                 lineHeight = Theme.type.footnoteLine,
                             )

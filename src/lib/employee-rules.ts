@@ -90,6 +90,25 @@ export function normaliseStatus(value: string): string | null {
 // ── Addresses ────────────────────────────────────────────────
 
 /**
+ * Lower-cases each domain, strips a leading "@" (people paste either shape),
+ * and drops empty entries.
+ *
+ * The one place this normalisation is written down, shared by
+ * {@link companyEmailDomains} (the env-wide list) and, for a per-organisation
+ * list stored on `identity.organizations.settings`,
+ * `resolveCompanyEmailDomains` in `db/repositories/employee.neon.ts` — an
+ * org's own configuration deserves exactly the same cleanup a
+ * comma-separated env var gets, not a second, slightly different rule.
+ */
+export function normaliseEmailDomains(
+  domains: readonly (string | null | undefined)[]
+): string[] {
+  return domains
+    .map((d) => (d ?? "").trim().toLowerCase().replace(/^@/, ""))
+    .filter(Boolean);
+}
+
+/**
  * The domains the company issues staff addresses on.
  *
  * An employee record's address is their *work* address — what payroll, the
@@ -98,14 +117,21 @@ export function normaliseStatus(value: string): string | null {
  * not how you identify a colleague. `COMPANY_EMAIL_DOMAINS` may be overridden
  * for a deployment that is not ours, because acquiring a second trading domain
  * is ordinary and should not need a code change.
+ *
+ * This is one list for the whole process — right for a single deployment, but
+ * this product is multi-tenant, and every organisation issues staff addresses
+ * on its own domain, not this one. Callers that know which organisation they
+ * are acting for should prefer `resolveCompanyEmailDomains` in
+ * `db/repositories/employee.neon.ts`, which reads that organisation's own
+ * list and falls back to this function only when it has not set one. This
+ * function stays exactly as it was — no organisation, no database, just the
+ * env var and the built-in default — because callers with no org context
+ * (and the tests here) still need it to mean what it always meant.
  */
 export function companyEmailDomains(
   env: Record<string, string | undefined> = process.env
 ): readonly string[] {
-  const configured = (env.COMPANY_EMAIL_DOMAINS ?? "")
-    .split(",")
-    .map((d) => d.trim().toLowerCase().replace(/^@/, ""))
-    .filter(Boolean);
+  const configured = normaliseEmailDomains((env.COMPANY_EMAIL_DOMAINS ?? "").split(","));
   return configured.length > 0 ? configured : ["circuvent.com"];
 }
 

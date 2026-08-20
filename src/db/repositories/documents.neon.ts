@@ -297,6 +297,16 @@ export class NeonDocumentsRepository {
       const identity = await loadOrgIdentity(this.ctx);
 
       let values: TokenValues = {
+        // No document in the catalog can be issued undated, and unlike
+        // identity or employee data there is no record this could be read
+        // from — "today" is the only honest default. It sat unresolved here
+        // (employeeTokens() below computes the same date but under the key
+        // "today", not "issue_date", so it never satisfied this token), which
+        // 422'd every template that has {{issue_date}}, including the offer
+        // letter, before a single value was ever supplied. `extraValues` can
+        // still override it for a letter deliberately dated to when the
+        // offer was decided rather than when it was rendered.
+        issue_date: new Date().toISOString().slice(0, 10),
         ...(identity ? identityTokens(identity) : {}),
         ...request.extraValues,
       };

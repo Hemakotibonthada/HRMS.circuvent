@@ -20,10 +20,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -109,7 +111,7 @@ fun DirectoryScreen(container: AppContainer) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                label = { Text("Search by name or email") },
+                label = { Text(stringResource(R.string.directory_search_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -125,16 +127,21 @@ fun DirectoryScreen(container: AppContainer) {
                 if (current.value.items.isEmpty()) {
                     item {
                         EmptyState(
-                            title = if (query.isBlank()) "No colleagues listed" else "Nobody found",
+                            title = if (query.isBlank()) stringResource(R.string.directory_empty_title)
+                                else stringResource(R.string.directory_no_results_title),
                             description =
-                                if (query.isBlank()) "The staff directory appears here."
-                                else "No one matches \"$query\".",
+                                if (query.isBlank()) stringResource(R.string.directory_empty_description)
+                                else stringResource(R.string.directory_no_results_description, query),
                         )
                     }
                 } else {
                     items(current.value.items, key = { it.id }) { person ->
                         AppCard(
-                            contentDescription = "${person.fullName}, ${person.designation}",
+                            contentDescription = stringResource(
+                                R.string.directory_person_content_description,
+                                person.fullName,
+                                person.designation,
+                            ),
                         ) {
                             AppText(
                                 person.fullName.ifBlank { "${person.firstName} ${person.lastName}".trim() },
@@ -188,8 +195,8 @@ fun AnnouncementsScreen(container: AppContainer) {
                 if (sorted.isEmpty()) {
                     item {
                         EmptyState(
-                            title = "Nothing announced",
-                            description = "Notices from your company appear here.",
+                            title = stringResource(R.string.announcements_empty_title),
+                            description = stringResource(R.string.announcements_empty_description),
                         )
                     }
                 } else {
@@ -201,7 +208,7 @@ fun AnnouncementsScreen(container: AppContainer) {
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AppText(notice.title, weight = FontWeight.SemiBold)
-                                if (notice.isPinned) StatusPill("Pinned", PillTone.INFO)
+                                if (notice.isPinned) StatusPill(stringResource(R.string.announcements_pinned_pill), PillTone.INFO)
                             }
                             AppText(
                                 notice.body,
@@ -260,16 +267,26 @@ fun HolidaysScreen(container: AppContainer) {
                 if (sorted.isEmpty()) {
                     item {
                         EmptyState(
-                            title = "No holidays listed",
-                            description = "Your company's holiday calendar appears here once it is set.",
+                            title = stringResource(R.string.holidays_empty_title),
+                            description = stringResource(R.string.holidays_empty_description),
                         )
                     }
                 } else {
                     items(sorted, key = { it.id }) { holiday ->
                         AppCard(
                             contentDescription =
-                                "${holiday.name}, ${readableDate(holiday.holidayDate)}" +
-                                    if (holiday.isOptional) ", optional" else "",
+                                if (holiday.isOptional)
+                                    stringResource(
+                                        R.string.holidays_item_content_description_optional,
+                                        holiday.name,
+                                        readableDate(holiday.holidayDate),
+                                    )
+                                else
+                                    stringResource(
+                                        R.string.holidays_item_content_description,
+                                        holiday.name,
+                                        readableDate(holiday.holidayDate),
+                                    ),
                         ) {
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -284,7 +301,7 @@ fun HolidaysScreen(container: AppContainer) {
                                         size = Theme.type.footnote,
                                     )
                                 }
-                                if (holiday.isOptional) StatusPill("Optional", PillTone.NEUTRAL)
+                                if (holiday.isOptional) StatusPill(stringResource(R.string.holidays_optional_pill), PillTone.NEUTRAL)
                             }
                             holiday.description?.takeIf { it.isNotBlank() }?.let {
                                 AppText(it, tone = TextTone.MUTED, size = Theme.type.caption)
@@ -314,6 +331,8 @@ fun ExpensesScreen(container: AppContainer) {
     var submitting by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
+    val claimSubmittedMessage = stringResource(R.string.expenses_claim_submitted)
+    val claimFailedMessage = stringResource(R.string.expenses_claim_failed)
 
     suspend fun load() {
         state = try {
@@ -335,35 +354,35 @@ fun ExpensesScreen(container: AppContainer) {
                 message?.let { (tone, text) -> Banner(tone, text) }
 
                 if (!showForm) {
-                    AppButton(label = "Claim an expense", onClick = { showForm = true })
+                    AppButton(label = stringResource(R.string.expenses_claim_action), onClick = { showForm = true })
                 } else {
                     AppCard {
-                        AppText("Claim an expense", weight = FontWeight.SemiBold)
+                        AppText(stringResource(R.string.expenses_claim_action), weight = FontWeight.SemiBold)
                         OutlinedTextField(
                             value = title,
                             onValueChange = { title = it },
-                            label = { Text("What was it for") },
+                            label = { Text(stringResource(R.string.expenses_field_title)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
                         )
                         OutlinedTextField(
                             value = date,
                             onValueChange = { date = it },
-                            label = { Text("Date (YYYY-MM-DD)") },
+                            label = { Text(stringResource(R.string.expenses_field_date)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
                         )
                         OutlinedTextField(
                             value = amount,
                             onValueChange = { amount = it.filter(Char::isDigit) },
-                            label = { Text("Amount (₹)") },
+                            label = { Text(stringResource(R.string.expenses_field_amount)) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
                         )
 
                         AppText(
-                            "Category",
+                            stringResource(R.string.expenses_category_label),
                             size = Theme.type.footnote,
                             tone = TextTone.MUTED,
                             modifier = Modifier.padding(top = Theme.spacing.sm),
@@ -374,7 +393,12 @@ fun ExpensesScreen(container: AppContainer) {
                         ) {
                             EXPENSE_CATEGORIES.take(3).forEach { c ->
                                 AppButton(
-                                    label = c.replaceFirstChar { it.uppercase() },
+                                    label = when (c) {
+                                        "travel" -> stringResource(R.string.expenses_category_travel)
+                                        "meals" -> stringResource(R.string.expenses_category_meals)
+                                        "accommodation" -> stringResource(R.string.expenses_category_accommodation)
+                                        else -> c.replaceFirstChar { it.uppercase() }
+                                    },
                                     variant = if (category == c) ButtonVariant.PRIMARY
                                     else ButtonVariant.SECONDARY,
                                     fullWidth = false,
@@ -387,7 +411,7 @@ fun ExpensesScreen(container: AppContainer) {
                         OutlinedTextField(
                             value = description,
                             onValueChange = { description = it },
-                            label = { Text("Anything else") },
+                            label = { Text(stringResource(R.string.expenses_field_notes)) },
                             modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
                         )
 
@@ -395,14 +419,15 @@ fun ExpensesScreen(container: AppContainer) {
                         // usually sent back, and finding that out a week later
                         // wastes everybody's time.
                         AppText(
-                            "Attach the receipt on the web before this is approved.",
+                            stringResource(R.string.expenses_receipt_note),
                             tone = TextTone.MUTED,
                             size = Theme.type.caption,
                             modifier = Modifier.padding(top = Theme.spacing.xs),
                         )
 
                         AppButton(
-                            label = if (submitting) "Sending…" else "Submit claim",
+                            label = if (submitting) stringResource(R.string.expenses_submitting_action)
+                                else stringResource(R.string.expenses_submit_action),
                             enabled = !submitting && title.isNotBlank() &&
                                 (amount.toLongOrNull() ?: 0L) > 0L && date.isNotBlank(),
                             busy = submitting,
@@ -425,10 +450,10 @@ fun ExpensesScreen(container: AppContainer) {
                                         showForm = false
                                         title = ""; amount = ""; description = ""; date = ""
                                         load()
-                                        message = BannerTone.SUCCESS to "Claim submitted."
+                                        message = BannerTone.SUCCESS to claimSubmittedMessage
                                     } catch (e: Throwable) {
                                         message = BannerTone.ERROR to
-                                            (e.message ?: "The claim could not be submitted.")
+                                            (e.message ?: claimFailedMessage)
                                     } finally {
                                         submitting = false
                                     }
@@ -436,14 +461,14 @@ fun ExpensesScreen(container: AppContainer) {
                             },
                         )
                         AppButton(
-                            label = "Cancel",
+                            label = stringResource(R.string.expenses_cancel_action),
                             variant = ButtonVariant.SECONDARY,
                             onClick = { showForm = false },
                         )
                     }
                 }
 
-                SectionLabel("Your claims")
+                SectionLabel(stringResource(R.string.expenses_section_claims))
             }
         }
 
@@ -452,13 +477,19 @@ fun ExpensesScreen(container: AppContainer) {
             if (ready.value.items.isEmpty()) {
                 item {
                     EmptyState(
-                        title = "No claims",
-                        description = "Expenses you claim appear here with where they have got to.",
+                        title = stringResource(R.string.expenses_empty_title),
+                        description = stringResource(R.string.expenses_empty_description),
                     )
                 }
             } else {
                 items(ready.value.items, key = { it.id }) { claim ->
-                    AppCard(contentDescription = "${claim.title}, ${claim.status}") {
+                    AppCard(
+                        contentDescription = stringResource(
+                            R.string.expenses_item_content_description,
+                            claim.title,
+                            claim.status,
+                        ),
+                    ) {
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -475,9 +506,19 @@ fun ExpensesScreen(container: AppContainer) {
                             )
                         }
                         AppText(
-                            "₹${claim.amount.toLong()} · ${claim.category}" +
-                                if (claim.expenseDate.length >= 10)
-                                    " · ${readableDate(claim.expenseDate.substring(0, 10))}" else "",
+                            if (claim.expenseDate.length >= 10)
+                                stringResource(
+                                    R.string.expenses_item_summary_dated,
+                                    claim.amount.toLong().toString(),
+                                    claim.category,
+                                    readableDate(claim.expenseDate.substring(0, 10)),
+                                )
+                            else
+                                stringResource(
+                                    R.string.expenses_item_summary,
+                                    claim.amount.toLong().toString(),
+                                    claim.category,
+                                ),
                             tone = TextTone.MUTED,
                             size = Theme.type.footnote,
                         )
@@ -505,14 +546,15 @@ fun IdCardScreen(user: SessionUser?) {
         item {
             if (user == null) {
                 EmptyState(
-                    title = "Not signed in",
-                    description = "Sign in to see your identity card.",
+                    title = stringResource(R.string.id_card_signed_out_title),
+                    description = stringResource(R.string.id_card_signed_out_description),
                 )
             } else {
                 AppCard {
-                    AppText("Circuvent HR", tone = TextTone.MUTED, size = Theme.type.caption)
+                    AppText(stringResource(R.string.app_name), tone = TextTone.MUTED, size = Theme.type.caption)
                     AppText(
-                        "${user.firstName} ${user.lastName}".trim().ifBlank { user.email },
+                        stringResource(R.string.id_card_full_name, user.firstName, user.lastName)
+                            .trim().ifBlank { user.email },
                         weight = FontWeight.Bold,
                         size = Theme.type.title2,
                         lineHeight = Theme.type.title2Line,
@@ -520,7 +562,7 @@ fun IdCardScreen(user: SessionUser?) {
                     AppText(user.email, tone = TextTone.MUTED, size = Theme.type.footnote)
                     Row(Modifier.fillMaxWidth().padding(top = Theme.spacing.sm)) {
                         Column(Modifier.weight(1f)) {
-                            AppText("Role", tone = TextTone.MUTED, size = Theme.type.caption)
+                            AppText(stringResource(R.string.id_card_role_label), tone = TextTone.MUTED, size = Theme.type.caption)
                             AppText(
                                 user.role.replaceFirstChar { it.uppercase() },
                                 weight = FontWeight.Medium,
@@ -528,7 +570,7 @@ fun IdCardScreen(user: SessionUser?) {
                         }
                         if (user.employeeCode != null) {
                             Column(Modifier.weight(1f)) {
-                                AppText("Employee", tone = TextTone.MUTED, size = Theme.type.caption)
+                                AppText(stringResource(R.string.id_card_employee_label), tone = TextTone.MUTED, size = Theme.type.caption)
                                 // The code, not the id. The first eight characters
                                 // of a UUID identify nobody to a human being, and
                                 // this card exists to be shown to one.
@@ -543,8 +585,7 @@ fun IdCardScreen(user: SessionUser?) {
 
                 AppCard {
                     AppText(
-                        "This card is drawn from your signed-in session and works without a " +
-                            "connection. It is not a legal identity document.",
+                        stringResource(R.string.id_card_disclaimer),
                         tone = TextTone.MUTED,
                         size = Theme.type.footnote,
                         lineHeight = Theme.type.footnoteLine,

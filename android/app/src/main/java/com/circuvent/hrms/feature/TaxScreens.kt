@@ -21,10 +21,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
@@ -76,12 +78,13 @@ private fun rupees(minor: String?): String {
     return "₹$grouped,$last3"
 }
 
+@Composable
 private fun reasonText(reason: String?): String? = when (reason) {
-    "not_allowed_in_new_regime" -> "Not allowed under the new regime"
-    "over_section_cap" -> "Above this section's limit"
-    "over_shared_cap" -> "The shared limit is already used"
-    "proof_missing" -> "No proof was accepted"
-    "excluded_by_other_section" -> "Replaced by another section"
+    "not_allowed_in_new_regime" -> stringResource(R.string.tax_reason_not_allowed_new_regime)
+    "over_section_cap" -> stringResource(R.string.tax_reason_over_section_cap)
+    "over_shared_cap" -> stringResource(R.string.tax_reason_over_shared_cap)
+    "proof_missing" -> stringResource(R.string.tax_reason_proof_missing)
+    "excluded_by_other_section" -> stringResource(R.string.tax_reason_excluded_by_other_section)
     else -> null
 }
 
@@ -146,20 +149,22 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
 
                         AppCard {
                             AppText(
-                                "Financial year ${data.declaration.financialYear}-" +
-                                    "${(data.declaration.financialYear + 1) % 100}",
+                                stringResource(
+                                    R.string.tax_financial_year_label,
+                                    data.declaration.financialYear,
+                                    (data.declaration.financialYear + 1) % 100,
+                                ),
                                 weight = FontWeight.SemiBold,
                             )
                             AppText(
-                                "Declare what you will invest so tax is deducted against it " +
-                                    "each month, rather than all at once in March.",
+                                stringResource(R.string.tax_declaration_intro),
                                 tone = TextTone.MUTED,
                                 size = Theme.type.footnote,
                                 lineHeight = Theme.type.footnoteLine,
                             )
                         }
 
-                        SectionLabel("Tax regime")
+                        SectionLabel(stringResource(R.string.tax_regime_heading))
                         AppCard {
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -168,14 +173,17 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     AppText(
-                                        if (regime == "new") "New regime" else "Old regime",
+                                        if (regime == "new")
+                                            stringResource(R.string.tax_regime_new_label)
+                                        else
+                                            stringResource(R.string.tax_regime_old_label),
                                         weight = FontWeight.Medium,
                                     )
                                     AppText(
                                         if (regime == "new")
-                                            "Lower rates. Almost nothing below counts."
+                                            stringResource(R.string.tax_regime_new_description)
                                         else
-                                            "Higher rates, but your investments reduce the tax.",
+                                            stringResource(R.string.tax_regime_old_description),
                                         tone = TextTone.MUTED,
                                         size = Theme.type.footnote,
                                         lineHeight = Theme.type.footnoteLine,
@@ -194,20 +202,17 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                         if (regime == "new" && amounts.values.any { (it.toLongOrNull() ?: 0) > 0 }) {
                             Banner(
                                 BannerTone.WARNING,
-                                "These will not reduce your tax",
-                                description =
-                                    "The new regime allows the standard deduction and your " +
-                                        "employer's NPS contribution, and nothing else on this form. " +
-                                        "Switch to the old regime to use them.",
+                                stringResource(R.string.tax_new_regime_warning_title),
+                                description = stringResource(R.string.tax_new_regime_warning_description),
                             )
                         }
 
-                        SectionLabel("House rent")
+                        SectionLabel(stringResource(R.string.tax_house_rent_heading))
                         AppCard {
                             OutlinedTextField(
                                 value = rent,
                                 onValueChange = { rent = it.filter(Char::isDigit) },
-                                label = { Text("Annual rent paid (₹)") },
+                                label = { Text(stringResource(R.string.tax_annual_rent_label)) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.fillMaxWidth(),
@@ -217,19 +222,19 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                AppText("Delhi, Mumbai, Kolkata or Chennai", size = Theme.type.footnote)
+                                AppText(stringResource(R.string.tax_metro_cities_label), size = Theme.type.footnote)
                                 AppSwitch(checked = metro, onCheckedChange = { metro = it })
                             }
                         }
 
-                        SectionLabel("Health cover")
+                        SectionLabel(stringResource(R.string.tax_health_cover_heading))
                         AppCard {
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                AppText("I or my family are 60 or over", size = Theme.type.footnote)
+                                AppText(stringResource(R.string.tax_senior_self_label), size = Theme.type.footnote)
                                 AppSwitch(checked = selfSenior, onCheckedChange = { selfSenior = it })
                             }
                             Row(
@@ -237,12 +242,12 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                AppText("My parents are 60 or over", size = Theme.type.footnote)
+                                AppText(stringResource(R.string.tax_senior_parents_label), size = Theme.type.footnote)
                                 AppSwitch(checked = parentsSenior, onCheckedChange = { parentsSenior = it })
                             }
                         }
 
-                        SectionLabel("What you are claiming")
+                        SectionLabel(stringResource(R.string.tax_claiming_heading))
 
                         val allowedBySection = data.summary.items.associateBy { it.section }
 
@@ -258,7 +263,7 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                                     AppText(section.code, weight = FontWeight.SemiBold)
                                     section.capMinor?.let {
                                         AppText(
-                                            "up to ${rupees(it)}",
+                                            stringResource(R.string.tax_cap_up_to_prefix, rupees(it)),
                                             tone = TextTone.MUTED,
                                             size = Theme.type.caption,
                                         )
@@ -273,7 +278,7 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                                 OutlinedTextField(
                                     value = entered,
                                     onValueChange = { amounts[section.code] = it.filter(Char::isDigit) },
-                                    label = { Text("Amount (₹)") },
+                                    label = { Text(stringResource(R.string.tax_amount_label)) },
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     modifier = Modifier
@@ -286,7 +291,7 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                                 if (allowed != null && allowed.allowedMinor != allowed.declaredMinor) {
                                     val why = reasonText(allowed.reason)
                                     AppText(
-                                        "Counts as ${rupees(allowed.allowedMinor)}" +
+                                        stringResource(R.string.tax_counts_as_prefix, rupees(allowed.allowedMinor)) +
                                             (why?.let { " — $it" } ?: ""),
                                         tone = TextTone.MUTED,
                                         size = Theme.type.caption,
@@ -294,24 +299,37 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                                 }
 
                                 if (section.requiresProof && entered.isNotBlank()) {
-                                    StatusPill("Proof needed", PillTone.WARNING)
+                                    StatusPill(stringResource(R.string.tax_proof_needed_pill), PillTone.WARNING)
                                 }
                             }
                         }
 
-                        SectionLabel("What this reduces")
+                        SectionLabel(stringResource(R.string.tax_reduces_heading))
                         AppCard {
-                            LabelledRow("Claims allowed", rupees(data.summary.totalAllowedMinor))
-                            LabelledRow("Standard deduction", rupees(data.summary.standardDeductionMinor))
                             LabelledRow(
-                                "Total relief",
+                                stringResource(R.string.tax_claims_allowed_label),
+                                rupees(data.summary.totalAllowedMinor),
+                            )
+                            LabelledRow(
+                                stringResource(R.string.tax_standard_deduction_label),
+                                rupees(data.summary.standardDeductionMinor),
+                            )
+                            LabelledRow(
+                                stringResource(R.string.tax_total_relief_label),
                                 rupees(data.summary.totalReliefMinor),
                                 emphasise = true,
                             )
                         }
 
+                        val declarationSavedMessage = stringResource(R.string.tax_declaration_saved)
+                        val declarationSaveFailedMessage = stringResource(R.string.tax_declaration_save_failed)
+
                         AppButton(
-                            label = if (saving) "Saving…" else "Save declaration",
+                            label = if (saving) {
+                                stringResource(R.string.tax_saving_action)
+                            } else {
+                                stringResource(R.string.tax_save_declaration_action)
+                            },
                             enabled = !saving,
                             busy = saving,
                             onClick = {
@@ -338,10 +356,10 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                                             )
                                         )
                                         load()
-                                        message = BannerTone.SUCCESS to "Declaration saved."
+                                        message = BannerTone.SUCCESS to declarationSavedMessage
                                     } catch (e: Throwable) {
                                         message = BannerTone.ERROR to
-                                            (e.message ?: "The declaration could not be saved.")
+                                            (e.message ?: declarationSaveFailedMessage)
                                     } finally {
                                         saving = false
                                     }
@@ -350,7 +368,7 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                         )
 
                         AppButton(
-                            label = "View Form 16",
+                            label = stringResource(R.string.tax_view_form16_action),
                             variant = ButtonVariant.SECONDARY,
                             onClick = onOpenForm16,
                         )
@@ -401,18 +419,22 @@ fun Form16Screen(container: AppContainer) {
 
                     if (data.monthsCovered == 0) {
                         EmptyState(
-                            title = "Nothing to certify yet",
-                            description =
-                                "Form 16 is built from approved payroll. Once a run for this " +
-                                    "year has been approved, it appears here.",
+                            title = stringResource(R.string.form16_empty_title),
+                            description = stringResource(R.string.form16_empty_description),
                         )
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                             AppCard {
-                                AppText("Assessment year ${data.assessmentYear}", weight = FontWeight.SemiBold)
                                 AppText(
-                                    if (data.complete) "Covers all 12 months."
-                                    else "Covers ${data.monthsCovered} month(s) of approved payroll.",
+                                    stringResource(R.string.form16_assessment_year_label, data.assessmentYear),
+                                    weight = FontWeight.SemiBold,
+                                )
+                                AppText(
+                                    if (data.complete) {
+                                        stringResource(R.string.form16_covers_all_months)
+                                    } else {
+                                        stringResource(R.string.form16_covers_partial_months, data.monthsCovered)
+                                    },
                                     tone = TextTone.MUTED,
                                     size = Theme.type.footnote,
                                 )
@@ -421,29 +443,53 @@ fun Form16Screen(container: AppContainer) {
                             if (!data.reconciliation.balanced) {
                                 Banner(
                                     BannerTone.WARNING,
-                                    "Deductions do not match the liability",
+                                    stringResource(R.string.form16_reconciliation_mismatch_title),
                                     description = data.reconciliation.message,
                                 )
                             }
 
-                            SectionLabel("Gross salary")
+                            SectionLabel(stringResource(R.string.form16_gross_salary_heading))
                             AppCard {
-                                LabelledRow("Salary under 17(1)", rupees(b.grossSalaryMinor))
-                                LabelledRow("Less: HRA exempt, 10(13A)", rupees(b.hraExemptUnder10_13AMinor))
-                                LabelledRow("Net salary", rupees(b.netSalaryMinor), emphasise = true)
+                                LabelledRow(
+                                    stringResource(R.string.form16_salary_under_17_1_label),
+                                    rupees(b.grossSalaryMinor),
+                                )
+                                LabelledRow(
+                                    stringResource(R.string.form16_hra_exempt_label),
+                                    rupees(b.hraExemptUnder10_13AMinor),
+                                )
+                                LabelledRow(
+                                    stringResource(R.string.form16_net_salary_label),
+                                    rupees(b.netSalaryMinor),
+                                    emphasise = true,
+                                )
                             }
 
-                            SectionLabel("Deductions under section 16")
+                            SectionLabel(stringResource(R.string.form16_section16_heading))
                             AppCard {
-                                LabelledRow("Standard deduction, 16(ia)", rupees(b.standardDeductionUnder16_iaMinor))
-                                LabelledRow("Professional tax, 16(iii)", rupees(b.professionalTaxUnder16_iiiMinor))
-                                LabelledRow("Total", rupees(b.totalSection16DeductionsMinor), emphasise = true)
+                                LabelledRow(
+                                    stringResource(R.string.form16_standard_deduction_label),
+                                    rupees(b.standardDeductionUnder16_iaMinor),
+                                )
+                                LabelledRow(
+                                    stringResource(R.string.form16_professional_tax_label),
+                                    rupees(b.professionalTaxUnder16_iiiMinor),
+                                )
+                                LabelledRow(
+                                    stringResource(R.string.form16_section16_total_label),
+                                    rupees(b.totalSection16DeductionsMinor),
+                                    emphasise = true,
+                                )
                             }
 
-                            SectionLabel("Chapter VI-A")
+                            SectionLabel(stringResource(R.string.form16_chapter_via_heading))
                             AppCard {
                                 if (b.chapterVIA.isEmpty()) {
-                                    AppText("Nothing claimed.", tone = TextTone.MUTED, size = Theme.type.footnote)
+                                    AppText(
+                                        stringResource(R.string.form16_chapter_via_nothing_claimed),
+                                        tone = TextTone.MUTED,
+                                        size = Theme.type.footnote,
+                                    )
                                 } else {
                                     b.chapterVIA.forEach { line ->
                                         LabelledRow(
@@ -452,44 +498,85 @@ fun Form16Screen(container: AppContainer) {
                                         )
                                         if (line.deductibleAmountMinor != line.grossAmountMinor) {
                                             AppText(
-                                                "claimed ${rupees(line.grossAmountMinor)}",
+                                                stringResource(
+                                                    R.string.form16_claimed_amount_prefix,
+                                                    rupees(line.grossAmountMinor),
+                                                ),
                                                 tone = TextTone.MUTED,
                                                 size = Theme.type.caption,
                                             )
                                         }
                                     }
-                                    LabelledRow("Total", rupees(b.aggregateDeductibleMinor), emphasise = true)
+                                    LabelledRow(
+                                        stringResource(R.string.form16_chapter_via_total_label),
+                                        rupees(b.aggregateDeductibleMinor),
+                                        emphasise = true,
+                                    )
                                 }
                             }
 
-                            SectionLabel("Tax")
+                            SectionLabel(stringResource(R.string.form16_tax_heading))
                             AppCard {
-                                LabelledRow("Taxable income", rupees(b.totalTaxableIncomeMinor))
-                                LabelledRow("Tax on income", rupees(b.taxOnTotalIncomeMinor))
-                                LabelledRow("Less: rebate 87A", rupees(b.rebateUnder87AMinor))
-                                LabelledRow("Surcharge", rupees(b.surchargeMinor))
-                                LabelledRow("Cess", rupees(b.cessMinor))
-                                LabelledRow("Tax payable", rupees(b.taxPayableMinor), emphasise = true)
+                                LabelledRow(
+                                    stringResource(R.string.form16_taxable_income_label),
+                                    rupees(b.totalTaxableIncomeMinor),
+                                )
+                                LabelledRow(
+                                    stringResource(R.string.form16_tax_on_income_label),
+                                    rupees(b.taxOnTotalIncomeMinor),
+                                )
+                                LabelledRow(
+                                    stringResource(R.string.form16_rebate_87a_label),
+                                    rupees(b.rebateUnder87AMinor),
+                                )
+                                LabelledRow(stringResource(R.string.form16_surcharge_label), rupees(b.surchargeMinor))
+                                LabelledRow(stringResource(R.string.form16_cess_label), rupees(b.cessMinor))
+                                LabelledRow(
+                                    stringResource(R.string.form16_tax_payable_label),
+                                    rupees(b.taxPayableMinor),
+                                    emphasise = true,
+                                )
                                 if ((b.reliefUnder89Minor.toLongOrNull() ?: 0L) > 0L) {
-                                    LabelledRow("Less: relief under 89", rupees(b.reliefUnder89Minor))
+                                    LabelledRow(
+                                        stringResource(R.string.form16_relief_89_label),
+                                        rupees(b.reliefUnder89Minor),
+                                    )
                                 }
-                                LabelledRow("Net tax payable", rupees(b.netTaxPayableMinor), emphasise = true)
-                                LabelledRow("Tax deducted", rupees(b.taxDeductedAtSourceMinor))
+                                LabelledRow(
+                                    stringResource(R.string.form16_net_tax_payable_label),
+                                    rupees(b.netTaxPayableMinor),
+                                    emphasise = true,
+                                )
+                                LabelledRow(
+                                    stringResource(R.string.form16_tax_deducted_label),
+                                    rupees(b.taxDeductedAtSourceMinor),
+                                )
                                 if ((b.balancePayableMinor.toLongOrNull() ?: 0L) > 0L) {
-                                    LabelledRow("Still to pay", rupees(b.balancePayableMinor), emphasise = true)
+                                    LabelledRow(
+                                        stringResource(R.string.form16_still_to_pay_label),
+                                        rupees(b.balancePayableMinor),
+                                        emphasise = true,
+                                    )
                                 }
                                 if ((b.refundDueMinor.toLongOrNull() ?: 0L) > 0L) {
-                                    LabelledRow("Refund due", rupees(b.refundDueMinor), emphasise = true)
+                                    LabelledRow(
+                                        stringResource(R.string.form16_refund_due_label),
+                                        rupees(b.refundDueMinor),
+                                        emphasise = true,
+                                    )
                                 }
                             }
 
-                            SectionLabel("Quarterly returns")
+                            SectionLabel(stringResource(R.string.form16_quarterly_returns_heading))
                             AppCard {
                                 data.form24Q.forEach { q ->
-                                    LabelledRow("Q${q.quarter}", rupees(q.taxDeductedMinor))
+                                    LabelledRow(
+                                        stringResource(R.string.form16_quarter_label, q.quarter),
+                                        rupees(q.taxDeductedMinor),
+                                    )
                                 }
                                 AppText(
-                                    "These are the figures your employer files in Form 24Q.",
+                                    stringResource(R.string.form16_form24q_note),
                                     tone = TextTone.MUTED,
                                     size = Theme.type.caption,
                                 )
@@ -497,7 +584,7 @@ fun Form16Screen(container: AppContainer) {
 
                             Banner(
                                 BannerTone.INFO,
-                                "Part A comes from TRACES",
+                                stringResource(R.string.form16_part_a_title),
                                 description = data.partA.note,
                             )
                         }

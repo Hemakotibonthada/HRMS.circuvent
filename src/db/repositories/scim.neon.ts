@@ -177,7 +177,7 @@ export class NeonScimRepository {
   async create(payload: ScimUser): Promise<ScimUser> {
     const incoming = toProvisionedUser(payload);
 
-    return withTenant(this.ctx, async (tx) => {
+    const created = await withTenant(this.ctx, async (tx) => {
       const [existing] = await tx
         .select({ id: users.id })
         .from(users)
@@ -188,7 +188,7 @@ export class NeonScimRepository {
         throw new ScimError("A user with this email already exists", 409, "uniqueness");
       }
 
-      const [created] = await tx
+      const [row] = await tx
         .insert(users)
         .values({
           orgId: this.ctx.orgId,
@@ -204,16 +204,86 @@ export class NeonScimRepository {
         })
         .returning();
 
-      return toScimUser(
-        {
-          ...incoming,
-          id: created.id,
-          createdAt: created.createdAt?.toISOString(),
-          updatedAt: created.updatedAt?.toISOString(),
-        },
-        this.baseUrl
-      );
+      return row;
     });
+
+    // The common ordering the other direction never covers: HR creates the
+    // employee first, and the directory provisions the login only later. See
+    // `linkExistingEmployee` below — same match `NeonEmployeeRepository.create()`
+    // makes when the account already exists and the employee record is new.
+    await this.linkExistingEmployee(created.id, incoming.email);
+
+    return toScimUser(
+      {
+        ...incoming,
+        id: created.id,
+        createdAt: created.createdAt?.toISOString(),
+        updatedAt: created.updatedAt?.toISOString(),
+      },
+      this.baseUrl
+    );
+  }
+
+  /**
+   * Links a live, currently-unlinked employee record onto a freshly
+   * provisioned account.
+   *
+   * `employees.user_id` is set in exactly two other places: founder
+   * registration, which writes both rows together, and
+   * `NeonEmployeeRepository.create()`, which matches an *existing* account
+   * against a work email when the employee record is the one being created.
+   * SCIM is the common ordering neither of those covers — the employee record
+   * exists first, HR hires someone before IT provisions their login — and
+   * until now nothing linked that ordering at all, so the person stayed
+   * unresolvable to `currentEmployeeId()` no matter how long they held an
+   * account.
+   *
+   * Same match as that block, in the other direction: case-insensitive work
+   * email, same organisation, only a live (`deleted_at IS NULL`) employee
+   * whose `user_id` IS NULL, and only when exactly one such employee exists.
+   * Zero or more than one candidate links nothing — attaching the wrong
+   * person's employment record to a login is far worse than leaving it
+   * unattached.
+   *
+   * Deliberately outside the create transaction and never throws: a directory
+   * sync provisioning an account is the operation that matters here, and it
+   * must not fail — nor hand the provider a retryable error that could
+   * collide with the 409 "uniqueness" check above — just because this
+   * secondary, best-effort link could not be made.
+   */
+  private async linkExistingEmployee(userId: string, email: string): Promise<void> {
+    try {
+      await withTenant(this.ctx, async (tx) => {
+        const candidates = await tx
+          .select({ id: employees.id })
+          .from(employees)
+          .where(
+            and(
+              eq(employees.orgId, this.ctx.orgId),
+              sql`lower(${employees.workEmail}) = lower(${email})`,
+              isNull(employees.userId),
+              isNull(employees.deletedAt)
+            )
+          )
+          .limit(2);
+
+        if (candidates.length !== 1) return;
+
+        await tx
+          .update(employees)
+          .set({ userId })
+          .where(and(eq(employees.id, candidates[0].id), isNull(employees.userId)));
+      });
+    } catch (error) {
+      console.warn(
+        "[scim] Could not link an existing employee record to the newly provisioned account.",
+        {
+          orgId: this.ctx.orgId,
+          userId,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        }
+      );
+    }
   }
 
   /** Replaces a user (SCIM PUT). */

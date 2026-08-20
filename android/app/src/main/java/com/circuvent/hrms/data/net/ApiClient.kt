@@ -20,6 +20,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -28,8 +29,25 @@ import kotlin.coroutines.resumeWithException
 class ApiException(val status: Int, message: String, val body: String? = null) :
     Exception(message)
 
-/** The request never left the device, or never got an answer. */
-class OfflineException(message: String = "No connection") : Exception(message)
+/**
+ * The request never left the device, or never got an answer.
+ *
+ * [timedOut] separates two outcomes that look identical to a caller and are not
+ * the same fact. A refused connection means the request certainly did not
+ * arrive. A timeout means only that no answer came back in time — the server
+ * may well have received it and be part-way through acting on it.
+ *
+ * It matters because of what gets said. "Check your signal, your password is
+ * not the problem" is an accurate diagnosis for the first and a wrong one for
+ * the second: the signal is fine and the person is now looking at their phone
+ * instead of at the slow server. It matters again for writes, where "this did
+ * not happen" and "this may have happened" are different things to tell
+ * somebody about their leave request.
+ */
+class OfflineException(
+    message: String = "No connection",
+    val timedOut: Boolean = false,
+) : Exception(message)
 
 /** The session is gone and cannot be recovered without signing in again. */
 class SignedOutException : Exception("Signed out")
@@ -233,7 +251,23 @@ class ApiClient(
                     // Every IOException here is "it did not reach the server or
                     // did not come back", which is the one thing the caller has
                     // to be able to tell apart from a refusal.
-                    continuation.resumeWithException(OfflineException(e.message ?: "No connection"))
+                    //
+                    // A timeout is separated out because it is the one case
+                    // where the request may in fact have arrived: the socket
+                    // was open, the bytes went, and only the answer is missing.
+                    // Reporting that as "no connection" sends somebody to check
+                    // a signal that was never the problem.
+                    val timedOut = e is SocketTimeoutException
+                    continuation.resumeWithException(
+                        OfflineException(
+                            message = if (timedOut) {
+                                "The server did not answer in time"
+                            } else {
+                                e.message ?: "No connection"
+                            },
+                            timedOut = timedOut,
+                        )
+                    )
                 }
 
                 override fun onResponse(call: Call, response: Response) {

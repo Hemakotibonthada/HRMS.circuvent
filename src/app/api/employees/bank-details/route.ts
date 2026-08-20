@@ -162,12 +162,17 @@ export async function PUT(request: NextRequest) {
   // The caller's own employee id, never a value from the request: writing
   // bank details is not a thing this product lets anyone do on someone else's
   // behalf (see canWriteBankDetails in lib/bank-details-rules.ts), so the body
-  // is never even asked which employee it is for.
+  // is never even asked which employee it is for. Resolved once, here, and
+  // passed into updateBankDetails as both the target and the caller — it
+  // used to re-resolve the same caller internally via a second
+  // `currentEmployeeId` lookup, which opened a second pooled `withTenant`
+  // transaction and ran the same indexed lookup again for every PUT.
   try {
     const employeeId = await requireCurrentEmployeeId(ctx);
     const updated = await new NeonEmployeeRepository(ctx).updateBankDetails(
       employeeId,
-      toBankDetailsUpdate(parsed.data)
+      toBankDetailsUpdate(parsed.data),
+      employeeId
     );
     return NextResponse.json({ employeeId, ...toBankDetailsView(updated) });
   } catch (error) {

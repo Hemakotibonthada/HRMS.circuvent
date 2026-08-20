@@ -32,8 +32,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.AppContainer
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.MinTouchTarget
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
@@ -73,6 +75,9 @@ fun GoalsScreen(container: AppContainer) {
 
     val scope = rememberCoroutineScope()
 
+    val goalsLoadErrorTitle = stringResource(R.string.goals_load_error_title)
+    val goalsProgressSaveErrorTitle = stringResource(R.string.goals_progress_save_error_title)
+
     suspend fun load() {
         try {
             cycles = container.repository.reviewCycles()
@@ -83,7 +88,7 @@ fun GoalsScreen(container: AppContainer) {
             }
             error = null
         } catch (e: Throwable) {
-            error = "Your goals could not be loaded" to e.message
+            error = goalsLoadErrorTitle to e.message
         } finally {
             loading = false
         }
@@ -108,7 +113,7 @@ fun GoalsScreen(container: AppContainer) {
                 // Includes the server's refusal for a goal with children, which
                 // is a sentence worth showing verbatim rather than replacing
                 // with "something went wrong".
-                error = "That progress was not saved" to e.message
+                error = goalsProgressSaveErrorTitle to e.message
             } finally {
                 busyGoal = null
             }
@@ -128,9 +133,8 @@ fun GoalsScreen(container: AppContainer) {
             when {
                 loading -> SkeletonRows(count = 3, rowHeight = 150.dp)
                 cycles.isEmpty() && error == null -> EmptyState(
-                    title = "No review cycle is open",
-                    description = "When HR opens a cycle, the goals set for you appear here " +
-                        "and you can record progress against them.",
+                    title = stringResource(R.string.goals_empty_cycle_title),
+                    description = stringResource(R.string.goals_empty_cycle_description),
                 )
             }
         }
@@ -159,7 +163,7 @@ fun GoalsScreen(container: AppContainer) {
                             contentAlignment = Alignment.Center,
                         ) {
                             AppText(
-                                entry.name.ifBlank { "Cycle" },
+                                entry.name.ifBlank { stringResource(R.string.goals_cycle_fallback) },
                                 size = Theme.type.footnote,
                                 lineHeight = Theme.type.footnoteLine,
                                 weight = if (active) FontWeight.SemiBold else FontWeight.Normal,
@@ -176,7 +180,7 @@ fun GoalsScreen(container: AppContainer) {
                 AppCard(muted = true) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            AppText(current.name.ifBlank { "Review cycle" }, weight = FontWeight.SemiBold)
+                            AppText(current.name.ifBlank { stringResource(R.string.goals_cycle_name_fallback) }, weight = FontWeight.SemiBold)
                             AppText(
                                 rememberFormattedRange(current.periodStart, current.periodEnd),
                                 size = Theme.type.caption,
@@ -185,14 +189,14 @@ fun GoalsScreen(container: AppContainer) {
                             )
                         }
                         if (current.status == "closed") {
-                            StatusPill(label = "Closed", tone = PillTone.NEUTRAL)
+                            StatusPill(label = stringResource(R.string.goals_status_closed), tone = PillTone.NEUTRAL)
                         }
                     }
 
                     current.selfReviewDueOn?.takeIf { current.status == "active" }?.let { due ->
                         Spacer(Modifier.height(Theme.spacing.sm))
                         AppText(
-                            "Your self-review is due ${rememberFormattedDate(due)}",
+                            stringResource(R.string.goals_self_review_due, rememberFormattedDate(due)),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
                             tone = TextTone.WARNING,
@@ -204,9 +208,8 @@ fun GoalsScreen(container: AppContainer) {
             if (current.goals.isEmpty()) {
                 item {
                     EmptyState(
-                        title = "No goals in this cycle",
-                        description = "Goals are usually agreed with your manager. Once they " +
-                            "are set, you can record progress here.",
+                        title = stringResource(R.string.goals_empty_goals_title),
+                        description = stringResource(R.string.goals_empty_goals_description),
                     )
                 }
             }
@@ -277,7 +280,9 @@ private fun GoalCard(
         // with a manager actually uses.
         val target = listOfNotNull(
             goal.currentValue?.takeIf { it.isNotBlank() },
-            goal.targetValue?.takeIf { it.isNotBlank() }?.let { "of $it" },
+            goal.targetValue?.takeIf { it.isNotBlank() }?.let {
+                stringResource(R.string.goals_target_of_value, it)
+            },
             goal.unit?.takeIf { it.isNotBlank() },
         ).joinToString(" ")
 
@@ -297,13 +302,16 @@ private fun GoalCard(
             if (goal.weightPercent > 0) {
                 Spacer(Modifier.weight(1f))
                 AppText(
-                    "Weight ${goal.weightPercent}%",
+                    stringResource(R.string.goals_weight_percent, goal.weightPercent),
                     size = Theme.type.caption,
                     lineHeight = Theme.type.captionLine,
                     tone = TextTone.MUTED,
                 )
             }
         }
+
+        val progressContentDescription =
+            stringResource(R.string.goals_progress_content_description, goal.title, draft.toInt())
 
         Slider(
             value = draft,
@@ -314,13 +322,13 @@ private fun GoalCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clearAndSetSemantics {
-                    contentDescription = "Progress on ${goal.title}, ${draft.toInt()} percent"
+                    contentDescription = progressContentDescription
                 },
         )
 
         goal.dueDate?.takeIf { it.isNotBlank() }?.let {
             AppText(
-                "Due ${rememberFormattedDate(it)}",
+                stringResource(R.string.goals_due_date, rememberFormattedDate(it)),
                 size = Theme.type.caption,
                 lineHeight = Theme.type.captionLine,
                 tone = TextTone.MUTED,
@@ -331,13 +339,13 @@ private fun GoalCard(
             Spacer(Modifier.height(Theme.spacing.sm))
             Row(horizontalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                 AppButton(
-                    label = "Save progress",
+                    label = stringResource(R.string.goals_save_progress_action),
                     onClick = { onSave(draft.toInt()) },
                     fullWidth = false,
                     busy = busy,
                 )
                 AppButton(
-                    label = "Undo",
+                    label = stringResource(R.string.goals_undo_action),
                     onClick = { draft = goal.progressPercent.toFloat() },
                     variant = com.circuvent.hrms.core.ui.ButtonVariant.GHOST,
                     fullWidth = false,
@@ -347,7 +355,7 @@ private fun GoalCard(
         } else if (justSaved && !moved) {
             Spacer(Modifier.height(Theme.spacing.xs))
             AppText(
-                "Saved",
+                stringResource(R.string.goals_saved_label),
                 size = Theme.type.caption,
                 lineHeight = Theme.type.captionLine,
                 tone = TextTone.SUCCESS,
@@ -356,12 +364,13 @@ private fun GoalCard(
     }
 }
 
+@Composable
 private fun goalStatusLabel(status: String): String = when (status) {
-    "not_started" -> "Not started"
-    "in_progress" -> "In progress"
-    "at_risk" -> "At risk"
-    "completed" -> "Done"
-    "dropped" -> "Dropped"
+    "not_started" -> stringResource(R.string.goal_status_not_started)
+    "in_progress" -> stringResource(R.string.goal_status_in_progress)
+    "at_risk" -> stringResource(R.string.goal_status_at_risk)
+    "completed" -> stringResource(R.string.goal_status_completed)
+    "dropped" -> stringResource(R.string.goal_status_dropped)
     else -> status.replace('_', ' ').replaceFirstChar { it.uppercase() }
 }
 

@@ -13,7 +13,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { NeonEmployeeRepository } from "@/db/repositories/employee.neon";
+import { NeonEmployeeRepository, resolveCompanyEmailDomains } from "@/db/repositories/employee.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
@@ -193,6 +193,13 @@ export async function POST(request: NextRequest) {
   // session can post JSON straight at this route. These are the rules that keep
   // role mailboxes — abuse@, accounts@, billing@ — out of the staff directory;
   // see `lib/employee-rules.ts` for why a mailbox is not a colleague.
+  //
+  // Domains are this organisation's own, not the process-wide default: this
+  // product is multi-tenant, and a tenant whose staff are not on
+  // circuvent.com (or whatever COMPANY_EMAIL_DOMAINS names) would otherwise
+  // have every hire refused as a "personal address" on a domain they do not
+  // own. See `resolveCompanyEmailDomains` in `db/repositories/employee.neon.ts`.
+  const domains = await resolveCompanyEmailDomains(ctx);
   const ruleIssues = validateEmployeeFields(
     {
       firstName: parsed.data.firstName,
@@ -203,7 +210,7 @@ export async function POST(request: NextRequest) {
       employmentType: parsed.data.employmentType,
       salary: parsed.data.salary === undefined ? "" : String(parsed.data.salary),
     },
-    { allowPastJoiningDate: parsed.data.allowPastJoiningDate }
+    { allowPastJoiningDate: parsed.data.allowPastJoiningDate, domains }
   );
   if (ruleIssues.length > 0) {
     return NextResponse.json(
