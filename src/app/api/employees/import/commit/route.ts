@@ -24,6 +24,7 @@ import {
   planImport,
 } from "@/lib/employee-import";
 import { commitImport, fetchExistingWorkEmails, readMappingOverride, readUploadedSpreadsheet } from "../_lib";
+import { assertSeatsAvailable, refreshSeatCount } from "@/db/repositories/subscription.neon";
 
 export async function POST(request: NextRequest) {
   let ctx;
@@ -95,8 +96,29 @@ export async function POST(request: NextRequest) {
   const existingEmails = await fetchExistingWorkEmails(ctx);
   const plan = planImport({ rows: parsedFile.rows, mapping, existingEmails });
 
+  // Checked once for the whole file, not per row.
+  //
+  // An importer is the fastest way there is to blow through a seat limit: a
+  // spreadsheet of two thousand people would otherwise land in an
+  // organisation whose plan covers twenty-five, and the first anybody would
+  // know is the invoice. Refusing the whole file is deliberate — importing
+  // the first twenty-four rows and stopping leaves a half-populated
+  // organisation that somebody then has to reconcile by hand against their
+  // own spreadsheet.
+  const seats = await assertSeatsAvailable(ctx, plan.toCreate.length);
+  if (!seats.allowed) {
+    return NextResponse.json(
+      { error: seats.reason, seats: { limit: seats.limit, used: seats.used, remaining: seats.remaining } },
+      { status: 402 }
+    );
+  }
+
   try {
     const created = await commitImport(ctx, plan.toCreate);
+    // Keeps the cached count on the subscription row honest. It is never what
+    // a limit is checked against — that is always a fresh count — but an
+    // invoice run or a support query reads this column directly.
+    await refreshSeatCount(ctx).catch(() => undefined);
     return NextResponse.json(
       {
         created,

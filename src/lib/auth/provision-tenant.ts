@@ -18,7 +18,7 @@
 
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { organizations, userRoles, users } from "@/db/schema/identity";
+import { organizations, subscriptions, userRoles, users } from "@/db/schema/identity";
 import { employees, holidays, leaveBalances, leavePolicies } from "@/db/schema/hrms";
 import { documentTemplates, referralPolicies } from "@/db/schema/talent";
 import { DEFAULT_LEAVE_POLICIES, provisionFor } from "@/lib/leave-provisioning";
@@ -27,6 +27,7 @@ import { DEFAULT_REFERRAL_POLICIES } from "@/lib/referral-rules";
 import { TEMPLATE_CATALOG } from "@/lib/document-templates/catalog";
 import { extractTokens } from "@/lib/document-rules";
 import { slugify } from "./pending-registration";
+import { PLANS, trialEndsAt } from "@/lib/billing/plans";
 
 export interface ProvisionTenantInput {
   /** The founder's display name, as typed on the form. */
@@ -235,6 +236,36 @@ export async function provisionTenant(
         description: holiday.description,
       }))
     );
+
+    // The trial the sign-up page promises.
+    //
+    // "Start your 14-day free trial" has been on the registration form since
+    // it was written, and no subscription row was ever created — the table
+    // stayed empty while the billing screen showed every tenant the
+    // Professional plan, hardcoded. A tenant with no subscription also has no
+    // seat limit to enforce, which is how the spreadsheet importer came to be
+    // able to add two thousand employees to a free account.
+    //
+    // Starter rather than the most expensive plan: a trial that silently
+    // grants Enterprise sets an expectation the first invoice takes away.
+    const trialPlan = PLANS.starter;
+    await tx.insert(subscriptions).values({
+      orgId: org.id,
+      plan: trialPlan.id,
+      status: "trial",
+      // `?? undefined` rather than null: the column is not nullable, and an
+      // unlimited plan expresses that by leaving it to the column's own
+      // default instead of writing an absence the type does not allow.
+      maxEmployees: trialPlan.maxEmployees ?? undefined,
+      // The founder's own employee row, created above, is the first seat.
+      currentEmployees: 1,
+      pricePerEmployee: trialPlan.pricePerEmployeeMinor,
+      currency: trialPlan.currency,
+      billingCycle: "monthly",
+      trialEndsAt: trialEndsAt(),
+      currentPeriodStart: new Date(),
+      currentPeriodEnd: trialEndsAt(),
+    });
 
     return { orgId: org.id, userId: user.id, employeeCode };
   });

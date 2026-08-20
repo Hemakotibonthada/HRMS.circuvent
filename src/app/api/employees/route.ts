@@ -17,6 +17,7 @@ import { NeonEmployeeRepository, resolveCompanyEmailDomains } from "@/db/reposit
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
+import { assertSeatsAvailable } from "@/db/repositories/subscription.neon";
 import { canViewOthersSalary } from "@/lib/rbac";
 import {
   normaliseEmploymentType,
@@ -261,6 +262,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // One more person than the plan covers is still one too many. Checked
+    // here as well as in the importer because these are two independent doors
+    // into the same table, and a limit enforced at only one of them is a
+    // limit somebody routes around without ever meaning to.
+    const seats = await assertSeatsAvailable(ctx, 1);
+    if (!seats.allowed) {
+      return NextResponse.json(
+        { error: seats.reason, seats: { limit: seats.limit, used: seats.used, remaining: seats.remaining } },
+        { status: 402 }
+      );
+    }
+
     const repo = new NeonEmployeeRepository(ctx);
     const {
       allowPastJoiningDate: _allowPast,
