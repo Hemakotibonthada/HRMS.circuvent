@@ -31,3 +31,12 @@ dist
 # with it — the geofence module `attendance.neon.ts` imports — and the build
 # failed with module-not-found for a file that was sitting right there.
 /mobile/
+
+# The Kotlin desktop and Android clients, and the Gradle caches and build
+# outputs under them. 1.2 GB of the 775 MB compressed upload was this, and not
+# one byte of it is imported by the web application — nothing under src/
+# references it. Uploading it made every deployment slow for no purpose.
+#
+# Anchored for the same reason as /mobile/ above.
+/android/
+/.firebase/
