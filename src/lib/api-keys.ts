@@ -26,6 +26,7 @@ const SECRET_BYTES = 24;
 export type ApiScope =
   | "employees:read"
   | "employees:write"
+  | "profiles:read"
   | "leave:read"
   | "leave:write"
   | "attendance:read"
@@ -38,6 +39,7 @@ export type ApiScope =
 export const ALL_SCOPES: readonly ApiScope[] = [
   "employees:read",
   "employees:write",
+  "profiles:read",
   "leave:read",
   "leave:write",
   "attendance:read",
@@ -47,6 +49,31 @@ export const ALL_SCOPES: readonly ApiScope[] = [
   "reports:read",
   "webhooks:manage",
 ];
+
+/**
+ * What each scope actually grants, for the key-minting screen.
+ *
+ * `profiles:read` exists because `employees:read` is too much to ask for.
+ * Every app in the ecosystem wants to put a job title and an avatar next to
+ * somebody's name, and that read carried the whole employee record with it —
+ * pay, bank details, PAN, Aadhaar, date of birth, home address. A key handed
+ * to a chat app so it can label a message author should not be able to answer
+ * "what does this person earn".
+ */
+export const SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
+  "employees:read": "Read full employee records, including compensation and statutory identifiers.",
+  "employees:write": "Create and change employee records.",
+  "profiles:read":
+    "Read the public-facing profile only — name, avatar, job title, department, work location. No pay, no identifiers, no personal contact details.",
+  "leave:read": "Read leave balances and requests.",
+  "leave:write": "Apply for and approve leave.",
+  "attendance:read": "Read attendance and shift records.",
+  "attendance:write": "Record attendance.",
+  "payroll:read": "Read payroll runs and payslips.",
+  "payroll:write": "Run payroll.",
+  "reports:read": "Read reports.",
+  "webhooks:manage": "Create and remove webhook subscriptions.",
+};
 
 export interface GeneratedKey {
   /** Shown to the user exactly once. Never stored. */

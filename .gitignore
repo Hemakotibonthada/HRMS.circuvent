@@ -84,3 +84,9 @@ android/release-artifacts/
 # Emulator screenshots captured while testing by hand.
 android/shots/
 mobile-backend.log
+
+# Credentials and scratch files written while investigating. These are
+# untracked but not ignored, so any blanket `git add -A` commits them — and
+# .token-* are bearer tokens, not notes.
+/.token-*
+/scratch-*
