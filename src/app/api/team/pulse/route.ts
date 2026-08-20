@@ -67,7 +67,11 @@ export async function GET(request: NextRequest) {
       // comparing them directly matches nothing at all — which is what this
       // route did, so every team here was empty and no birthday ever showed.
       const [me] = await tx
-        .select({ id: employees.id, reportingToId: employees.reportingToId })
+        .select({
+          id: employees.id,
+          reportingToId: employees.reportingToId,
+          departmentId: employees.departmentId,
+        })
         .from(employees)
         .where(eq(employees.userId, ctx.userId))
         .limit(1);
@@ -78,9 +82,12 @@ export async function GET(request: NextRequest) {
       // than the whole organisation.
       if (!me) return { team: [], away: [] };
 
-      // Peers share a manager; reports report to me. A person with neither is
-      // shown their own record only, which is honest — an organisation of one
-      // has no team.
+      // Peers share a manager; reports report to me. Somebody with neither —
+      // a first hire, or anyone HR has not put a reporting line on yet — falls
+      // back to their department, because they do have colleagues and being
+      // told "no team yet" while sitting next to four of them is plainly
+      // wrong. The department is never null: every hire lands in one, and the
+      // organisation's default team exists for exactly this.
       const team = await tx
         .select({
           id: employees.id,
@@ -98,6 +105,13 @@ export async function GET(request: NextRequest) {
               eq(employees.reportingToId, me.id),
               me.reportingToId ? eq(employees.reportingToId, me.reportingToId) : undefined,
               me.reportingToId ? eq(employees.id, me.reportingToId) : undefined,
+              // Only when there is no reporting line to go on. Somebody who
+              // has a manager gets their actual team, not everybody who shares
+              // a department with them — in a large one that is hundreds of
+              // people and no longer answers the question.
+              !me.reportingToId && me.departmentId
+                ? eq(employees.departmentId, me.departmentId)
+                : undefined,
               eq(employees.id, me.id)
             )
           )

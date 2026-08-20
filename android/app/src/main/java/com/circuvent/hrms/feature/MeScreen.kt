@@ -51,6 +51,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,6 +62,7 @@ import com.circuvent.hrms.core.design.MinTouchTarget
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppText
+import com.circuvent.hrms.core.ui.Avatar
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
 import com.circuvent.hrms.core.ui.FeatureGrid
@@ -82,12 +85,22 @@ import com.circuvent.hrms.data.SessionUser
  * under Money rather than beside Attendance, because somebody claiming a taxi
  * fare is thinking about money.
  */
-private enum class MeSection(val label: String) {
-    TIME("Time"),
-    MONEY("Money"),
-    GROWTH("Growth"),
-    WORKPLACE("Workplace"),
-    TEAM("My team"),
+private enum class MeSection {
+    TIME,
+    MONEY,
+    GROWTH,
+    WORKPLACE,
+    TEAM,
+}
+
+/** The label shown on each section's chip. */
+@Composable
+private fun meSectionLabel(section: MeSection): String = when (section) {
+    MeSection.TIME -> stringResource(R.string.me_section_time)
+    MeSection.MONEY -> stringResource(R.string.me_section_money)
+    MeSection.GROWTH -> stringResource(R.string.me_section_growth)
+    MeSection.WORKPLACE -> stringResource(R.string.me_section_workplace)
+    MeSection.TEAM -> stringResource(R.string.me_section_team)
 }
 
 /**
@@ -127,13 +140,8 @@ fun ProfileScreen(
             item {
                 Banner(
                     tone = BannerTone.INFO,
-                    title = if (pending == 1) {
-                        "1 action waiting to be sent"
-                    } else {
-                        "$pending actions waiting to be sent"
-                    },
-                    description = "They are saved on this device and will be sent when you " +
-                        "have a connection.",
+                    title = pluralStringResource(R.plurals.today_pending_actions, pending, pending),
+                    description = stringResource(R.string.me_pending_actions_description),
                 )
             }
         }
@@ -153,7 +161,7 @@ fun ProfileScreen(
         item {
             AppCard(
                 onClick = { onNavigate("settings") },
-                contentDescription = "Settings. Appearance, biometric unlock and sign out",
+                contentDescription = stringResource(R.string.me_settings_content_description),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     com.circuvent.hrms.core.ui.AccentBadge(
@@ -162,9 +170,9 @@ fun ProfileScreen(
                     )
                     Spacer(Modifier.width(Theme.spacing.md))
                     Column {
-                        AppText("Settings", weight = FontWeight.SemiBold)
+                        AppText(stringResource(R.string.me_settings_title), weight = FontWeight.SemiBold)
                         AppText(
-                            "Appearance, biometric unlock and sign out",
+                            stringResource(R.string.me_settings_description),
                             size = Theme.type.caption,
                             lineHeight = Theme.type.captionLine,
                             tone = TextTone.MUTED,
@@ -179,10 +187,10 @@ fun ProfileScreen(
 /**
  * Name, role, and a way into the identity card.
  *
- * The initials stand in for a photograph the server does not yet hold. They are
- * taken from whichever name is present rather than assuming both, because the
- * session carries a first name for some accounts and only an email for others,
- * and a blank disc reads as a failed image load.
+ * Shows the photograph when one is set and the initials when it is not, which
+ * is almost always. The initials are not a placeholder waiting to be replaced —
+ * they are the answer for most people, and a blank disc reads as a failed image
+ * load rather than as a picture that does not exist.
  */
 @Composable
 private fun IdentityHeader(user: SessionUser?, onOpenIdCard: () -> Unit) {
@@ -193,41 +201,18 @@ private fun IdentityHeader(user: SessionUser?, onOpenIdCard: () -> Unit) {
         full.ifBlank { user?.email?.substringBefore('@').orEmpty() }
     }
 
-    val initials = remember(name) {
-        name.split(' ', '.', '_', '-')
-            .filter { it.isNotBlank() }
-            .take(2)
-            .map { it.first().uppercaseChar() }
-            .joinToString("")
-            .ifBlank { "?" }
-    }
-
     AppCard(
         onClick = onOpenIdCard,
-        contentDescription = "$name. Open your identity card",
+        contentDescription = stringResource(R.string.me_open_id_card_content_description, name),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(Theme.radius.pill))
-                    .background(Theme.colors.primarySubtle),
-                contentAlignment = Alignment.Center,
-            ) {
-                AppText(
-                    initials,
-                    size = Theme.type.title3,
-                    lineHeight = Theme.type.title3Line,
-                    weight = FontWeight.SemiBold,
-                    tone = TextTone.PRIMARY,
-                )
-            }
+            Avatar(name = name, imageUrl = user?.avatarUrl, size = 56.dp)
 
             Spacer(Modifier.width(Theme.spacing.md))
 
             Column(Modifier.weight(1f)) {
                 AppText(
-                    name.ifBlank { "Signed in" },
+                    name.ifBlank { stringResource(R.string.me_signed_in_fallback) },
                     size = Theme.type.title3,
                     lineHeight = Theme.type.title3Line,
                     weight = FontWeight.SemiBold,
@@ -293,7 +278,7 @@ private fun SectionTabs(
                 contentAlignment = Alignment.Center,
             ) {
                 AppText(
-                    entry.label,
+                    meSectionLabel(entry),
                     size = Theme.type.footnote,
                     lineHeight = Theme.type.footnoteLine,
                     weight = if (active) FontWeight.SemiBold else FontWeight.Normal,
@@ -314,32 +299,32 @@ private fun SectionTabs(
 private fun itemsFor(section: MeSection, go: (String) -> Unit): List<FeatureGridItem> = when (section) {
     MeSection.TIME -> listOf(
         FeatureGridItem(
-            "Attendance",
-            "Your punches, month by month",
+            stringResource(R.string.me_feature_attendance_title),
+            stringResource(R.string.me_feature_attendance_subtitle),
             Glyph.Vector(Icons.Filled.History),
             AccentTone.Violet,
         ) { go("attendance") },
         FeatureGridItem(
-            "Correct a day",
-            "A missed punch, or one the reader lost",
+            stringResource(R.string.me_feature_regularise_title),
+            stringResource(R.string.me_feature_regularise_subtitle),
             Glyph.Vector(Icons.Filled.EditCalendar),
             AccentTone.Amber,
         ) { go("attendance/regularise") },
         FeatureGridItem(
-            "Work away",
-            "From home or on duty. This is not leave",
+            stringResource(R.string.me_feature_work_away_title),
+            stringResource(R.string.me_feature_work_away_subtitle),
             Glyph.Drawable(painterResource(R.drawable.ic_action_wfh)),
             AccentTone.Teal,
         ) { go("work-away") },
         FeatureGridItem(
-            "Shift swaps",
-            "Offer a shift, or take one offered",
+            stringResource(R.string.me_feature_shift_swaps_title),
+            stringResource(R.string.me_feature_shift_swaps_subtitle),
             Glyph.Vector(Icons.Filled.SwapHoriz),
             AccentTone.Blue,
         ) { go("swaps") },
         FeatureGridItem(
-            "Holidays",
-            "The days the office is closed",
+            stringResource(R.string.me_feature_holidays_title),
+            stringResource(R.string.me_feature_holidays_subtitle),
             Glyph.Vector(Icons.Filled.EventAvailable),
             AccentTone.Rose,
         ) { go("holidays") },
@@ -347,32 +332,32 @@ private fun itemsFor(section: MeSection, go: (String) -> Unit): List<FeatureGrid
 
     MeSection.MONEY -> listOf(
         FeatureGridItem(
-            "Tax declaration",
-            "Declare investments so less is deducted",
+            stringResource(R.string.me_feature_tax_declaration_title),
+            stringResource(R.string.me_feature_tax_declaration_subtitle),
             Glyph.Vector(Icons.Filled.AccountBalanceWallet),
             AccentTone.Green,
         ) { go("tax") },
         FeatureGridItem(
-            "Form 16",
-            "Your annual TDS certificate",
+            stringResource(R.string.me_feature_form16_title),
+            stringResource(R.string.me_feature_form16_subtitle),
             Glyph.Drawable(painterResource(R.drawable.ic_action_payslip)),
             AccentTone.Blue,
         ) { go("tax/form16") },
         FeatureGridItem(
-            "Loans",
-            "What you owe, and what is left to repay",
+            stringResource(R.string.me_feature_loans_title),
+            stringResource(R.string.me_feature_loans_subtitle),
             Glyph.Vector(Icons.Filled.ReceiptLong),
             AccentTone.Plum,
         ) { go("loans") },
         FeatureGridItem(
-            "Expenses",
-            "Claim something back, and follow it",
+            stringResource(R.string.me_feature_expenses_title),
+            stringResource(R.string.me_feature_expenses_subtitle),
             Glyph.Drawable(painterResource(R.drawable.ic_action_expense)),
             AccentTone.Amber,
         ) { go("expenses") },
         FeatureGridItem(
-            "Benefits",
-            "Your cover, the plans on offer, dependants",
+            stringResource(R.string.me_feature_benefits_title),
+            stringResource(R.string.me_feature_benefits_subtitle),
             Glyph.Vector(Icons.Filled.HealthAndSafety),
             AccentTone.Rose,
         ) { go("benefits") },
@@ -380,26 +365,26 @@ private fun itemsFor(section: MeSection, go: (String) -> Unit): List<FeatureGrid
 
     MeSection.GROWTH -> listOf(
         FeatureGridItem(
-            "My goals",
-            "Record progress as it happens",
+            stringResource(R.string.me_feature_goals_title),
+            stringResource(R.string.me_feature_goals_subtitle),
             Glyph.Vector(Icons.Filled.TrackChanges),
             AccentTone.Rose,
         ) { go("goals") },
         FeatureGridItem(
-            "Learning",
-            "Courses assigned, and what you can start",
+            stringResource(R.string.me_feature_learning_title),
+            stringResource(R.string.me_feature_learning_subtitle),
             Glyph.Vector(Icons.Filled.School),
             AccentTone.Violet,
         ) { go("learning") },
         FeatureGridItem(
-            "Check-ins",
-            "Notes and actions from your one-to-ones",
+            stringResource(R.string.me_feature_checkins_title),
+            stringResource(R.string.me_feature_checkins_subtitle),
             Glyph.Vector(Icons.Filled.Chat),
             AccentTone.Teal,
         ) { go("check-ins") },
         FeatureGridItem(
-            "Referrals",
-            "Put someone forward, and follow them",
+            stringResource(R.string.me_feature_referrals_title),
+            stringResource(R.string.me_feature_referrals_subtitle),
             Glyph.Vector(Icons.Filled.CardGiftcard),
             AccentTone.Green,
         ) { go("referrals") },
@@ -407,44 +392,44 @@ private fun itemsFor(section: MeSection, go: (String) -> Unit): List<FeatureGrid
 
     MeSection.WORKPLACE -> listOf(
         FeatureGridItem(
-            "Company wall",
-            "Welcomes, thank-yous and news",
+            stringResource(R.string.me_feature_wall_title),
+            stringResource(R.string.me_feature_wall_subtitle),
             Glyph.Vector(Icons.Filled.Forum),
             AccentTone.Plum,
         ) { go("wall") },
         FeatureGridItem(
-            "Directory",
-            "Find a colleague",
+            stringResource(R.string.me_feature_directory_title),
+            stringResource(R.string.me_feature_directory_subtitle),
             Glyph.Vector(Icons.Filled.PersonSearch),
             AccentTone.Blue,
         ) { go("directory") },
         FeatureGridItem(
-            "Announcements",
-            "Notices from your company",
+            stringResource(R.string.me_feature_announcements_title),
+            stringResource(R.string.me_feature_announcements_subtitle),
             Glyph.Vector(Icons.Filled.Campaign),
             AccentTone.Amber,
         ) { go("announcements") },
         FeatureGridItem(
-            "My details",
-            "Your phone, address and date of birth",
+            stringResource(R.string.me_feature_my_details_title),
+            stringResource(R.string.me_feature_my_details_subtitle),
             Glyph.Vector(Icons.Filled.ManageAccounts),
             AccentTone.Green,
         ) { go("my-details") },
         FeatureGridItem(
-            "Identity card",
-            "Your details, without a connection",
+            stringResource(R.string.me_feature_id_card_title),
+            stringResource(R.string.me_feature_id_card_subtitle),
             Glyph.Vector(Icons.Filled.Badge),
             AccentTone.Violet,
         ) { go("id-card") },
         FeatureGridItem(
-            "My equipment",
-            "Laptops and other assets issued to you",
+            stringResource(R.string.me_feature_assets_title),
+            stringResource(R.string.me_feature_assets_subtitle),
             Glyph.Vector(Icons.Filled.Devices),
             AccentTone.Slate,
         ) { go("assets") },
         FeatureGridItem(
-            "Helpdesk",
-            "Raise a ticket with HR or IT, and track it",
+            stringResource(R.string.me_feature_helpdesk_title),
+            stringResource(R.string.me_feature_helpdesk_subtitle),
             Glyph.Vector(Icons.Filled.SupportAgent),
             AccentTone.Teal,
         ) { go("helpdesk") },
@@ -452,20 +437,20 @@ private fun itemsFor(section: MeSection, go: (String) -> Unit): List<FeatureGrid
 
     MeSection.TEAM -> listOf(
         FeatureGridItem(
-            "My team",
-            "Who is away, and whose day it is",
+            stringResource(R.string.me_feature_my_team_title),
+            stringResource(R.string.me_feature_my_team_subtitle),
             Glyph.Vector(Icons.Filled.Groups),
             AccentTone.Teal,
         ) { go("my-team") },
         FeatureGridItem(
-            "Approvals",
-            "Anything routed to you for a decision",
+            stringResource(R.string.me_feature_approvals_title),
+            stringResource(R.string.me_feature_approvals_subtitle),
             Glyph.Vector(Icons.Filled.Inbox),
             AccentTone.Amber,
         ) { go("inbox") },
         FeatureGridItem(
-            "Leave requests",
-            "Leave waiting on your decision",
+            stringResource(R.string.me_feature_leave_requests_title),
+            stringResource(R.string.me_feature_leave_requests_subtitle),
             Glyph.Drawable(painterResource(R.drawable.ic_action_leave)),
             AccentTone.Violet,
         ) { go("approvals") },

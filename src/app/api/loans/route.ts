@@ -19,9 +19,11 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { employeeLoans, loanBenchmarkRates, loanRepayments } from "@/db/schema/hrms";
+import { employeeLoans, loanBenchmarkRates, loanRepayments, salaryStructures } from "@/db/schema/hrms";
+import { organizations } from "@/db/schema/identity";
+import { checkLoanRequest, limitMonthsFor, loanLimit } from "@/lib/loan-limits";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
 import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
@@ -99,7 +101,11 @@ export async function GET(request: NextRequest) {
       // ctx.userId is the signing-in account, not the employment record a
       // loan is keyed by — see lib/current-employee.ts.
       const employeeId = await currentEmployeeId(ctx, tx);
-      if (!employeeId) return { loans: [], repayments: [], rates: [] };
+      if (!employeeId) return { loans: [], repayments: [], rates: [], basis: null };
+
+      // What they may borrow, so a screen can say so before anybody types a
+      // number into a field that will be refused.
+      const basis = await borrowingBasis(tx, ctx.orgId, employeeId);
 
       const loans = await tx
         .select()
@@ -107,7 +113,7 @@ export async function GET(request: NextRequest) {
         .where(eq(employeeLoans.employeeId, employeeId))
         .orderBy(desc(employeeLoans.createdAt));
 
-      if (loans.length === 0) return { loans: [], repayments: [], rates: [] };
+      if (loans.length === 0) return { loans: [], repayments: [], rates: [], basis };
 
       const repayments = await tx
         .select()
@@ -129,10 +135,39 @@ export async function GET(request: NextRequest) {
           )
         );
 
-      return { loans, repayments, rates };
+      return { loans, repayments, rates, basis };
     });
 
     const rateFor = new Map(payload.rates.map((r) => [r.loanType, Number(r.ratePercent)]));
+
+    // One entry per kind of borrowing: the ceiling, and what is left of it
+    // after everything already lent. Sent whether or not any loan exists,
+    // because the first question somebody has is how much they can ask for.
+    const limits = payload.basis
+      ? LOAN_TYPES.map((loanType) => {
+          const verdict = loanLimit({
+            loanType,
+            monthlyBasicMinor: payload.basis!.monthlyBasicMinor,
+            outstandingMinor: payload.basis!.outstandingMinor,
+            limitMonths: payload.basis!.limitMonths,
+          });
+          return verdict.ok
+            ? {
+                loanType,
+                months: verdict.months,
+                capMinor: verdict.capMinor.toString(),
+                availableMinor: verdict.headroomMinor.toString(),
+                reason: null,
+              }
+            : {
+                loanType,
+                months: limitMonthsFor(loanType, payload.basis!.limitMonths),
+                capMinor: verdict.capMinor?.toString() ?? null,
+                availableMinor: "0",
+                reason: verdict.message,
+              };
+        })
+      : [];
 
     // The exemption is on the aggregate across every live loan, not per loan,
     // so it is summed before any of them are valued.
@@ -213,7 +248,16 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ financialYear, loans: result });
+    return NextResponse.json({
+      financialYear,
+      loans: result,
+      limits,
+      // What every live loan still owes, together. The caps are measured
+      // against this, so a screen that shows a limit without it cannot explain
+      // why the limit is lower than the cap.
+      outstandingMinor: (payload.basis?.outstandingMinor ?? 0n).toString(),
+      monthlyBasicMinor: payload.basis?.monthlyBasicMinor?.toString() ?? null,
+    });
   } catch (error) {
     if (error instanceof NoEmployeeRecordError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
@@ -243,10 +287,23 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const id = await withTenant(ctx, async (tx) => {
+    const outcome = await withTenant(ctx, async (tx) => {
       // ctx.userId is the signing-in account, not the employment record a
       // loan is keyed by — see lib/current-employee.ts.
       const employeeId = await requireCurrentEmployeeId(ctx, tx);
+
+      // Checked on the server, and not only on the form. The endpoint accepted
+      // any positive principal, so an advance of ten years' pay was a valid
+      // request — approvable by a manager who trusted the form to have checked.
+      const basis = await borrowingBasis(tx, ctx.orgId, employeeId);
+      const verdict = checkLoanRequest(body.principalMinor, {
+        loanType: body.loanType,
+        monthlyBasicMinor: basis.monthlyBasicMinor,
+        outstandingMinor: basis.outstandingMinor,
+        limitMonths: basis.limitMonths,
+      });
+      if (!verdict.ok) return { refused: verdict.message };
+
       const now = new Date();
       // Recovery starts the month after the request, since this month's payroll
       // may already have been prepared.
@@ -268,10 +325,17 @@ export async function POST(request: NextRequest) {
         })
         .returning({ id: employeeLoans.id });
 
-      return row.id;
+      return { id: row.id };
     });
 
-    return NextResponse.json({ id, status: "pending" });
+    if ("refused" in outcome) {
+      // 422 rather than 400: the request is well-formed and understood, and
+      // refused on a rule. The distinction is what lets a client show the
+      // message rather than "invalid request".
+      return NextResponse.json({ error: outcome.refused }, { status: 422 });
+    }
+
+    return NextResponse.json({ id: outcome.id, status: "pending" });
   } catch (error) {
     if (error instanceof NoEmployeeRecordError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
@@ -279,4 +343,89 @@ export async function POST(request: NextRequest) {
     console.error("Loan request failed:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+/**
+ * What somebody's borrowing is measured against: their monthly basic, what
+ * they already owe, and their organisation's caps.
+ *
+ * Basic comes from the salary structure in force today and is never estimated —
+ * see lib/loan-limits.ts for why a 40%-of-CTC guess is the wrong tool for
+ * deciding how much money a person may have.
+ */
+async function borrowingBasis(
+  tx: Parameters<Parameters<typeof withTenant>[1]>[0],
+  orgId: string,
+  employeeId: string
+): Promise<{
+  monthlyBasicMinor: bigint | null;
+  outstandingMinor: bigint;
+  limitMonths?: Partial<Record<LoanType, number>>;
+}> {
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [structure] = await tx
+    .select({ basicMinor: salaryStructures.basicMinor })
+    .from(salaryStructures)
+    .where(
+      and(
+        eq(salaryStructures.employeeId, employeeId),
+        lte(salaryStructures.effectiveFrom, today),
+        or(
+          isNull(salaryStructures.effectiveTo),
+          gte(salaryStructures.effectiveTo, today)
+        )
+      )
+    )
+    .orderBy(desc(salaryStructures.effectiveFrom))
+    .limit(1);
+
+  // Every live loan counts, not just this kind: three advances of one month
+  // each is three months.
+  const existing = await tx
+    .select({
+      id: employeeLoans.id,
+      principalMinor: employeeLoans.principalMinor,
+      status: employeeLoans.status,
+    })
+    .from(employeeLoans)
+    .where(
+      and(
+        eq(employeeLoans.employeeId, employeeId),
+        inArray(employeeLoans.status, ["pending", "active"])
+      )
+    );
+
+  let outstandingMinor = 0n;
+  if (existing.length > 0) {
+    const paid = await tx
+      .select({ loanId: loanRepayments.loanId, amountMinor: loanRepayments.amountMinor })
+      .from(loanRepayments)
+      .where(inArray(loanRepayments.loanId, existing.map((l) => l.id)));
+
+    for (const loan of existing) {
+      const recovered = paid
+        .filter((p) => p.loanId === loan.id)
+        .reduce((sum, p) => sum + p.amountMinor, 0n);
+      const left = loan.principalMinor - recovered;
+      if (left > 0n) outstandingMinor += left;
+    }
+  }
+
+  const [org] = await tx
+    .select({ settings: organizations.settings })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+
+  const configured = (org?.settings as Record<string, unknown> | null)?.loanLimitMonths;
+
+  return {
+    monthlyBasicMinor: structure ? structure.basicMinor : null,
+    outstandingMinor,
+    limitMonths:
+      configured && typeof configured === "object"
+        ? (configured as Partial<Record<LoanType, number>>)
+        : undefined,
+  };
 }

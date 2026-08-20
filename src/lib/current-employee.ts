@@ -31,6 +31,7 @@
 import { and, eq, isNull, or } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { employees } from "@/db/schema/hrms";
+import { users } from "@/db/schema/identity";
 
 /**
  * The minimum needed to resolve a person: which tenant, and which account.
@@ -101,21 +102,26 @@ export async function requireCurrentEmployeeId(
 }
 
 /**
- * The caller's employee id *and* the code a human would quote — "CIR-0042".
+ * The caller's employee id, the code a human would quote, and their photograph.
  *
- * The identity card and anything that says "this is you" wants the code, not a
- * UUID: nobody reads a UUID out to payroll or to the person on the gate.
+ * The identity card and any screen that says "this is you" want the code, not
+ * a UUID: nobody reads a UUID out to payroll or to the person on the gate.
+ *
+ * The photograph falls back from the employment record to the account. The
+ * suite's other apps write the account's avatar, and somebody who has set a
+ * picture once should not have to set it again here to be recognised.
  */
 export async function currentEmployeeIdentity(
   ctx: EmployeeLookupContext,
   tx?: Tx
-): Promise<{ id: string; employeeCode: string } | null> {
+): Promise<{ id: string; employeeCode: string; avatarUrl: string | null } | null> {
   const run = async (t: Tx) => {
     const rows = await t
       .select({
         id: employees.id,
         userId: employees.userId,
         employeeCode: employees.employeeCode,
+        avatarUrl: employees.avatarUrl,
       })
       .from(employees)
       .where(
@@ -128,7 +134,18 @@ export async function currentEmployeeIdentity(
 
     if (rows.length === 0) return null;
     const row = rows.find((r) => r.userId === ctx.userId) ?? rows[0];
-    return { id: row.id, employeeCode: row.employeeCode };
+
+    let avatarUrl = row.avatarUrl;
+    if (!avatarUrl) {
+      const [account] = await t
+        .select({ avatarUrl: users.avatarUrl })
+        .from(users)
+        .where(eq(users.id, ctx.userId))
+        .limit(1);
+      avatarUrl = account?.avatarUrl ?? null;
+    }
+
+    return { id: row.id, employeeCode: row.employeeCode, avatarUrl };
   };
 
   return tx ? run(tx) : withTenant(ctx, run);

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
   //
   // A failure here degrades to null rather than failing the whole session:
   // being unable to name your employee record is not a reason to be signed out.
-  let identity: { id: string; employeeCode: string } | null = null;
+  let identity: { id: string; employeeCode: string; avatarUrl: string | null } | null = null;
   try {
     identity = await currentEmployeeIdentity({ orgId: claims.org, userId: claims.sub });
   } catch (error) {
@@ -61,6 +61,12 @@ export async function GET(request: NextRequest) {
       employeeId: identity?.id ?? null,
       // What a person actually quotes to HR or reads off a badge.
       employeeCode: identity?.employeeCode ?? null,
+      // Sent with the session so a face appears the moment somebody signs in,
+      // rather than after a second call every screen would have to make.
+      // Falls back from the employment record to the account, because the
+      // suite's other apps write the account's picture and somebody who set
+      // one once should not have to set it again to be recognised here.
+      avatarUrl: identity?.avatarUrl ?? null,
       role: claims.role,
       email: claims.email,
       displayName,

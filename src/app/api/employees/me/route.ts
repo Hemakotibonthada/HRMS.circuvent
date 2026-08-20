@@ -52,6 +52,30 @@ const selfEditable = z.object({
   state: z.string().trim().max(120).nullish(),
   postalCode: z.string().trim().max(20).nullish(),
   country: z.string().trim().max(120).nullish(),
+  /**
+   * Your own face, which is yours to change.
+   *
+   * `https` only, and parsed rather than pattern-matched: a `javascript:` or
+   * `data:` value here would be rendered by whatever shows the picture, and
+   * the staff directory shows it to the whole company. Length-capped because
+   * a data URL smuggled through would otherwise be a megabyte in a text
+   * column read on every screen that greets somebody by name.
+   */
+  avatarUrl: z
+    .string()
+    .trim()
+    .max(2048)
+    .refine(
+      (value) => {
+        try {
+          return new URL(value).protocol === "https:";
+        } catch {
+          return false;
+        }
+      },
+      { message: "A picture has to be an https address" }
+    )
+    .nullish(),
 });
 
 const RETURNED = {
@@ -62,6 +86,7 @@ const RETURNED = {
   workEmail: employees.workEmail,
   personalEmail: employees.personalEmail,
   phone: employees.phone,
+  avatarUrl: employees.avatarUrl,
   dateOfBirth: employees.dateOfBirth,
   bloodGroup: employees.bloodGroup,
   maritalStatus: employees.maritalStatus,

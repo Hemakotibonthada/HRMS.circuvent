@@ -19,6 +19,8 @@ import {
   leavePolicies,
 } from "@/db/schema/hrms";
 import { auditLog, organizations, users } from "@/db/schema/identity";
+import { queueMailboxChange } from "@/lib/mailbox-outbox";
+import { defaultTeamId } from "@/lib/default-team";
 import {
   drainDueGroupJoins,
   drainDueGroupLeaves,
@@ -328,7 +330,11 @@ export class NeonEmployeeRepository implements EmployeeRepository {
           lastName: data.lastName,
           workEmail: data.email,
           phone: data.phone,
-          departmentId: data.departmentId,
+          // Everybody lands in a team. A person attached to no department is
+          // around nobody, and "who is away today" and "whose birthday is it"
+          // are answered by looking at the people around them — so they opened
+          // the Team tab and were told they had no colleagues.
+          departmentId: data.departmentId ?? (await defaultTeamId(tx, this.ctx.orgId)),
           designation: data.designation,
           reportingToId: data.reportingToId,
           employmentType: (data.employmentType ?? "full_time") as never,
@@ -1070,7 +1076,7 @@ export class NeonEmployeeRepository implements EmployeeRepository {
    * it again.
    */
   async convertToPermanent(id: string): Promise<EmployeeRecord> {
-    const { row, justConverted } = await withTenant(this.ctx, async (tx) => {
+    const { row, justConverted, queuedMailChange } = await withTenant(this.ctx, async (tx) => {
       const [current] = await tx
         .select()
         .from(employees)
@@ -1085,7 +1091,7 @@ export class NeonEmployeeRepository implements EmployeeRepository {
       // lock above, is the entire idempotency guarantee — a retried request
       // observes "not an intern any more" and stops here.
       if (current.employmentType !== "intern") {
-        return { row: current, justConverted: false };
+        return { row: current, justConverted: false, queuedMailChange: null };
       }
 
       const result = await tx.execute(
@@ -1115,8 +1121,20 @@ export class NeonEmployeeRepository implements EmployeeRepository {
 
       if (!updated) throw new NotFoundError("Employee", id);
 
+      // An intern who becomes permanent loses the "cvi-" prefix and keeps the
+      // rest of their address, so six months of correspondence still resolves
+      // to them. Queued rather than applied: the mail server has no rename,
+      // so the move is a create, a delete and an alias against a single VM,
+      // and `work_email` must not name the new address until it exists.
+      const queuedMailChange = await queueMailboxChange(tx as never, {
+        orgId: this.ctx.orgId,
+        employeeId: id,
+        currentEmail: current.workEmail,
+        reason: "intern_converted",
+      });
+
       await queuePaystubEmployeeSync(tx, this.ctx.orgId, id);
-      return { row: updated, justConverted: true };
+      return { row: updated, justConverted: true, queuedMailChange };
     });
 
     // Both side effects are scoped to justConverted: the idempotent no-op
