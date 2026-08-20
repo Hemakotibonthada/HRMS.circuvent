@@ -27,12 +27,45 @@ data class AppSpacing(
     val xxxl: Dp = 48.dp,
 )
 
+/**
+ * Corner radii.
+ *
+ * Generous rather than tight. The first version used 6–14dp, which is correct
+ * for a dense desktop table and reads as sharp and boxy on a phone screen made
+ * almost entirely of stacked cards — the app looked like a wireframe of itself.
+ * Softer corners are the single cheapest thing that makes a surface look like a
+ * finished object rather than a div with a border.
+ */
 data class AppRadius(
-    val sm: Dp = 6.dp,
-    val md: Dp = 10.dp,
-    val lg: Dp = 14.dp,
-    val xl: Dp = 20.dp,
+    val sm: Dp = 10.dp,
+    val md: Dp = 16.dp,
+    val lg: Dp = 20.dp,
+    val xl: Dp = 28.dp,
     val pill: Dp = 999.dp,
+)
+
+/**
+ * Elevation.
+ *
+ * Cards used to carry a 1dp border in a mid-grey, which came from a palette
+ * audit that found the *input* outline invisible at 1.27:1 against the page.
+ * That fix was right for a control somebody has to find the edge of, and wrong
+ * when it was applied to every grouping surface as well: a page of outlined
+ * rectangles reads as a mockup.
+ *
+ * A card is separated by lift and by surface colour instead. The strong border
+ * stays where it earns its keep — inputs, focus rings, anything whose boundary
+ * is the affordance.
+ *
+ * Dark mode gets no useful shadow at any elevation, which is why the dark
+ * palette keeps a real step between background, surface and surfaceElevated
+ * rather than relying on this.
+ */
+data class AppElevation(
+    val flat: Dp = 0.dp,
+    val card: Dp = 2.dp,
+    val raised: Dp = 6.dp,
+    val hero: Dp = 12.dp,
 )
 
 /**
@@ -100,6 +133,9 @@ val LocalAppColors: ProvidableCompositionLocal<AppColors> =
     staticCompositionLocalOf { LightColors }
 val LocalAppSpacing: ProvidableCompositionLocal<AppSpacing> =
     staticCompositionLocalOf { AppSpacing() }
+val LocalAppElevation: ProvidableCompositionLocal<AppElevation> =
+    staticCompositionLocalOf { AppElevation() }
+
 val LocalAppRadius: ProvidableCompositionLocal<AppRadius> =
     staticCompositionLocalOf { AppRadius() }
 val LocalAppTypography: ProvidableCompositionLocal<AppTypography> =
@@ -130,6 +166,7 @@ fun CircuventTheme(
         LocalAppColors provides if (darkTheme) DarkColors else LightColors,
         LocalAppSpacing provides AppSpacing(),
         LocalAppRadius provides AppRadius(),
+        LocalAppElevation provides AppElevation(),
         LocalAppTypography provides AppTypography(),
         LocalAppMotion provides AppMotion(),
         content = content,
@@ -144,6 +181,8 @@ object Theme {
         @Composable get() = LocalAppSpacing.current
     val radius: AppRadius
         @Composable get() = LocalAppRadius.current
+    val elevation: AppElevation
+        @Composable get() = LocalAppElevation.current
     val type: AppTypography
         @Composable get() = LocalAppTypography.current
     val motion: AppMotion

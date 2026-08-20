@@ -205,6 +205,10 @@ dependencies {
     // is exactly what federating the sign-in was meant to avoid, and identity
     // providers increasingly refuse to render in one.
     implementation(libs.androidx.browser)
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
     implementation(libs.play.services.location)
 
     implementation(libs.okhttp)

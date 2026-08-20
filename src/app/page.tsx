@@ -13,6 +13,8 @@ import { GetTheApp } from "@/components/get-the-app";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { SUBSCRIPTION_PLANS } from "@/lib/constants";
+import { MODULE_PERMISSION_MAP } from "@/lib/rbac";
+import { PT_SLABS } from "@/lib/statutory-india";
 
 function AnimatedCounter({ target, suffix = "" }: { target: number; suffix?: string }) {
   const [count, setCount] = useState(0);
@@ -108,11 +110,30 @@ const FEATURES = [
  * from `statutory-india.ts`. The uptime figure is a commitment the product
  * offers rather than a measurement, which is a claim it is entitled to make.
  */
+/*
+ * Landing page figures.
+ *
+ * Counted from the code that implements them rather than typed in, so they
+ * cannot quietly go stale. The previous list said "89 HR Modules" while the
+ * permission map already held 91, and claimed a "99.9% Uptime SLA" that is
+ * offered nowhere — not in the terms, not in any contract in this repository.
+ * An availability figure is a commitment, and inventing one is the kind of
+ * claim a customer can hold you to.
+ *
+ * What is left is checkable by anyone with the repository open:
+ *   - modules: keys of MODULE_PERMISSION_MAP, the registry access control uses
+ *   - states:  keys of PT_SLABS, the professional-tax tables payroll applies
+ *   - isolation: enforced by scripts/verify-live-isolation.ts, which fails the
+ *     build if one tenant can reach another's rows
+ */
+const MODULE_COUNT = Object.keys(MODULE_PERMISSION_MAP).length;
+const PT_STATE_COUNT = Object.keys(PT_SLABS).length;
+
 const STATS = [
-  { value: 89, suffix: "", label: "HR Modules" },
-  { value: 99.9, suffix: "%", label: "Uptime SLA" },
+  { value: MODULE_COUNT, suffix: "", label: "HR Modules" },
+  { value: PT_STATE_COUNT, suffix: "", label: "States: Professional Tax" },
   { value: 100, suffix: "%", label: "Tenant Data Isolation" },
-  { value: 9, suffix: "", label: "States: Professional Tax" },
+  { value: 2, suffix: "", label: "Tax Regimes: Old & New" },
 ];
 
 // The `TESTIMONIALS` array was removed from here. It held three invented
@@ -227,7 +248,7 @@ export default function LandingPage() {
             <ScrollReveal>
               <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-4 py-1.5 text-sm font-medium text-violet-700 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-300">
                 <Zap className="h-3.5 w-3.5" />
-                Trusted by 500+ companies worldwide
+                Built for Indian payroll and statutory compliance
               </div>
             </ScrollReveal>
 
@@ -496,8 +517,8 @@ export default function LandingPage() {
               Ready to transform your HR?
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-lg text-muted-foreground">
-              Join 500+ companies already using Circuvent HRMS. Start your 14-day
-              free trial today — no credit card required.
+              Create your organisation in a few minutes. No credit card is asked
+              for at sign-up.
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Button

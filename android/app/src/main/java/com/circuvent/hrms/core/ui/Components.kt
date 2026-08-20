@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -57,7 +58,7 @@ import com.circuvent.hrms.core.design.Theme
 // What is here instead is small, and each piece exists because the same
 // mistake was made repeatedly without it.
 
-enum class TextTone { DEFAULT, MUTED, PRIMARY, ON_PRIMARY, SUCCESS, WARNING, DANGER }
+enum class TextTone { DEFAULT, MUTED, PRIMARY, ON_PRIMARY, ON_HERO, SUCCESS, WARNING, DANGER }
 
 @Composable
 private fun TextTone.color(): Color = when (this) {
@@ -65,6 +66,7 @@ private fun TextTone.color(): Color = when (this) {
     TextTone.MUTED -> Theme.colors.textMuted
     TextTone.PRIMARY -> Theme.colors.primary
     TextTone.ON_PRIMARY -> Theme.colors.onPrimary
+    TextTone.ON_HERO -> Theme.colors.onHero
     TextTone.SUCCESS -> Theme.colors.success
     TextTone.WARNING -> Theme.colors.warning
     TextTone.DANGER -> Theme.colors.danger
@@ -122,7 +124,13 @@ fun SectionHeading(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-enum class ButtonVariant { PRIMARY, SECONDARY, GHOST, DANGER }
+/**
+ * [ButtonVariant.ON_HERO] is for a button sitting on the gradient of a
+ * [HeroCard]. The primary variant is the same violet as the gradient under it
+ * and disappears; this one inverts, so the control that matters most on the
+ * screen is also the highest-contrast thing on it.
+ */
+enum class ButtonVariant { PRIMARY, SECONDARY, GHOST, DANGER, ON_HERO }
 
 /**
  * A button.
@@ -156,12 +164,17 @@ fun AppButton(
         ButtonVariant.SECONDARY -> colors.surfaceElevated
         ButtonVariant.GHOST -> Color.Transparent
         ButtonVariant.DANGER -> colors.danger
+        ButtonVariant.ON_HERO -> Color.White
     }
     val foreground = when (variant) {
         ButtonVariant.PRIMARY -> colors.onPrimary
         ButtonVariant.SECONDARY -> colors.text
         ButtonVariant.GHOST -> colors.primary
         ButtonVariant.DANGER -> Color.White
+        // Against white, the darker end of the gradient — not `primary`, which
+        // is lightened in dark mode for legibility on a dark page and would be
+        // washed out here.
+        ButtonVariant.ON_HERO -> colors.heroEnd
     }
 
     val shape = RoundedCornerShape(Theme.radius.md)
@@ -214,9 +227,15 @@ fun AppButton(
 /**
  * The elevated surface every screen would otherwise declare by hand.
  *
- * The border is a real 1dp rather than a hairline. The palette audit found the
- * light border at 1.27:1 against the page — an input outline nobody could see
- * — so it is heavier than the current fashion, deliberately.
+ * Separated from the page by lift and by surface colour, not by an outline. It
+ * used to carry a 1dp border in a mid-grey, inherited from a palette audit that
+ * found the *input* outline invisible at 1.27:1 — a correct fix for a control
+ * whose edge is its affordance, and the wrong one applied to every grouping
+ * surface, which left the app looking like a wireframe of itself.
+ *
+ * The hairline that remains is `borderSubtle`, and it is there for the case
+ * shadows cannot cover: a white card on a white background, where a reader with
+ * a dimmed screen or a cheap panel would otherwise see no edge at all.
  *
  * `contentDescription` merges the children into one stop. A shift row read as
  * six separate nodes loses which number is the start and which the duration.
@@ -235,12 +254,21 @@ fun AppCard(
 
     var box = modifier
         .fillMaxWidth()
+        .shadow(
+            elevation = if (highlighted) Theme.elevation.raised else Theme.elevation.card,
+            shape = shape,
+            // Tinted rather than neutral black. A grey shadow on a lavender
+            // page reads as dirt; the same shadow carrying a little of the
+            // brand hue reads as depth.
+            ambientColor = colors.shadow,
+            spotColor = colors.shadow,
+        )
         .clip(shape)
         .background(if (muted) colors.surface else colors.surfaceElevated)
         .border(
             BorderStroke(
                 if (highlighted) 2.dp else 1.dp,
-                if (highlighted) colors.primary else colors.border,
+                if (highlighted) colors.primary else colors.borderSubtle,
             ),
             shape,
         )
@@ -257,7 +285,7 @@ fun AppCard(
         }
     }
 
-    Column(modifier = box.padding(Theme.spacing.md), content = content)
+    Column(modifier = box.padding(Theme.spacing.lg), content = content)
 }
 
 enum class BannerTone { INFO, SUCCESS, WARNING, ERROR }

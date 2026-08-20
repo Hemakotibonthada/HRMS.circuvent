@@ -95,6 +95,45 @@ describe("privilege boundaries", () => {
   });
 });
 
+// A template edit reaches every letter generated from it afterwards, not one
+// — a mistake here is a bigger blast radius than generating a single letter,
+// which is why this is its own permission rather than folded into
+// letters.generate. These tests pin that a manager (who already holds
+// letters.generate) still cannot edit the template a letter is generated
+// from.
+describe("templates.manage", () => {
+  it("is held by owner, admin and hr", () => {
+    expect(roleHasPermission("owner", "templates.manage")).toBe(true);
+    expect(hasPermission("admin", "templates.manage")).toBe(true);
+    expect(hasPermission("hr", "templates.manage")).toBe(true);
+  });
+
+  it("is refused to managers and employees", () => {
+    expect(hasPermission("manager", "templates.manage")).toBe(false);
+    expect(hasPermission("employee", "templates.manage")).toBe(false);
+  });
+
+  it("is a distinct permission key from letters.generate, not an alias", () => {
+    // Every role that holds one currently holds the other too, but they are
+    // deliberately separate entries in the Permission union (see the comment
+    // on templates.manage in rbac.ts) so a future role — a recruiter who
+    // sends offers from an approved template but must not edit its wording —
+    // can be given letters.generate without also inheriting templates.manage.
+    const admin: Permission[] = ROLE_PERMISSIONS.admin;
+    expect(admin.filter((p) => p === "letters.generate" || p === "templates.manage")).toEqual([
+      "letters.generate",
+      "templates.manage",
+    ]);
+  });
+
+  it("gates the templates module through MODULE_PERMISSION_MAP, not a bespoke check", () => {
+    expect(MODULE_PERMISSION_MAP.templates).toBe("templates.manage");
+    expect(canAccessModule("hr", "templates")).toBe(true);
+    expect(canAccessModule("manager", "templates")).toBe(false);
+    expect(canAccessModule("employee", "templates")).toBe(false);
+  });
+});
+
 describe("hasAnyPermission", () => {
   it("is true when at least one permission is held", () => {
     expect(hasAnyPermission("employee", ["payroll.process", "leave.apply"])).toBe(true);

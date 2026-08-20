@@ -16,6 +16,7 @@
 // there is no return value that could be mistaken for success.
 
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -163,6 +164,28 @@ export async function getObjectBytes(key: string): Promise<Uint8Array> {
   // to low hundreds of KB) and far simpler than piping a Node stream through
   // an API route response, which is the only reason to avoid it here.
   return body.transformToByteArray();
+}
+
+/**
+ * Removes an object.
+ *
+ * Added for attendance photo retention, which is a promise to a person that
+ * their face stops existing after a stated number of days. A promise kept only
+ * by a column nobody acts on is not kept, so something has to be able to
+ * actually delete the bytes.
+ *
+ * Deleting something that is not there is not an error. S3 and R2 both answer
+ * a delete of a missing key with success, and a purge that has already run
+ * once should be safe to run again.
+ */
+export async function deleteObject(key: string): Promise<void> {
+  const config = requireConfig();
+  const client = clientFor(config);
+  try {
+    await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }));
+  } catch (error) {
+    throw new StorageRequestError(`Could not delete "${key}" from object storage.`, error);
+  }
 }
 
 export const r2ObjectStore: ObjectStore = { putObject, getObjectBytes };

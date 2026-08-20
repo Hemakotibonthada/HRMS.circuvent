@@ -110,6 +110,14 @@ export interface EmployeeRecord {
   status: string;
   joinDate: string;
   exitDate?: string;
+  /**
+   * Free-text reason recorded at exit (e.g. "resignation", "termination").
+   * `paystub-client.ts` already forwards this to Paystub's sync endpoint,
+   * which uses it to decide the settlement reason category — but until the
+   * leaver path wired a write path here, nothing ever set it, so every
+   * synced exit arrived at Paystub with no reason at all.
+   */
+  exitReason?: string;
   location?: string;
   /** Major currency units for display. Stored as minor units in Postgres. */
   salary?: number;
@@ -135,7 +143,10 @@ export interface EmployeeCreate {
   salary?: number;
 }
 
-export type EmployeeUpdate = Partial<EmployeeCreate> & { exitDate?: string };
+export type EmployeeUpdate = Partial<EmployeeCreate> & {
+  exitDate?: string;
+  exitReason?: string;
+};
 
 export interface EmployeeRepository
   extends Repository<EmployeeRecord, EmployeeCreate, EmployeeUpdate> {

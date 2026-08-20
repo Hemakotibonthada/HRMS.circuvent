@@ -54,6 +54,34 @@ data class AppColors(
     val focus: Color,
     /** Behind a modal. */
     val scrim: Color,
+    /**
+     * The colour a card's shadow is drawn in.
+     *
+     * Tinted towards the brand hue rather than neutral black. A grey shadow on
+     * a lavender page reads as dirt under the card; the same shadow carrying a
+     * little violet reads as depth.
+     */
+    val shadow: Color,
+    /**
+     * The two ends of the hero gradient.
+     *
+     * Used on the one surface per screen that should draw the eye first — the
+     * clock-in card. A page of identical white rectangles has no focal point,
+     * and the thing somebody opened the app to do should not look the same as
+     * the list of holidays underneath it.
+     */
+    val heroStart: Color,
+    val heroEnd: Color,
+    /**
+     * Text and icons on the hero gradient.
+     *
+     * Not `onPrimary`. In dark mode `primary` is lightened so it reads on a
+     * near-black page, and `onPrimary` is correspondingly near-black — which is
+     * correct on a light violet button and unreadable on the hero, whose
+     * gradient is dark violet in *both* themes. Keeping a separate token means
+     * the hero cannot inherit a colour chosen for a different surface.
+     */
+    val onHero: Color,
     val isDark: Boolean,
 )
 
@@ -93,6 +121,10 @@ val LightColors = AppColors(
     borderSubtle = Color(0xFFE1DEF0),
     focus = Color(0xFF7E55F0),
     scrim = Color(0x7314121F),
+    shadow = Color(0x4A3A1E8C),
+    heroStart = Color(0xFF7B3FF2),
+    heroEnd = Color(0xFF5B21D6),
+    onHero = Color(0xFFFFFFFF),
     isDark = false,
 )
 
@@ -119,6 +151,12 @@ val DarkColors = AppColors(
     borderSubtle = Color(0xFF26262F),
     focus = Color(0xFFA98CFF),
     scrim = Color(0x9903000A),
+    // Shadows do not read on a near-black page, so this is nearly invisible
+    // and the dark palette relies on its surface steps instead.
+    shadow = Color(0x66000000),
+    heroStart = Color(0xFF4B2A8A),
+    heroEnd = Color(0xFF2E1A57),
+    onHero = Color(0xFFF2EDFF),
     isDark = true,
 )
 

@@ -9,7 +9,7 @@ import {
   BookOpen, Heart, Cake, Keyboard,
   FolderKanban, Sparkles, GitBranch, MessageSquare, Activity,
   Scale, Monitor, Map,
-  Bot, Upload, Fingerprint, Umbrella, Landmark,
+  Bot, Upload, Fingerprint, Umbrella, Landmark, LayoutTemplate,
   type LucideIcon
 } from "lucide-react";
 
@@ -161,6 +161,22 @@ export const MODULES: NavItem[] = [
     icon: FileText,
     href: "/documents",
     color: "oklch(0.58 0.12 240)",
+    category: "admin",
+  },
+  // Added in the same change as the "templates.manage" permission in
+  // rbac.ts, not after it. This codebase has shipped a permission with no
+  // matching entry here at least twice (see benefits and bankdetails
+  // above) — both times the page existed and worked, but only for someone
+  // who typed the URL directly, because MODULE_PERMISSION_MAP gates the
+  // route yet nothing in this list ever links to it.
+  {
+    id: "templates",
+    name: "Document Templates",
+    shortName: "Templates",
+    description: "Edit letter & document templates",
+    icon: LayoutTemplate,
+    href: "/templates",
+    color: "oklch(0.60 0.16 220)",
     category: "admin",
   },
   {

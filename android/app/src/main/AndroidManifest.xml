@@ -16,6 +16,16 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
         tools:node="remove" />
+    <!--
+      Only used when an organisation has switched selfie punch on, which is off
+      by default and refused entirely unless object storage is configured.
+
+      `required="false"` so the app still installs on a device with no camera:
+      an organisation that does not use this feature should not have its
+      hardware narrowed by a permission it never exercises.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />

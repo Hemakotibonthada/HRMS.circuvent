@@ -476,8 +476,27 @@ class AppRepository(private val api: ApiClient) {
     suspend fun teamPulse(): TeamPulseResponse =
         json.decodeFromString(api.get("/api/team/pulse"))
 
-    // ─── Performance ─────────────────────────────────────────
+    // ─── Punch photographs ───────────────────────────────────
 
+    /**
+     * Whether a punch has to carry a photograph here.
+     *
+     * A failure is treated as "no", by the caller as well as by the DTO
+     * defaults. Opening a camera because a policy call timed out would
+     * photograph somebody on the strength of a network error.
+     */
+    suspend fun attendancePolicy(): AttendancePolicyDto =
+        json.decodeFromString(api.get("/api/attendance/policy"))
+
+    suspend fun saveAttendancePolicy(save: AttendancePolicySave): AttendancePolicyDto =
+        json.decodeFromString(
+            api.put(
+                "/api/attendance/policy",
+                json.encodeToString(AttendancePolicySave.serializer(), save),
+            )
+        )
+
+    // ─── Performance ─────────────────────────────────────────
     /**
      * Review cycles, each carrying this employee's goals.
      *

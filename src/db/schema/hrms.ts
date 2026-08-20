@@ -222,6 +222,23 @@ export const employees = hrms.table(
     noticePeriodDays: integer("notice_period_days").default(60),
 
     /**
+     * Expected last day of an internship. `joinDate` already doubles as the
+     * internship start for every employment type, so this is the only date
+     * an intern record needs that a permanent one does not — it is what the
+     * last-working-day reminder sweep and the interns list count down to.
+     */
+    internshipEndDate: date("internship_end_date"),
+
+    /**
+     * The CVI- code this row was hired under, kept after conversion to
+     * permanent so payslips, signed letters and attendance already issued
+     * under it stay verifiable. Null for anyone who has never converted.
+     */
+    previousEmployeeCode: text("previous_employee_code"),
+    /** When `employeeCode` last changed because of a conversion. */
+    codeChangedAt: timestamp("code_changed_at", { withTimezone: true }),
+
+    /**
      * Contracted hours per week.
      *
      * Needed by rostering to allocate fairly — without it a part-time employee
@@ -288,6 +305,7 @@ export const employees = hrms.table(
     index("employees_org_status_idx").on(t.orgId, t.status),
     index("employees_org_department_idx").on(t.orgId, t.departmentId),
     index("employees_reporting_to_idx").on(t.reportingToId),
+    index("employees_internship_end_date_idx").on(t.orgId, t.internshipEndDate),
   ]
 );
 
@@ -317,6 +335,32 @@ export const paystubEmployeeSyncOutbox = hrms.table(
   ]
 );
 
+/**
+ * Records that a last-working-day reminder milestone (e.g. 14 days out) has
+ * already been sent for an intern. The daily cron is the only invocation
+ * this path gets — Vercel's Hobby plan allows one run per path per day — so
+ * a row is claimed here with `ON CONFLICT (employeeId, leadDays) DO NOTHING`
+ * before any mail goes out. Without it, a cron that fires twice in a day, or
+ * is retried after a partial failure, would mail HR, the manager and the
+ * intern again for the same milestone.
+ */
+export const internReminderLog = hrms.table(
+  "intern_reminder_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    /** Days before `internshipEndDate` this milestone fires at — 14, 3, ... */
+    leadDays: integer("lead_days").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("intern_reminder_log_key").on(t.employeeId, t.leadDays)]
+);
+
 export const directoryGroupJoinOutbox = hrms.table(
   "directory_group_join_outbox",
   {
@@ -343,6 +387,120 @@ export const directoryGroupJoinOutbox = hrms.table(
   (t) => [
     uniqueIndex("directory_group_join_outbox_member_key").on(t.orgId, t.employeeId, t.groupAddress),
     index("directory_group_join_outbox_retry_idx").on(t.status, t.nextAttemptAt),
+  ]
+);
+
+/**
+ * A resignation is not the same fact as `employees.exitDate`: it is the
+ * record of how that date was arrived at — who asked to leave, when, why,
+ * and who on the other side agreed to it. `employees.exitDate` stays the
+ * one field every other system already reads (Paystub's sync, the
+ * offboarding journey's anchor date, the relieving letter gate); this table
+ * is where the negotiation that produced it is kept, so "why does this
+ * person have that last working day" has an answer beyond "someone edited
+ * the employee record."
+ */
+export const resignationStatusEnum = hrms.enum("resignation_status", [
+  "submitted",
+  "accepted",
+]);
+
+export const resignations = hrms.table(
+  "resignations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    status: resignationStatusEnum("status").notNull().default("submitted"),
+    reason: text("reason").notNull(),
+    /** What the employee asked for. HR may move the agreed date; this copy never changes, so the original request stays visible after an adjustment. */
+    intendedLastWorkingDay: date("intended_last_working_day").notNull(),
+    /**
+     * What was actually agreed — null until acceptance sets it from notice
+     * policy, mutable afterwards for the one HR override this path needs.
+     * Every downstream step (the journey anchor, the outbox removals, the
+     * settlement, the relieving letter gate) reads this column, never
+     * `intendedLastWorkingDay`.
+     */
+    agreedLastWorkingDay: date("agreed_last_working_day"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    acceptedById: uuid("accepted_by_id"),
+    lastWorkingDayAdjustedAt: timestamp("last_working_day_adjusted_at", { withTimezone: true }),
+    lastWorkingDayAdjustedById: uuid("last_working_day_adjusted_by_id"),
+    /**
+     * Set exactly once, by whichever of the two triggers in
+     * `offboarding-exit.ts` gets there first: HR confirming exit, or the
+     * cron sweep noticing the last working day has already passed.
+     * Everything that must not run twice for the same leaver — group
+     * removal, Paystub inactivation, document issuance — is gated on this
+     * being null, so it is the one column every exit-processing write locks
+     * the row on before checking.
+     */
+    exitProcessedAt: timestamp("exit_processed_at", { withTimezone: true }),
+    /** Set once a document is actually generated — not attempted, generated — so a failed render can be retried without ever producing a second copy. */
+    relievingLetterDocumentId: uuid("relieving_letter_document_id"),
+    experienceCertificateDocumentId: uuid("experience_certificate_document_id"),
+    internshipCompletionDocumentId: uuid("internship_completion_document_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One resignation in flight per employee. A second submission while one
+    // is already open would leave two "intended last working days" for the
+    // same person with no way to say which one HR actually accepted.
+    uniqueIndex("resignations_employee_key").on(t.employeeId),
+    index("resignations_org_status_idx").on(t.orgId, t.status),
+    // The cron sweep's whole query is "agreed dates that have passed and
+    // have not been processed yet". Without this index that is a
+    // sequential scan over every resignation the org has ever recorded.
+    index("resignations_org_unprocessed_idx").on(t.orgId, t.agreedLastWorkingDay),
+  ]
+);
+
+/**
+ * The leave-side mirror of `directoryGroupJoinOutbox`, and the fix for the
+ * bug this whole leaver path exists to close: a group *join* only ever
+ * needed retrying because of a transient identity-provider failure, and the
+ * very next edit to that employee's record — a department change, a
+ * probation confirmation — would naturally re-queue it. A group *leave* has
+ * no such safety net: nobody edits an ex-employee's record again, so a
+ * failed removal used to just sit there, and the account stayed in `all@`
+ * and every distribution list it was ever added to, silently, forever.
+ * `drainDueGroupLeaves` in `outbox-sweep.ts` retries a failed removal the
+ * same way the join side already retries a failed add, so leaving repeats
+ * none of joining's own history of that defect.
+ */
+export const directoryGroupLeaveOutbox = hrms.table(
+  "directory_group_leave_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    /** The group's address at the identity provider — "all@circuvent.com". */
+    groupAddress: text("group_address").notNull(),
+    /** The address being removed, as it was when the intent was recorded — the mailbox itself may already be suspended by the time this drains. */
+    memberEmail: text("member_email").notNull(),
+    status: text("status").notNull().default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    leftAt: timestamp("left_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("directory_group_leave_outbox_member_key").on(t.orgId, t.employeeId, t.groupAddress),
+    index("directory_group_leave_outbox_retry_idx").on(t.status, t.nextAttemptAt),
   ]
 );
 
@@ -423,6 +581,14 @@ export const attendanceRecords = hrms.table(
     clockOutMethod: clockMethodEnum("clock_out_method"),
     clockInLatitude: numeric("clock_in_latitude", { precision: 10, scale: 7 }),
     clockInLongitude: numeric("clock_in_longitude", { precision: 10, scale: 7 }),
+    /**
+     * Object-store key for the punch photograph, not a URL.
+     *
+     * Predates the feature and is unused. Punch photographs live in
+     * `attendancePunchPhotos`, which has its own lifecycle: retention deletes
+     * the image while this record survives for payroll. Left in place because
+     * renaming a column other code already selects buys nothing.
+     */
     clockInPhotoUrl: text("clock_in_photo_url"),
     /** False when a mobile punch fell outside the location's geofence. */
     isWithinGeofence: boolean("is_within_geofence"),
@@ -463,8 +629,9 @@ export const attendanceRecords = hrms.table(
   ]
 );
 
-// ─── Leave ───────────────────────────────────────────────────
 
+
+// ─── Leave ───────────────────────────────────────────────────
 export const leavePolicies = hrms.table(
   "leave_policies",
   {
@@ -1188,8 +1355,7 @@ export const reviewCycles = hrms.table(
   (t) => [index("review_cycles_org_status_idx").on(t.orgId, t.status)]
 );
 
-export const performanceGoals = hrms.table(
-  "performance_goals",
+export const performanceGoals = hrms.table(  "performance_goals",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     orgId: uuid("org_id")
@@ -1507,6 +1673,17 @@ export const lifecycleTasks = hrms.table(
 
 // ─── Inferred types ──────────────────────────────────────────
 
+/**
+ * The employee row.
+ *
+ * Import this rather than writing `typeof employees.$inferSelect` again at the
+ * call site. Each such expression is a fresh instantiation of a very large
+ * generic, and this table is close enough to TypeScript's complexity ceiling
+ * that two of them stop comparing as the same type — "two different types with
+ * this name exist, but they are unrelated", from code that only ever passed a
+ * row straight through. Referencing one alias means there is one instantiation
+ * to compare against itself.
+ */
 export type Employee = typeof employees.$inferSelect;
 export type NewEmployee = typeof employees.$inferInsert;
 export type Department = typeof departments.$inferSelect;
@@ -1528,3 +1705,5 @@ export type ExpenseClaim = typeof expenseClaims.$inferSelect;
 export type WorkflowInstance = typeof workflowInstances.$inferSelect;
 export type LifecycleJourney = typeof lifecycleJourneys.$inferSelect;
 export type LifecycleTask = typeof lifecycleTasks.$inferSelect;
+export type Resignation = typeof resignations.$inferSelect;
+export type NewResignation = typeof resignations.$inferInsert;

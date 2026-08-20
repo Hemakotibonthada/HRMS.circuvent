@@ -934,9 +934,18 @@ def build_pdf(path: str) -> None:
 
     # ── flowable builders ──
     def code_flowable(block):
-        widest = max((len(x) for x in block.lines), default=1)
+        # Measure the real rendered width instead of guessing from the
+        # character count: box-drawing glyphs get substituted before
+        # layout, and a hand-tuned per-character estimate under-measures
+        # and silently clipped wide ASCII diagrams at the right margin.
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        measured = [strip_glyphs(x, mono=True) for x in block.lines] or [""]
         size = 7.6
-        while size > 4.2 and widest * size * 0.55 > AVAIL - 14:
+        while size > 4.2:
+            widest = max((stringWidth(x, MONO, size) for x in measured),
+                         default=0.0)
+            if widest <= AVAIL - 14:
+                break
             size -= 0.2
         leading = size * 1.32
         is_mermaid = block.lang.lower() == "mermaid"

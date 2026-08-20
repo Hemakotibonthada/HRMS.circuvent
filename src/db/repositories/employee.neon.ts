@@ -37,6 +37,7 @@ import {
   queueAndAttemptPaystubEmployeeSync,
   queuePaystubEmployeeSync,
 } from "@/lib/paystub-sync-outbox";
+import { employeeCodePrefixFor } from "@/lib/employee-code";
 import { decryptNullable, encryptNullable } from "@/lib/crypto/field-encryption";
 import {
   canWriteBankDetails,
@@ -109,6 +110,7 @@ function toRecord(row: Row): EmployeeRecord {
     status: row.status,
     joinDate: row.joinDate,
     exitDate: row.exitDate ?? undefined,
+    exitReason: row.exitReason ?? undefined,
     salary: toMajor(row.ctcMinor),
     currency: row.currency,
     organizationId: row.orgId,
@@ -214,7 +216,8 @@ export class NeonEmployeeRepository implements EmployeeRepository {
 
   async create(data: EmployeeCreate): Promise<EmployeeRecord> {
     const row = await withTenant(this.ctx, async (tx) => {
-      // The code comes from `hrms.next_employee_code` — see migration 0030.
+      // The code comes from `hrms.next_employee_code` — see migration 0030,
+      // extended by 0040 to take a prefix.
       //
       // It used to be `CIR-${count + 1}`, which is wrong in a way that only
       // shows up later: `count` skips anybody soft-deleted, so the first
@@ -222,11 +225,18 @@ export class NeonEmployeeRepository implements EmployeeRepository {
       // function takes the maximum over every row, including deleted ones, and
       // holds a transaction-scoped advisory lock so two concurrent hires cannot
       // read the same number.
+      //
+      // The prefix picks which of the two independent sequences this hire
+      // draws from: interns get CVI-, everyone else keeps the CV- sequence
+      // this function has always produced. Passing it explicitly rather than
+      // relying on the SQL default means an intern hire can never silently
+      // fall back to CV- just because this call site forgot to ask.
       const code =
         data.employeeCode ??
         (await (async () => {
+          const prefix = employeeCodePrefixFor(data.employmentType);
           const result = await tx.execute(
-            sql`SELECT hrms.next_employee_code(${this.ctx.orgId}::uuid) AS code`,
+            sql`SELECT hrms.next_employee_code(${this.ctx.orgId}::uuid, ${prefix}) AS code`,
           );
           const next = (result.rows[0] as { code?: string } | undefined)?.code;
           if (!next) {
@@ -479,6 +489,9 @@ export class NeonEmployeeRepository implements EmployeeRepository {
             : {}),
           ...(data.joinDate !== undefined ? { joinDate: data.joinDate } : {}),
           ...(data.exitDate !== undefined ? { exitDate: data.exitDate } : {}),
+          ...(data.exitReason !== undefined
+            ? { exitReason: data.exitReason }
+            : {}),
           ...(data.salary !== undefined
             ? { ctcMinor: toMinor(data.salary) }
             : {}),

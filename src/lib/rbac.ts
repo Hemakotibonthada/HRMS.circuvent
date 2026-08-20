@@ -57,6 +57,12 @@ export type Permission =
   | "goals.view" | "goals.create"
   | "timesheets.view" | "timesheets.log"
   | "letters.view" | "letters.generate"
+  // Editing the templates letters/documents are generated from is a bigger
+  // blast radius than generating one letter from an existing template — an
+  // offer letter template mistake reaches every candidate offered after it,
+  // not one. Deliberately its own permission, owner/admin/hr only, not
+  // folded into letters.generate.
+  | "templates.manage"
   | "competency.view"
   | "pip.view" | "pip.manage"
   | "engagement.view"
@@ -123,6 +129,7 @@ const ADMIN_PERMISSIONS: Permission[] = [
   "goals.view", "goals.create",
   "timesheets.view", "timesheets.log",
   "letters.view", "letters.generate",
+  "templates.manage",
   "competency.view",
   "pip.view", "pip.manage",
   "engagement.view",
@@ -185,6 +192,7 @@ const HR_PERMISSIONS: Permission[] = [
   "goals.view", "goals.create",
   "timesheets.view", "timesheets.log",
   "letters.view", "letters.generate",
+  "templates.manage",
   "competency.view",
   "pip.view", "pip.manage",
   "engagement.view",
@@ -322,6 +330,12 @@ export const MODULE_PERMISSION_MAP: Record<string, Permission> = {
   goals: "goals.view",
   timesheets: "timesheets.view",
   letters: "letters.view",
+  // Paired with the permission in the same change that adds it: this repo
+  // has shipped a permission with no MODULE_PERMISSION_MAP entry before
+  // (see the bankdetails comment below) and the module was reachable only
+  // by typing the URL directly. Adding one without the other reproduces
+  // that bug a third time.
+  templates: "templates.manage",
   competency: "competency.view",
   pip: "pip.view",
   engagement: "engagement.view",

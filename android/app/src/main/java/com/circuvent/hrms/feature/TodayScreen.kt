@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,10 +31,18 @@ import com.circuvent.hrms.core.ui.AppText
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
 import com.circuvent.hrms.core.ui.ButtonVariant
+import com.circuvent.hrms.core.ui.HeroCard
 import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.TextTone
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.LocationProvider
+import android.content.pm.PackageManager
+import android.util.Base64
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.core.content.ContextCompat
+import com.circuvent.hrms.core.camera.PunchCamera
+import com.circuvent.hrms.data.AttendancePolicyDto
+import com.circuvent.hrms.data.PunchSelfie
 import com.circuvent.hrms.data.SessionUser
 import com.circuvent.hrms.data.TodayResponse
 import com.circuvent.hrms.data.queue.OfflineQueue
@@ -42,6 +51,7 @@ import com.circuvent.hrms.domain.ShiftRules
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.json.put
 import java.time.LocalDate
 
@@ -75,6 +85,30 @@ fun TodayScreen(
     val quarantined by viewModel.quarantined.collectAsState()
     val pending by viewModel.pending.collectAsState()
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Defaults to "no photograph". A policy call that fails must not open a
+    // camera — photographing somebody on the strength of a network error is
+    // the one outcome worth designing against here.
+    var policy by remember { mutableStateOf(AttendancePolicyDto()) }
+
+    fun cameraGranted(): Boolean =
+        ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            message = Triple(
+                BannerTone.ERROR,
+                "Camera permission is needed",
+                "Your employer requires a photograph with each punch. Grant it in Settings " +
+                    "and try again.",
+            )
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { granted ->
@@ -104,6 +138,12 @@ fun TodayScreen(
         } finally {
             loading = false
         }
+
+        // Deliberately not in the same try. A failure here must leave the
+        // default in place — which is "no photograph" — rather than propagate
+        // and take the clock-in card down with it.
+        runCatching { container.repository.attendancePolicy() }
+            .onSuccess { policy = it }
     }
 
     LaunchedEffect(Unit) {
@@ -161,7 +201,39 @@ fun TodayScreen(
                             return@launch
                         }
 
-                        submitPunch(container, viewModel, direction, located.position, user)?.let {
+                        // Only reached when the organisation has switched
+                        // selfie punch on. The camera is opened after the
+                        // geofence check, not before: photographing somebody
+                        // and then telling them they are in the wrong car park
+                        // takes their picture for nothing.
+                        var selfie: PunchSelfie? = null
+                        if (policy.requireSelfieOnPunch) {
+                            if (!cameraGranted()) {
+                                cameraLauncher.launch(android.Manifest.permission.CAMERA)
+                                return@launch
+                            }
+
+                            when (val shot = PunchCamera.capture(context, lifecycleOwner)) {
+                                is PunchCamera.Result.Failed -> {
+                                    message = Triple(
+                                        BannerTone.ERROR,
+                                        "The photograph was not taken",
+                                        "${shot.message} Your employer requires one with each punch.",
+                                    )
+                                    return@launch
+                                }
+
+                                is PunchCamera.Result.Captured -> {
+                                    selfie = PunchSelfie(
+                                        base64 = Base64.encodeToString(shot.jpeg, Base64.NO_WRAP),
+                                        contentType = "image/jpeg",
+                                        takenAt = shot.takenAt,
+                                    )
+                                }
+                            }
+                        }
+
+                        submitPunch(container, viewModel, direction, located.position, user, selfie)?.let {
                             message = it
                         }
                         load()
@@ -212,7 +284,7 @@ fun TodayScreen(
 
         HomeShortcuts(onNavigate = onNavigate)
 
-        AppCard {
+        HeroCard {
             if (loading) {
                 // A placeholder the size of the heading it replaces, so the
                 // button below does not jump — and so the screen never claims
@@ -228,6 +300,7 @@ fun TodayScreen(
                     size = Theme.type.title2,
                     lineHeight = Theme.type.title2Line,
                     weight = FontWeight.Bold,
+                    tone = TextTone.ON_HERO,
                     heading = true,
                 )
             }
@@ -238,9 +311,9 @@ fun TodayScreen(
                     .padding(top = Theme.spacing.lg),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Field("In", record?.clockInAt?.let { ShiftRules.formatClock(it) } ?: "—")
-                Field("Out", record?.clockOutAt?.let { ShiftRules.formatClock(it) } ?: "—")
-                Field("Worked", record?.workedMinutes?.let { ShiftRules.formatDuration(it) } ?: "—")
+                Field("In", record?.clockInAt?.let { ShiftRules.formatClock(it) } ?: "—", onHero = true)
+                Field("Out", record?.clockOutAt?.let { ShiftRules.formatClock(it) } ?: "—", onHero = true)
+                Field("Worked", record?.workedMinutes?.let { ShiftRules.formatDuration(it) } ?: "—", onHero = true)
             }
 
             if (record?.requiresLocationReview == true) {
@@ -267,10 +340,23 @@ fun TodayScreen(
             }
 
             if (!loading) {
+                // Shown on the card, before the button, not in a dialog after
+                // the fact. Somebody is entitled to know they are about to be
+                // photographed while they can still decide not to press it —
+                // and the wording comes from the server because it quotes this
+                // organisation's own retention period.
+                policy.notice?.let { notice ->
+                    Banner(
+                        tone = BannerTone.INFO,
+                        title = "A photograph is taken with each punch",
+                        description = notice,
+                    )
+                }
+
                 AppButton(
                     label = if (clockedIn) "Clock out" else "Clock in",
                     onClick = { punch(if (clockedIn) "out" else "in") },
-                    variant = if (clockedIn) ButtonVariant.SECONDARY else ButtonVariant.PRIMARY,
+                    variant = ButtonVariant.ON_HERO,
                     busy = busy,
                     enabled = !finished,
                     contentDescription = if (clockedIn) {
@@ -346,14 +432,29 @@ private fun QuarantinedRow(operation: OfflineQueue.Operation, viewModel: AppView
 }
 
 @Composable
-private fun Field(label: String, value: String) {
+/**
+ * One of the three numbers on the clock-in card.
+ *
+ * [onHero] because the card is a gradient: the muted grey these used against a
+ * white surface falls to roughly 2:1 on violet, which is a label you can see is
+ * there and cannot read. On the hero the label is white held back by opacity
+ * instead, which keeps the hierarchy without dropping the contrast.
+ */
+private fun Field(label: String, value: String, onHero: Boolean = false) {
     Column {
-        AppText(label, size = Theme.type.caption, lineHeight = Theme.type.captionLine, tone = TextTone.MUTED)
+        AppText(
+            label,
+            size = Theme.type.caption,
+            lineHeight = Theme.type.captionLine,
+            tone = if (onHero) TextTone.ON_HERO else TextTone.MUTED,
+            modifier = if (onHero) Modifier.alpha(0.75f) else Modifier,
+        )
         AppText(
             value,
             size = Theme.type.callout,
             lineHeight = Theme.type.calloutLine,
             weight = FontWeight.SemiBold,
+            tone = if (onHero) TextTone.ON_HERO else TextTone.DEFAULT,
         )
     }
 }
@@ -375,6 +476,7 @@ private suspend fun submitPunch(
     direction: String,
     position: Geofence.Coordinates,
     user: SessionUser?,
+    selfie: PunchSelfie?,
 ): Triple<BannerTone, String, String?>? {
     val payload = buildJsonObject {
         put("action", direction)
@@ -392,6 +494,18 @@ private suspend fun submitPunch(
         // while every other field was correct.
         position.capturedAt?.let { put("capturedAt", it) }
         put("isMocked", position.isMocked)
+
+        // Carried inside the queued payload rather than uploaded separately,
+        // so an offline punch and its photograph cannot be split: either both
+        // arrive or neither does. The server refuses a punch that was supposed
+        // to carry one and does not.
+        selfie?.let {
+            putJsonObject("selfie") {
+                put("base64", it.base64)
+                put("contentType", it.contentType)
+                put("takenAt", it.takenAt)
+            }
+        }
     }.toString()
 
     // Idempotency key: a retry or a double tap must not produce two punches.

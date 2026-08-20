@@ -586,10 +586,93 @@ export const documentTemplates = hrms.table(
     signatoryRoles: jsonb("signatory_roles").notNull().default(sql`'[]'::jsonb`),
     version: integer("version").notNull().default(1),
     isActive: boolean("is_active").notNull().default(true),
+    /**
+     * "seed" until an HR/admin user saves an edit through the templates UI,
+     * then "custom" forever — even if a later revert restores byte-identical
+     * text. The question this answers is "has a human touched this", not
+     * "does it currently match the shipped default"; a revert is itself a
+     * human decision worth flagging, not a reason to pretend nothing happened.
+     * No DB enum, matching `category` above: the small, closed set of values
+     * is owned by application code, not a migration.
+     */
+    origin: text("origin").notNull().default("seed"),
+    /** Who last saved an edit, and when (updatedAt, above). Denormalized onto
+     * the live row — same pattern as updatedAt itself — so the template list
+     * can show "last changed by X on Y" without a join or a subquery per row.
+     * The full history lives in documentTemplateVersions; this is just the
+     * fast path for the common case of rendering a list. */
+    updatedById: uuid("updated_by_id").references(() => users.id, { onDelete: "set null" }),
+    updatedByEmail: text("updated_by_email"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("document_templates_org_category_idx").on(t.orgId, t.category)]
+);
+
+/**
+ * One row per saved version of a document template, oldest to newest.
+ *
+ * Offer letters and relieving letters are contracts. If their wording can
+ * change with nobody able to say who changed it, what it said before, or how
+ * to put it back, that is a legal liability, not a UX gap — so this table
+ * exists independently of `document_templates` rather than as a "previous
+ * body" column on it, because a single column can hold one past version, and
+ * "what did version 3 say" needs all of them.
+ *
+ * Snapshot-after-save: every save (an edit, or a revert) inserts a new row
+ * holding the state that save produced, and `document_templates.version` is
+ * kept equal to the newest row here. A revert is therefore just "a save
+ * whose content happens to come from an old snapshot" — there is no separate
+ * "reverted" data shape to keep in sync with the live schema over time.
+ *
+ * This table starts empty for every template that already exists: nothing
+ * backfills version 1 for the whole install. The first edit made through the
+ * new UI writes both the as-seeded version 1 (so nothing is lost) and the
+ * edited version 2 in the same transaction. A template nobody has ever
+ * touched has zero rows here — itself a cheap, corroborating check that a
+ * template is still the shipped original, alongside the explicit `origin`
+ * flag on the live row.
+ */
+export const documentTemplateVersions = hrms.table(
+  "document_template_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => documentTemplates.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    /** Full snapshot of the editable fields at this version, not a diff — a
+     * diff is only useful if every prior diff is intact and applies cleanly;
+     * a snapshot can be reverted to on its own, years later, with nothing
+     * else in the chain still needing to exist. */
+    name: text("name").notNull(),
+    category: text("category").notNull(),
+    body: text("body").notNull(),
+    requiredTokens: jsonb("required_tokens").notNull().default(sql`'[]'::jsonb`),
+    requiresSignature: boolean("requires_signature").notNull().default(false),
+    signatoryRoles: jsonb("signatory_roles").notNull().default(sql`'[]'::jsonb`),
+    /** Optional free-text reason, e.g. "Fixed missing probation clause for
+     * interns" — not required, because forcing one on every save is exactly
+     * the kind of friction that gets typed as "." and stops meaning anything. */
+    changeNote: text("change_note"),
+    changedById: uuid("changed_by_id").references(() => users.id, { onDelete: "set null" }),
+    changedByEmail: text("changed_by_email"),
+    /** No updatedAt: a version row is a snapshot, and a snapshot that can be
+     * modified after the fact is not a snapshot. */
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // The invariant the whole revert feature depends on: version numbers for
+    // one template never repeat, so "restore version 3" is never ambiguous.
+    uniqueIndex("document_template_versions_template_version_key").on(
+      t.templateId,
+      t.version
+    ),
+    index("document_template_versions_org_idx").on(t.orgId, t.templateId),
+  ]
 );
 
 export const signatureStatusEnum = hrms.enum("signature_status", [

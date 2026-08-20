@@ -5,11 +5,12 @@
 // HRMS hands things to other systems, or to its own object storage, on a
 // schedule it does not control: an employee's record to Paystub so they can
 // be paid, their group memberships to auth.circuvent.com so they can open
-// anything, and — once a document is fully signed — its archived PDF to R2.
-// All three are written as durable intent inside the transaction that made
-// them true and delivered afterwards, so none of the three can fail the
-// request that created the intent just because somebody else's system, or
-// R2 itself, is unreachable at that moment.
+// anything (or, for a leaver, so they no longer can), and — once a document
+// is fully signed — its archived PDF to R2. All four are written as durable
+// intent inside the transaction that made them true and delivered
+// afterwards, so none of the four can fail the request that created the
+// intent just because somebody else's system, or R2 itself, is unreachable
+// at that moment.
 //
 // That trade only holds if something comes back for the failures. Before the
 // first two outboxes had this, nothing did: they recorded an attempt count
@@ -18,6 +19,10 @@
 // failed on a network blip therefore waited for an unrelated edit to the same
 // employee — and for a leaver, that edit never comes. The PDF storage outbox
 // is built the same way from the start, precisely so it never has that gap.
+// The group *leave* outbox exists for the identical reason: a join gets an
+// accidental re-drive from the next unrelated edit to that employee, but a
+// leaver's record is never touched again, so a failed removal needs this
+// sweep or it never happens at all.
 //
 // So the recovery is deliberately not clever. It enumerates the tenants, asks
 // each outbox for what is due, and lets each drain record its own outcome.
@@ -26,7 +31,7 @@ import { isNull } from "drizzle-orm";
 
 import { withTenant } from "@/db/client";
 import { organizations } from "@/db/schema/identity";
-import { drainDueGroupJoins, type DrainResult } from "@/lib/directory-group-outbox";
+import { drainDueGroupJoins, drainDueGroupLeaves, type DrainResult, type LeaveDrainResult } from "@/lib/directory-group-outbox";
 import { drainDuePaystubSyncs, type PaystubDrainResult } from "@/lib/paystub-sync-outbox";
 import { drainDueDocumentPdfStorage, type DocumentPdfDrainResult } from "@/lib/document-pdf-outbox";
 
@@ -34,6 +39,7 @@ export interface OrgSweepResult {
   orgId: string;
   paystub: PaystubDrainResult;
   groupJoins: DrainResult;
+  groupLeaves: LeaveDrainResult;
   documentPdfs: DocumentPdfDrainResult;
 }
 
@@ -46,6 +52,8 @@ export interface SweepResult {
     paystubRetired: number;
     groupsJoined: number;
     groupsFailed: number;
+    groupsLeft: number;
+    groupsLeaveFailed: number;
     documentPdfsStored: number;
     documentPdfsFailed: number;
   };
@@ -70,14 +78,14 @@ async function activeOrganisationIds(): Promise<string[]> {
 }
 
 /**
- * Drains all three outboxes for every tenant.
+ * Drains all four outboxes for every tenant.
  *
  * One tenant's failure is recorded and the rest still run. A sweep that stops
  * at the first bad organisation would leave the others un-swept for a day
  * without saying so, and the organisation that broke it would be the only one
  * anybody heard about.
  *
- * The four collaborators are injectable for the same reason
+ * The five collaborators are injectable for the same reason
  * `deliverPaystubEmployeeSync` takes its `push`: the behaviour worth proving
  * here is that one tenant throwing does not cost the others their sweep, and
  * that is not provable against a real database and two live HTTP endpoints.
@@ -88,12 +96,14 @@ export async function sweepOutboxes(
     listOrgs?: () => Promise<string[]>;
     drainPaystub?: (ctx: { orgId: string }, limit: number) => Promise<PaystubDrainResult>;
     drainGroups?: (ctx: { orgId: string }, limit: number) => Promise<DrainResult>;
+    drainGroupLeaves?: (ctx: { orgId: string }, limit: number) => Promise<LeaveDrainResult>;
     drainDocumentPdfs?: (ctx: { orgId: string }, limit: number) => Promise<DocumentPdfDrainResult>;
   } = {}
 ): Promise<SweepResult> {
   const listOrgs = deps.listOrgs ?? activeOrganisationIds;
   const drainPaystub = deps.drainPaystub ?? drainDuePaystubSyncs;
   const drainGroups = deps.drainGroups ?? drainDueGroupJoins;
+  const drainGroupLeaves = deps.drainGroupLeaves ?? drainDueGroupLeaves;
   const drainDocumentPdfs = deps.drainDocumentPdfs ?? drainDueDocumentPdfStorage;
 
   const result: SweepResult = {
@@ -105,6 +115,8 @@ export async function sweepOutboxes(
       paystubRetired: 0,
       groupsJoined: 0,
       groupsFailed: 0,
+      groupsLeft: 0,
+      groupsLeaveFailed: 0,
       documentPdfsStored: 0,
       documentPdfsFailed: 0,
     },
@@ -131,14 +143,17 @@ export async function sweepOutboxes(
       // would turn a daily tidy-up into a burst against all three.
       const paystub = await drainPaystub(ctx, limitPerOrg);
       const groupJoins = await drainGroups(ctx, limitPerOrg);
+      const groupLeaves = await drainGroupLeaves(ctx, limitPerOrg);
       const documentPdfs = await drainDocumentPdfs(ctx, limitPerOrg);
 
-      result.orgs.push({ orgId, paystub, groupJoins, documentPdfs });
+      result.orgs.push({ orgId, paystub, groupJoins, groupLeaves, documentPdfs });
       result.totals.paystubSynced += paystub.synced;
       result.totals.paystubFailed += paystub.failed;
       result.totals.paystubRetired += paystub.retired;
       result.totals.groupsJoined += groupJoins.joined;
       result.totals.groupsFailed += groupJoins.failed;
+      result.totals.groupsLeft += groupLeaves.left;
+      result.totals.groupsLeaveFailed += groupLeaves.failed;
       result.totals.documentPdfsStored += documentPdfs.succeeded;
       result.totals.documentPdfsFailed += documentPdfs.failed;
     } catch (error) {
