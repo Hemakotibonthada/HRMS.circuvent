@@ -27,6 +27,13 @@ const PUBLIC_PREFIXES = [
   "/careers",
   "/privacy",
   "/terms",
+  // The product download and the bytes it links to. Gating the installer
+  // behind a session is a circle: somebody setting up a new laptop cannot sign
+  // in until the app is on it. These bytes are a public product download; the
+  // data behind them is not, and the app still asks for credentials on first
+  // run like any other client.
+  "/download",
+  "/api/downloads",
   // A referred candidate is, by definition, not an employee and has no
   // account. The link they were emailed carries a 256-bit token that the
   // handler resolves against a stored hash before anything else happens; the

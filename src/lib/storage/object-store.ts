@@ -167,6 +167,44 @@ export async function getObjectBytes(key: string): Promise<Uint8Array> {
 }
 
 /**
+ * Streams an object, rather than buffering it.
+ *
+ * [getObjectBytes] is right for a document — a few hundred KB, and the caller
+ * usually wants the bytes anyway. It is wrong for an application installer:
+ * ~100MB held in a Uint8Array per concurrent download is how one release day
+ * takes the web server down.
+ *
+ * The size and type come back with the stream because a download response has
+ * to carry `Content-Length` — without it a browser cannot show progress, and a
+ * 100MB download with no progress bar looks like a hang.
+ */
+export async function getObjectStream(key: string): Promise<{
+  body: ReadableStream<Uint8Array>;
+  contentLength?: number;
+  contentType?: string;
+}> {
+  const config = requireConfig();
+  const client = clientFor(config);
+
+  let result: GetObjectCommandOutput;
+  try {
+    result = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }));
+  } catch (error) {
+    throw new StorageRequestError(`Could not download "${key}" from object storage.`, error);
+  }
+
+  if (!result.Body) {
+    throw new StorageRequestError(`Object storage returned no content for "${key}".`);
+  }
+
+  return {
+    body: result.Body.transformToWebStream(),
+    contentLength: result.ContentLength,
+    contentType: result.ContentType,
+  };
+}
+
+/**
  * Removes an object.
  *
  * Added for attendance photo retention, which is a promise to a person that
