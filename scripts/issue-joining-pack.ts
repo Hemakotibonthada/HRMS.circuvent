@@ -12,6 +12,7 @@ import { employees } from "../src/db/schema/hrms";
 import { documentTemplates } from "../src/db/schema/talent";
 import { and, eq, isNull } from "drizzle-orm";
 import type { ApiContext } from "../src/lib/api-context";
+import { loadOrgLetterDefaults } from "../src/db/repositories/org-identity";
 
 /** The letters somebody actually needs to report for work. */
 const PACK = ["Joining Letter", "Appointment Letter", "Onboarding Welcome Email"];
@@ -62,7 +63,12 @@ async function main() {
 
   const templates = await withTenant({ orgId: found.orgId, superuser: true }, async (tx) =>
     tx
-      .select({ id: documentTemplates.id, name: documentTemplates.name })
+      .select({
+        id: documentTemplates.id,
+        name: documentTemplates.name,
+        signatoryRoles: documentTemplates.signatoryRoles,
+        requiresSignature: documentTemplates.requiresSignature,
+      })
       .from(documentTemplates)
       // Scoped by org explicitly: `superuser` lifts row-level security, so
       // without this the other tenant's identically-named templates come back
@@ -71,6 +77,13 @@ async function main() {
   );
 
   const repo = new NeonDocumentsRepository(ctx);
+
+  // Who signs on the company's side. Read from the organisation's own letter
+  // defaults rather than hard-coded, so this script issues as whoever the
+  // company says signs its letters.
+  const defaults = (await loadOrgLetterDefaults(ctx)) ?? {};
+  const signatoryName = defaults.signatoryName ?? "Authorised signatory";
+  const signatoryEmail = defaults.hrContactEmail ?? found.email;
 
   for (const name of PACK) {
     const matches = templates.filter((t) => t.name === name);
@@ -89,11 +102,24 @@ async function main() {
     }
 
     try {
+      // Every signatory slot the template declares needs somebody to sign it.
+      // The employee signs as themselves; every other role is the company
+      // side, which is whoever the organisation named as its signatory.
+      const roles = (matches[0].signatoryRoles as string[] | null) ?? [];
+      const recipients: Record<string, { email: string; name?: string }> = {};
+      for (const role of roles) {
+        recipients[role] =
+          role === "employee" || role === "candidate"
+            ? { email: found.email, name: `${found.first} ${found.last}`.trim() }
+            : { email: signatoryEmail, name: signatoryName };
+      }
+
       const doc = await repo.generate(
         {
           templateId: matches[0].id,
           employeeId: found.id,
           title: `${name} - ${found.first} ${found.last}`,
+          ...(Object.keys(recipients).length > 0 ? { recipients } : {}),
         },
         found.id,
       );

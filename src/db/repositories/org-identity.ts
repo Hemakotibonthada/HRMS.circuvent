@@ -72,6 +72,7 @@ export interface OrgLetterDefaults {
   probationMonths?: string;
   probationNoticePeriod?: string;
   policyAcknowledgements?: string;
+  buddyName?: string;
 }
 
 /** The token name each default answers to, in the templates as written. */
@@ -91,6 +92,7 @@ const LETTER_DEFAULT_TOKENS: Record<keyof OrgLetterDefaults, string> = {
   probationMonths: "probation_months",
   probationNoticePeriod: "probation_notice_period",
   policyAcknowledgements: "policy_acknowledgements",
+  buddyName: "buddy_name",
 };
 
 export async function loadOrgIdentity(ctx: TenantContext): Promise<OrgIdentity | null> {

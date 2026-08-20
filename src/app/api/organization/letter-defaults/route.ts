@@ -49,6 +49,7 @@ const schema = z.object({
   probationMonths: z.string().trim().max(40).optional(),
   probationNoticePeriod: z.string().trim().max(40).optional(),
   policyAcknowledgements: z.string().trim().max(2000).optional(),
+  buddyName: z.string().trim().max(120).optional(),
 });
 
 export async function GET(request: NextRequest) {
