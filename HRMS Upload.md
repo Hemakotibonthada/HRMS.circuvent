@@ -223,6 +223,46 @@ and the only credible promise that this one cannot is one the build enforces.
 That also means you will not face Play's background-location review, which is a
 questionnaire, a video, and weeks of delay.
 
+### If you ever switch on selfie punch
+
+Selfie punch — a photograph of the employee's face captured on every clock-in —
+is **not built**. This section exists so that the consequences are on record
+before somebody builds it, because most of them are not reversible once the
+first photograph has been taken.
+
+Turning it on changes four things:
+
+1. **The permission list gains `CAMERA`.** Play shows added permissions to
+   existing users on update, and a camera permission appearing on an HR app is a
+   question you will be asked.
+
+2. **The data-safety declaration becomes wrong until you change it.** It
+   currently says no photos and no biometrics are collected. You would have to
+   declare *Photos and videos → Photos*, collected, **linked to the user's
+   identity**, and not optional if punching requires it. That entry appears on
+   your public store listing. Filing an inaccurate declaration is a policy
+   violation in its own right, separate from anything the app does.
+
+3. **India's DPDP Act applies to the notice, not just the storage.** Employees
+   have to be told what is captured, why, how long it is kept and who can see
+   it, before the first capture — not in a policy page nobody opens. Employment
+   does not make consent automatic where a less intrusive control would do.
+
+4. **You inherit a retention decision.** A face photograph per punch is roughly
+   250 images per employee per year. Something has to delete them, and the
+   deletion rule has to exist before collection starts rather than after
+   somebody asks how long they are kept.
+
+If it is built, it should be **per organisation and off by default** — the
+decision taken for this codebase — so that a customer who wants it can have it
+without it being imposed on every other tenant. The images belong in the object
+store (`src/lib/storage/object-store.ts`), not in a second storage path built
+alongside it.
+
+Worth weighing first: the geofence already answers *was this person at work*,
+which is the question buddy-punching actually raises, and it does so without
+holding a single photograph.
+
 ---
 
 ## 6. Content rating
