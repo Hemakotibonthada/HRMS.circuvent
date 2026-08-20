@@ -60,6 +60,19 @@ const PUBLIC_PREFIXES = [
   // by a session — the caller is Okta or Entra, which has no browser. Every
   // handler calls authenticateScim before touching data.
   "/api/scim",
+  // Mail.circuvent calls this server-to-server when somebody asks for a
+  // mailbox without an onboarding link, to check that the employee ID and
+  // joining date they typed name a current employee. The caller is another
+  // service with no browser and no cookie, and the person it is asking about
+  // has no account yet — that is the entire situation the endpoint exists for.
+  //
+  // The handler authenticates itself: it compares `X-Service-Token` against
+  // MAIL_SERVICE_TOKEN in constant time and refuses every request outright
+  // when that variable is unset, so this is not an exemption from
+  // authentication. Without the entry the middleware answers "Not signed in"
+  // before the handler runs, and every mailbox request is refused with a
+  // message about a session that nobody involved was ever going to have.
+  "/api/mailbox-eligibility",
   // The scheduled sweep is called by Vercel's cron infrastructure, which has
   // no cookie and no session. It authenticates itself: the handler compares
   // `Authorization: Bearer $CRON_SECRET` in constant time and refuses every
