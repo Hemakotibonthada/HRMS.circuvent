@@ -28,6 +28,8 @@ import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppText
+import com.circuvent.hrms.core.ui.DateField
+import java.time.LocalDate
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
 import com.circuvent.hrms.core.ui.ButtonVariant
@@ -42,6 +44,15 @@ import com.circuvent.hrms.data.WorkArrangementCreate
 import com.circuvent.hrms.data.WorkArrangementDto
 import com.circuvent.hrms.data.WorkArrangementsResponse
 import kotlinx.coroutines.launch
+
+/**
+ * The window the server enforces, mirrored so the calendar cannot offer a day
+ * that will be refused. These match WorkArrangementLimitsDto's defaults; the
+ * response carries the real values and this screen does not yet thread them
+ * through, so a policy widened on the server narrows here until it does.
+ */
+private const val MAX_PAST_DAYS = 7L
+private const val MAX_FUTURE_DAYS = 90L
 
 // ═══════════════════════════════════════════════════════════════
 // WORKING AWAY — from home, or on duty elsewhere
@@ -155,19 +166,32 @@ fun WorkArrangementScreen(container: AppContainer) {
                             )
                         }
 
-                        OutlinedTextField(
+                        DateField(
+                            label = stringResource(R.string.work_arrangement_first_day_field_label),
                             value = startDate,
-                            onValueChange = { startDate = it },
-                            label = { Text(stringResource(R.string.work_arrangement_first_day_field_label)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
+                            onValueChange = {
+                                startDate = it
+                                // The last day cannot precede the first. Moving
+                                // it along beats refusing the pair afterwards.
+                                if (endDate.isBlank() || endDate < it) endDate = it
+                            },
+                            // The window the server enforces: a week back, three
+                            // months forward.
+                            minDate = LocalDate.now().minusDays(MAX_PAST_DAYS),
+                            maxDate = LocalDate.now().plusDays(MAX_FUTURE_DAYS),
+                            modifier = Modifier.padding(top = Theme.spacing.xs),
                         )
-                        OutlinedTextField(
+                        DateField(
+                            label = stringResource(R.string.work_arrangement_last_day_field_label),
                             value = endDate,
                             onValueChange = { endDate = it },
-                            label = { Text(stringResource(R.string.work_arrangement_last_day_field_label)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
+                            // Never before the first day, so the invalid range
+                            // cannot be built rather than being built and
+                            // rejected.
+                            minDate = runCatching { LocalDate.parse(startDate) }.getOrNull()
+                                ?: LocalDate.now().minusDays(MAX_PAST_DAYS),
+                            maxDate = LocalDate.now().plusDays(MAX_FUTURE_DAYS),
+                            modifier = Modifier.padding(top = Theme.spacing.xs),
                         )
 
                         // Only asked for where it is required, and the label says

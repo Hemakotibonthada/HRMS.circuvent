@@ -186,20 +186,32 @@ fun AppButton(
 
     val shape = RoundedCornerShape(Theme.radius.md)
 
+    // The disabled look comes from dimmed colours, not from wrapping the button
+    // in a `Modifier.alpha` graphics layer.
+    //
+    // That layer, nested inside the one `AppCard` creates for its shadow, could
+    // fail to compose: an *enabled* primary button inside a card painted as bare
+    // card surface, so "Send for approval" was a live, tappable control that no
+    // one could see. Dimming the colours needs no layer, keeps the ripple at
+    // full strength, and lets the label be dimmed independently of the fill.
+    val dim = 0.45f
+    val fill = if (inert) background.copy(alpha = background.alpha * dim) else background
+    val ink = if (inert) foreground.copy(alpha = foreground.alpha * dim) else foreground
+    val edge = colors.border.let { if (inert) it.copy(alpha = it.alpha * dim) else it }
+
     Box(
         modifier = modifier
             .then(if (fullWidth) Modifier.fillMaxWidth() else Modifier)
             .defaultMinSize(minHeight = MinTouchTarget)
             .clip(shape)
-            .background(background)
+            .background(fill)
             .then(
                 if (variant == ButtonVariant.SECONDARY) {
-                    Modifier.border(BorderStroke(1.dp, colors.border), shape)
+                    Modifier.border(BorderStroke(1.dp, edge), shape)
                 } else {
                     Modifier
                 }
             )
-            .alpha(if (inert) 0.45f else 1f)
             .clickable(enabled = !inert, role = Role.Button, onClick = onClick)
             .semantics {
                 if (contentDescription != null) this.contentDescription = contentDescription
@@ -215,7 +227,7 @@ fun AppButton(
             weight = FontWeight.SemiBold,
             align = TextAlign.Center,
             maxLines = 1,
-            color = foreground,
+            color = ink,
             // Kept in the layout while busy so the button does not resize, but
             // taken out of the semantics tree so it is not read twice.
             modifier = if (busy) Modifier.alpha(0f) else Modifier,
@@ -224,7 +236,7 @@ fun AppButton(
         if (busy) {
             CircularProgressIndicator(
                 modifier = Modifier.size(20.dp),
-                color = foreground,
+                color = ink,
                 strokeWidth = 2.dp,
             )
         }

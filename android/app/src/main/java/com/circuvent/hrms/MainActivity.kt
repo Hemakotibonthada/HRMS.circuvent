@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
@@ -273,6 +274,15 @@ private fun SignedInApp(
             Modifier
                 .weight(1f)
                 .statusBarsPadding()
+                // The keyboard pushes content up instead of covering it.
+                //
+                // The manifest already says `adjustResize`, which used to be
+                // enough. It is not once `enableEdgeToEdge` is called: the
+                // window then extends behind the system bars and stops being
+                // resized for the IME, so the bottom of every form sat under
+                // the keyboard. That is where Submit lives — somebody typing a
+                // reason could not see the button for it.
+                .imePadding()
         ) {
             ScreenHeader(
                 title = title,

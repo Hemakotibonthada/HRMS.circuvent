@@ -63,7 +63,7 @@
     <!-- Expense claims. -->
     <string name="expenses_claim_action">Claim an expense</string>
     <string name="expenses_field_title">What was it for</string>
-    <string name="expenses_field_date">Date (YYYY-MM-DD)</string>
+    <string name="expenses_field_date">Date of the expense</string>
     <string name="expenses_field_amount">Amount (₹)</string>
     <string name="expenses_field_notes">Anything else</string>
     <string name="expenses_category_label">Category</string>
@@ -506,10 +506,10 @@
     <string name="regularisation_what_you_can_correct_title">What you can correct</string>
     <string name="regularisation_window_and_limit_description">Days from the last %1$d days, and up to %2$d corrections a month.</string>
     <string name="regularisation_correct_a_day_action">Correct a day</string>
-    <string name="regularisation_date_field_label">Date (YYYY-MM-DD)</string>
+    <string name="regularisation_date_field_label">Which day</string>
     <string name="regularisation_what_happened_label">What happened</string>
-    <string name="regularisation_in_time_field_label">In (HH:MM)</string>
-    <string name="regularisation_out_time_field_label">Out (HH:MM)</string>
+    <string name="regularisation_in_time_field_label">In</string>
+    <string name="regularisation_out_time_field_label">Out</string>
     <string name="regularisation_say_what_happened_field_label">Say what happened</string>
     <string name="regularisation_can_provide_evidence_label">I can provide evidence</string>
     <string name="regularisation_sending_label">Sending…</string>
@@ -531,8 +531,8 @@
     <string name="work_arrangement_from_home_toggle_label">From home</string>
     <string name="work_arrangement_kind_on_duty">On duty</string>
     <string name="work_arrangement_kind_wfh">Working from home</string>
-    <string name="work_arrangement_first_day_field_label">First day (YYYY-MM-DD)</string>
-    <string name="work_arrangement_last_day_field_label">Last day (YYYY-MM-DD)</string>
+    <string name="work_arrangement_first_day_field_label">First day</string>
+    <string name="work_arrangement_last_day_field_label">Last day</string>
     <string name="work_arrangement_location_field_label">Where you will be</string>
     <string name="work_arrangement_reason_field_label">Why (optional)</string>
     <string name="work_arrangement_sending_label">Sending…</string>
@@ -741,7 +741,7 @@
     <string name="mydetails_personal_email_label">Personal email</string>
     <string name="mydetails_date_of_birth_label">Date of birth</string>
     <string name="mydetails_date_of_birth_locked_notice">Ask HR to change this. It affects gratuity and your retirement date.</string>
-    <string name="mydetails_date_of_birth_hint">YYYY-MM-DD. You can set this once; after that HR changes it.</string>
+    <string name="mydetails_date_of_birth_hint">You can set this once; after that HR changes it.</string>
     <string name="mydetails_blood_group_label">Blood group</string>
     <string name="mydetails_address_label">Address</string>
     <string name="mydetails_city_label">City</string>
@@ -860,4 +860,22 @@
     <string name="me_feature_approvals_subtitle">Anything routed to you for a decision</string>
     <string name="me_feature_leave_requests_title">Leave requests</string>
     <string name="me_feature_leave_requests_subtitle">Leave waiting on your decision</string>
+
+    <!-- Date picker -->
+    <string name="date_field_confirm">Choose</string>
+    <string name="date_field_cancel">Cancel</string>
+    <!-- Spoken by a screen reader for a date field. %1$s is the field's label,
+         %2$s the date currently chosen. -->
+    <string name="date_field_value_description">%1$s, %2$s</string>
+    <string name="date_field_empty_description">%1$s, no date chosen</string>
+    <string name="date_field_open_action">Choose a date</string>
+    <!-- Spoken by a screen reader for a time field. %1$s is the field's label,
+         %2$s the time currently chosen. -->
+    <string name="time_field_value_description">%1$s, %2$s</string>
+    <string name="time_field_empty_description">%1$s, no time chosen</string>
+    <string name="time_field_open_action">Choose a time</string>
+    <string name="time_field_confirm">Choose</string>
+    <string name="time_field_cancel">Cancel</string>
+    <string name="time_field_use_keypad">Type the time instead</string>
+    <string name="time_field_use_clock">Use the clock instead</string>
 </resources>

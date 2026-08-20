@@ -31,6 +31,8 @@ import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppText
+import com.circuvent.hrms.core.ui.DateField
+import java.time.LocalDate
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
 import com.circuvent.hrms.core.ui.ButtonVariant
@@ -366,12 +368,14 @@ fun ExpensesScreen(container: AppContainer) {
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
                         )
-                        OutlinedTextField(
+                        DateField(
+                            label = stringResource(R.string.expenses_field_date),
                             value = date,
                             onValueChange = { date = it },
-                            label = { Text(stringResource(R.string.expenses_field_date)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
+                            // Money already spent. A claim dated next week is a
+                            // typo, not a plan.
+                            maxDate = LocalDate.now(),
+                            modifier = Modifier.padding(top = Theme.spacing.xs),
                         )
                         OutlinedTextField(
                             value = amount,

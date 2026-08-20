@@ -31,6 +31,8 @@ import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppText
+import com.circuvent.hrms.core.ui.DateField
+import java.time.LocalDate
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
 import com.circuvent.hrms.core.ui.SkeletonRows
@@ -209,17 +211,19 @@ fun MyDetailsScreen(container: AppContainer) {
                         )
                     }
                 } else {
-                    OutlinedTextField(
+                    DateField(
+                        label = stringResource(R.string.mydetails_date_of_birth_label),
                         value = dateOfBirth,
-                        onValueChange = { dateOfBirth = it.take(10) },
-                        label = { Text(stringResource(R.string.mydetails_date_of_birth_label)) },
-                        supportingText = {
-                            Text(stringResource(R.string.mydetails_date_of_birth_hint))
-                        },
-                        singleLine = true,
+                        onValueChange = { dateOfBirth = it },
                         enabled = !busy,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = stringResource(R.string.mydetails_date_of_birth_hint),
+                        // The Child Labour Act's floor is fourteen, and the
+                        // server refuses anything implying younger. Offering a
+                        // date it will refuse wastes the tap and teaches
+                        // nothing. A hundred years back is not a rule, only a
+                        // scroll that has to stop somewhere.
+                        minDate = LocalDate.now().minusYears(100),
+                        maxDate = LocalDate.now().minusYears(14),
                     )
                 }
 

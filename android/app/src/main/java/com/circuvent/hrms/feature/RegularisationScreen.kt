@@ -30,6 +30,8 @@ import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppSwitch
 import com.circuvent.hrms.core.ui.AppText
+import com.circuvent.hrms.core.ui.DateField
+import java.time.LocalDate
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
 import com.circuvent.hrms.core.ui.ButtonVariant
@@ -38,6 +40,8 @@ import com.circuvent.hrms.core.ui.PillTone
 import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.StatusPill
 import com.circuvent.hrms.core.ui.TextTone
+import com.circuvent.hrms.core.ui.TimeField
+import com.circuvent.hrms.core.ui.formatClockTime
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.RegularisationCreate
 import com.circuvent.hrms.data.RegularisationDto
@@ -164,14 +168,18 @@ fun RegularisationScreen(container: AppContainer) {
                                     weight = FontWeight.SemiBold,
                                 )
 
-                                OutlinedTextField(
+                                DateField(
+                                    label = stringResource(R.string.regularisation_date_field_label),
                                     value = date,
                                     onValueChange = { date = it },
-                                    label = { Text(stringResource(R.string.regularisation_date_field_label)) },
-                                    singleLine = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = Theme.spacing.xs),
+                                    // The policy window. Offering a day outside
+                                    // it and refusing afterwards is the tap
+                                    // nobody learns from.
+                                    minDate = LocalDate.now().minusDays(
+                                        (policy?.windowDays ?: 30).toLong()
+                                    ),
+                                    maxDate = LocalDate.now(),
+                                    modifier = Modifier.padding(top = Theme.spacing.xs),
                                 )
 
                                 AppText(
@@ -207,18 +215,16 @@ fun RegularisationScreen(container: AppContainer) {
                                     Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
                                     horizontalArrangement = Arrangement.spacedBy(Theme.spacing.xs),
                                 ) {
-                                    OutlinedTextField(
+                                    TimeField(
+                                        label = stringResource(R.string.regularisation_in_time_field_label),
                                         value = inTime,
                                         onValueChange = { inTime = it },
-                                        label = { Text(stringResource(R.string.regularisation_in_time_field_label)) },
-                                        singleLine = true,
                                         modifier = Modifier.weight(1f),
                                     )
-                                    OutlinedTextField(
+                                    TimeField(
+                                        label = stringResource(R.string.regularisation_out_time_field_label),
                                         value = outTime,
                                         onValueChange = { outTime = it },
-                                        label = { Text(stringResource(R.string.regularisation_out_time_field_label)) },
-                                        singleLine = true,
                                         modifier = Modifier.weight(1f),
                                     )
                                 }
@@ -346,11 +352,14 @@ private fun RegularisationRow(request: RegularisationDto) {
         )
 
         if (request.inTime != null || request.outTime != null) {
+            val is24Hour = android.text.format.DateFormat.is24HourFormat(
+                androidx.compose.ui.platform.LocalContext.current
+            )
             AppText(
                 stringResource(
                     R.string.regularisation_time_range_template,
-                    request.inTime ?: "—",
-                    request.outTime ?: "—",
+                    request.inTime?.let { formatClockTime(it, is24Hour) } ?: "—",
+                    request.outTime?.let { formatClockTime(it, is24Hour) } ?: "—",
                 ),
                 tone = TextTone.MUTED,
                 size = Theme.type.caption,

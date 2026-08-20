@@ -2,6 +2,7 @@ package com.circuvent.hrms.core.design
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -187,49 +188,76 @@ fun CircuventTheme(
         // the app does. Mapping once here is what makes a form look like it
         // belongs to the same product as the screen around it.
         MaterialTheme(
-            colorScheme = if (darkTheme) {
-                darkColorScheme(
-                    primary = colors.primary,
-                    onPrimary = colors.onPrimary,
-                    primaryContainer = colors.primarySubtle,
-                    onPrimaryContainer = colors.text,
-                    background = colors.background,
-                    onBackground = colors.text,
-                    surface = colors.surface,
-                    onSurface = colors.text,
-                    surfaceVariant = colors.surfaceElevated,
-                    onSurfaceVariant = colors.textMuted,
-                    outline = colors.border,
-                    outlineVariant = colors.borderSubtle,
-                    error = colors.danger,
-                    onError = colors.onPrimary,
-                    errorContainer = colors.dangerSubtle,
-                    scrim = colors.scrim,
-                )
-            } else {
-                lightColorScheme(
-                    primary = colors.primary,
-                    onPrimary = colors.onPrimary,
-                    primaryContainer = colors.primarySubtle,
-                    onPrimaryContainer = colors.text,
-                    background = colors.background,
-                    onBackground = colors.text,
-                    surface = colors.surface,
-                    onSurface = colors.text,
-                    surfaceVariant = colors.surfaceElevated,
-                    onSurfaceVariant = colors.textMuted,
-                    outline = colors.border,
-                    outlineVariant = colors.borderSubtle,
-                    error = colors.danger,
-                    onError = colors.onPrimary,
-                    errorContainer = colors.dangerSubtle,
-                    scrim = colors.scrim,
-                )
-            },
+            colorScheme = materialScheme(colors, darkTheme),
             content = content,
         )
     }
 }
+
+/**
+ * Material's scheme, expressed in this app's tokens.
+ *
+ * Built by copying the baseline and overriding *every* role, rather than naming
+ * the handful that looked used. An unmapped role is not an unused one — it
+ * silently keeps Material's baseline value, and that shows up months later in
+ * whichever component happens to read it.
+ *
+ * That is exactly how it went: the roles a text field and a switch read were
+ * mapped, and the time picker's AM/PM chip reads `tertiaryContainer`, which was
+ * not. It drew Material's baseline pink — a colour this product uses nowhere,
+ * on a control where pink carries no meaning, an inch from the violet dial. The
+ * fix for one missing role is the same as the fix for all of them.
+ */
+private fun materialScheme(colors: AppColors, dark: Boolean): ColorScheme =
+    (if (dark) darkColorScheme() else lightColorScheme()).copy(
+        primary = colors.primary,
+        onPrimary = colors.onPrimary,
+        primaryContainer = colors.primarySubtle,
+        onPrimaryContainer = colors.text,
+        inversePrimary = colors.primarySubtle,
+
+        // The accent does duty for all three families. This product has one
+        // brand colour; inventing a secondary and a tertiary to fill the scheme
+        // would put two colours on screen that no designer chose.
+        secondary = colors.primary,
+        onSecondary = colors.onPrimary,
+        secondaryContainer = colors.primarySubtle,
+        onSecondaryContainer = colors.text,
+        tertiary = colors.primary,
+        onTertiary = colors.onPrimary,
+        tertiaryContainer = colors.primarySubtle,
+        onTertiaryContainer = colors.text,
+
+        background = colors.background,
+        onBackground = colors.text,
+        surface = colors.surface,
+        onSurface = colors.text,
+        surfaceVariant = colors.surfaceElevated,
+        onSurfaceVariant = colors.textMuted,
+        surfaceTint = colors.primary,
+        inverseSurface = colors.text,
+        inverseOnSurface = colors.background,
+
+        // Dialogs, menus and sheets read these. Left unmapped they carry
+        // Material's tonal tint, which is why the date picker sat on a lavender
+        // panel while every card behind it was white.
+        surfaceBright = colors.surfaceElevated,
+        surfaceDim = colors.surface,
+        surfaceContainerLowest = colors.surfaceElevated,
+        surfaceContainerLow = colors.surfaceElevated,
+        surfaceContainer = colors.surfaceElevated,
+        surfaceContainerHigh = colors.surfaceElevated,
+        surfaceContainerHighest = colors.surfaceElevated,
+
+        error = colors.danger,
+        onError = colors.onPrimary,
+        errorContainer = colors.dangerSubtle,
+        onErrorContainer = colors.text,
+
+        outline = colors.border,
+        outlineVariant = colors.borderSubtle,
+        scrim = colors.scrim,
+    )
 
 /** Shorthand so screens read `Theme.colors.text` rather than a local lookup. */
 object Theme {
