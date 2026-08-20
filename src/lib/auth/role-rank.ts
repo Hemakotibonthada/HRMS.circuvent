@@ -1,14 +1,30 @@
 // Which role applies when the identity service and HRMS disagree.
 //
-// Groups in auth.circuvent.com now grant roles across the suite, and that role
+// Groups in auth.circuvent.com grant roles across the suite, and that role
 // arrives in the SSO token. HRMS also keeps its own grants in
-// `identity.user_roles`. Both are legitimate, so something has to decide.
+// `identity.user_roles`. Both are written down, so something has to decide.
 //
-// This does, by rank, and it is deliberately the same rule the identity service
-// itself applies when a person's direct grant and their group's grant disagree:
-// the stronger wins. Anything else produces a suite where the same person has
-// different powers depending on which application they opened, which is the one
-// outcome nobody can reason about.
+// ── Why the directory wins, rather than whichever is stronger ──
+// This used to return the *stronger* of the two, reasoning that a group of
+// ordinary employees should not silently demote an HRMS administrator. The
+// reasoning was sound; the consequence was that a role could be granted from
+// auth.circuvent.com but never taken away by it. Removing somebody's admin
+// there left `identity.user_roles` untouched, the stronger local row kept
+// winning, and the person stayed an administrator through every sign-out,
+// every fresh sign-in, and every incognito window — while the identity service
+// displayed the reduced role the whole time. It cost a founder an afternoon
+// proving the directory was not lying.
+//
+// Revocation that does not revoke is worse than no revocation, because it
+// looks like it worked. `signInWithSso`'s own documentation already says the
+// directory "is the system of record for who works here, not HRMS", and the
+// identity service refuses to issue a token for an application at all unless
+// the person holds a grant for it — so a token that arrives here has already
+// passed that gate, and its role claim is that gate's answer.
+//
+// A local grant still applies when the provider asserts nothing: password
+// sign-in has no directory assertion to defer to, and neither does a token
+// minted before the role claim existed.
 
 /** HRMS's own vocabulary, weakest first. `owner` exists only here. */
 export const ROLE_RANK: Record<string, number> = {
@@ -22,23 +38,26 @@ export const ROLE_RANK: Record<string, number> = {
 export const DEFAULT_ROLE = "employee";
 
 /**
- * The stronger of the two, or the local one when the token says nothing.
+ * The role to sign into the session with, given what HRMS holds locally and
+ * what the identity service asserts.
  *
- * An unknown role from the token is ignored rather than trusted. The identity
- * service and HRMS share a vocabulary today, but a role this app cannot place
- * is one it cannot enforce either — treating it as strong would grant powers
- * with no definition, and treating it as weak would silently demote somebody.
- * Ignoring it leaves the local answer, which is at least a decision this
- * application knows how to apply.
+ * The asserted role wins whenever it is one this application can place —
+ * including when it is *weaker* than the local grant, which is the whole
+ * point: that is what makes removing access in auth.circuvent.com actually
+ * remove it.
+ *
+ * An unknown role from the token is ignored rather than trusted. A role this
+ * app cannot place is one it cannot enforce either — treating it as valid
+ * would hand out powers with no definition here — so the local answer is used
+ * instead, which is at least a decision this application knows how to apply.
  */
-export function strongestRole(
+export function effectiveRole(
   localRole: string | null | undefined,
   ssoRole: string | null | undefined
 ): string {
   const local = normalise(localRole) ?? DEFAULT_ROLE;
   const sso = normalise(ssoRole);
-  if (!sso) return local;
-  return (ROLE_RANK[sso] ?? 0) > (ROLE_RANK[local] ?? 0) ? sso : local;
+  return sso ?? local;
 }
 
 function normalise(role: string | null | undefined): string | null {

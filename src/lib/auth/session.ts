@@ -35,7 +35,7 @@ import {
   signAccessToken,
   type AppId,
 } from "./tokens";
-import { strongestRole } from "./role-rank";
+import { effectiveRole } from "./role-rank";
 import { startWorkLogOnSignIn } from "@/lib/attendance/work-log";
 
 /** Failed attempts before the account is temporarily locked. */
@@ -484,14 +484,17 @@ export async function signInWithSso(request: {
   await clearFailures(row.id, row.org_id);
 
   /*
-   * The stronger of what HRMS grants and what the identity service asserts.
+   * What the identity service says, when it says anything.
    *
-   * Not simply the token's role: a local grant is a decision somebody made
-   * here, and letting a group silently demote an HRMS administrator would be a
-   * loss of access nobody asked for. Not simply the local role either, or
-   * group-based access would never reach this application at all.
+   * Not the stronger of the two, which is what this used to be: a local grant
+   * that outranked the assertion could never be revoked from
+   * auth.circuvent.com, so removing somebody's access there left them signed
+   * in with it. The directory is the system of record — see the note at the
+   * top of this function, and role-rank.ts for the whole argument. The local
+   * grant still applies when the token asserts no role at all, which is the
+   * password sign-in path.
    */
-  const role = strongestRole(await roleFor(row.id, row.org_id, app), request.ssoRole);
+  const role = effectiveRole(await roleFor(row.id, row.org_id, app), request.ssoRole);
   const { accessToken, refreshToken } = await issueSession({
     userId: row.id,
     orgId: row.org_id,
