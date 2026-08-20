@@ -9,4 +9,11 @@ plugins {
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.kotlin.multiplatform) apply false
     alias(libs.plugins.android.library) apply false
+    // The day a second module was added, which is what the note above
+    // anticipated. Both are declared here with a version and applied without
+    // one in :desktop — the Kotlin JVM plugin is already on the build
+    // classpath via the multiplatform plugin, and asking for it again with a
+    // version fails resolution rather than reusing it.
+    alias(libs.plugins.kotlin.jvm) apply false
+    alias(libs.plugins.compose.multiplatform) apply false
 }

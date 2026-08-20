@@ -102,9 +102,19 @@ data class LeaveRequest(
 @Serializable
 data class AttendanceRecord(
     val id: String,
-    val date: String,
-    val checkInAt: String? = null,
-    val checkOutAt: String? = null,
+    /**
+     * The API calls this `workDate`, and these three were named for what a
+     * screen wanted to call them rather than for what the server sends. The
+     * result was a required field that never arrived: every attendance read
+     * failed to deserialise, on every client using this module.
+     *
+     * Defaulted rather than required, on the same reasoning as the note at the
+     * top of this file — a missing field should leave a gap in one row, not
+     * fail the whole response.
+     */
+    @SerialName("workDate") val date: String = "",
+    @SerialName("clockInAt") val checkInAt: String? = null,
+    @SerialName("clockOutAt") val checkOutAt: String? = null,
     val status: String? = null,
     val workedMinutes: Int? = null,
     val location: String? = null,
@@ -135,7 +145,8 @@ data class Payslip(
 data class Holiday(
     val id: String? = null,
     val name: String,
-    val date: String,
+    /** The API calls this `holidayDate`. */
+    @SerialName("holidayDate") val date: String = "",
     val type: String? = null,
     val isOptional: Boolean = false,
 )
@@ -291,4 +302,86 @@ data class Geofence(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val radiusMetres: Double? = null,
+)
+
+// ─── Who is in ───────────────────────────────────────────────
+
+/**
+ * One colleague's day.
+ *
+ * `presence` is decided by the server so that three clients cannot reach three
+ * different conclusions about whether somebody was late. A client chooses the
+ * words and the colour; it does not make the judgement.
+ *
+ * `clockInLocal` is the wall-clock time in the zone the working day is measured
+ * in, already formatted. Clients must not slice the ISO instant themselves —
+ * that is UTC, and a punch at 00:30 IST reads as 19:00 the previous evening.
+ */
+@Serializable
+data class TeamMemberDay(
+    val employeeId: String = "",
+    val name: String = "",
+    val designation: String = "",
+    val avatarUrl: String? = null,
+    /** on_leave | off | late | in | not_in | absent */
+    val presence: String = "not_in",
+    val clockInAt: String? = null,
+    val clockOutAt: String? = null,
+    val clockInLocal: String? = null,
+    val clockOutLocal: String? = null,
+    /** Zero unless `presence` is `late`, so it is never a guess. */
+    val lateByMinutes: Int = 0,
+    val leaveType: String? = null,
+    val workingFromHome: Boolean = false,
+)
+
+@Serializable
+data class TeamAttendanceCounts(
+    val all: Int = 0,
+    @SerialName("not_in") val notIn: Int = 0,
+    val late: Int = 0,
+    @SerialName("in") val present: Int = 0,
+)
+
+@Serializable
+data class TeamAttendance(
+    val date: String = "",
+    val isToday: Boolean = true,
+    val counts: TeamAttendanceCounts = TeamAttendanceCounts(),
+    val members: List<TeamMemberDay> = emptyList(),
+)
+
+// ─── People, and saying thank you ────────────────────────────
+
+/**
+ * A colleague, from the name-only lookup.
+ *
+ * Deliberately not [Employee]: that carries work email, phone and join date
+ * from an endpoint only HR roles may call. This is what it takes to recognise
+ * and address somebody, and it is available to everyone signed in.
+ */
+@Serializable
+data class Colleague(
+    val id: String = "",
+    val fullName: String = "",
+    val designation: String = "",
+    val departmentName: String? = null,
+    val avatarUrl: String? = null,
+)
+
+/**
+ * One piece of recognition.
+ *
+ * `fromName` is resolved by the server from the session that wrote it, never
+ * from anything the sender typed.
+ */
+@Serializable
+data class Praise(
+    val id: String = "",
+    val createdAt: String? = null,
+    val value: String = "",
+    val message: String = "",
+    val toName: String = "",
+    val toAvatarUrl: String? = null,
+    val fromName: String? = null,
 )

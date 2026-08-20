@@ -87,8 +87,8 @@ android {
         // Play rejects a version code it has already seen, and the rejection
         // comes at upload rather than at build time. Every upload needs this
         // raised, including one that only fixes a store listing.
-        versionCode = 13
-        versionName = "1.11.0"
+        versionCode = 14
+        versionName = "1.12.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

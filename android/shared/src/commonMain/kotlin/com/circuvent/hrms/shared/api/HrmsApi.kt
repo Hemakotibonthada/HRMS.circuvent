@@ -61,16 +61,39 @@ class HrmsApi(
         request("/api/auth/login", method = "POST", body = buildJson {
             put("email", JsonPrimitive(email))
             put("password", JsonPrimitive(password))
+            // Without this the server sets cookies and returns no tokens at
+            // all: a browser has a cookie jar and is deliberately not handed a
+            // JS-readable access token, and this client is neither. Every call
+            // after a "successful" sign-in was therefore unauthenticated.
+            put("client", JsonPrimitive("native"))
         }) { response ->
-            // The web client keeps its session in httpOnly cookies. A mobile
+            // The web client keeps its session in httpOnly cookies. A native
             // app has no cookie jar it can rely on across process death, so
             // the tokens are read from the response and stored in the
             // platform keystore instead.
             captureTokens(response)
-            json.decodeFromString<Session>(response.bodyAsText())
+            parseSession(response.bodyAsText())
         }
 
-    suspend fun me(): Result<Session> = get("/api/auth/me")
+    suspend fun me(): Result<Session> =
+        request("/api/auth/me", method = "GET", body = null) { parseSession(it.bodyAsText()) }
+
+    /**
+     * The session out of an auth response.
+     *
+     * Both `/api/auth/login` and `/api/auth/me` wrap it in `user` and add
+     * siblings — `tokens` on one, `expiresAt` on the other. Decoding the whole
+     * body as a Session failed with "Fields [id, email] are required ...
+     * missing at path: $", which is exactly what signing in on desktop did.
+     *
+     * The root is still accepted as a fallback, so an endpoint that returns a
+     * bare session keeps working.
+     */
+    private fun parseSession(text: String): Session {
+        val root = json.parseToJsonElement(text).jsonObject
+        val user = root["user"] ?: root
+        return json.decodeFromString<Session>(user.toString())
+    }
 
     suspend fun signOut() {
         runCatching { client.post("$baseUrl/api/auth/logout") { authorise() } }
@@ -174,6 +197,31 @@ class HrmsApi(
     // ─── Team ────────────────────────────────────────────────
 
     suspend fun teamPulse(): Result<TeamPulse> = get("/api/team/pulse")
+
+    /** Who is in, who is late, who has not arrived. */
+    suspend fun teamAttendance(date: String? = null): Result<TeamAttendance> =
+        get("/api/team/attendance" + (date?.let { "?date=$it" } ?: ""))
+
+    // ─── People, and saying thank you ────────────────────────
+
+    /**
+     * Colleagues by name, for anyone signed in.
+     *
+     * Distinct from [directory], which calls the HR endpoint and needs an HR
+     * role. Most of a company has no role at all, so that one answers 403 to
+     * exactly the people trying to look somebody up.
+     */
+    suspend fun colleagues(query: String? = null): Result<List<Colleague>> =
+        getList("/api/directory" + (query?.let { "?search=$it" } ?: ""))
+
+    suspend fun praise(): Result<List<Praise>> = getList("/api/praise")
+
+    suspend fun givePraise(toEmployeeId: String, value: String, message: String): Result<Unit> =
+        request("/api/praise", method = "POST", body = buildJson {
+            put("toEmployeeId", JsonPrimitive(toEmployeeId))
+            put("value", JsonPrimitive(value))
+            put("message", JsonPrimitive(message))
+        }) { }
 
     // ─── Working elsewhere ───────────────────────────────────
 
@@ -300,7 +348,20 @@ class HrmsApi(
                     Result.Unauthorised
                 }
 
-                effective.status.value in 200..299 -> Result.Ok(parse(effective))
+                effective.status.value in 200..299 ->
+                    // Parsing is attempted separately from the transport, so a
+                    // response the client cannot read is not reported as a
+                    // network failure. It said "could not reach the server"
+                    // about a server that had answered perfectly, which sends
+                    // somebody to check their wifi over a serialisation bug.
+                    try {
+                        Result.Ok(parse(effective))
+                    } catch (e: Exception) {
+                        Result.Failed(
+                            effective.status.value,
+                            "The server's answer could not be read. ${e.message ?: "Unexpected format"}"
+                        )
+                    }
 
                 else -> Result.Failed(effective.status.value, errorText(effective))
             }
@@ -313,14 +374,31 @@ class HrmsApi(
 
     private suspend fun send(path: String, method: String, body: JsonObject?): HttpResponse =
         if (method == "GET") {
-            client.get("$baseUrl$path") { authorise() }
+            client.get("$baseUrl$path") {
+                nativeClient()
+                authorise()
+            }
         } else {
             client.post("$baseUrl$path") {
+                nativeClient()
                 authorise()
                 contentType(ContentType.Application.Json)
                 if (body != null) setBody(body.toString())
             }
         }
+
+    /**
+     * Marks the caller as a native client.
+     *
+     * The login and refresh routes return tokens in the body only when asked:
+     * a browser has a cookie jar and is deliberately not handed a JS-readable
+     * access token. Without this header those routes set cookies this client
+     * cannot keep and return no tokens at all, so a sign-in that looked
+     * successful left every later call unauthenticated.
+     */
+    private fun io.ktor.client.request.HttpRequestBuilder.nativeClient() {
+        header("x-circuvent-client", "native")
+    }
 
     private fun io.ktor.client.request.HttpRequestBuilder.authorise() {
         tokens.accessToken()?.let { header("Authorization", "Bearer $it") }
@@ -330,6 +408,7 @@ class HrmsApi(
         val refreshToken = tokens.refreshToken() ?: return false
         return try {
             val response = client.post("$baseUrl/api/auth/refresh") {
+                nativeClient()
                 contentType(ContentType.Application.Json)
                 setBody(buildJson { put("refreshToken", JsonPrimitive(refreshToken)) }.toString())
             }
@@ -348,8 +427,15 @@ class HrmsApi(
         val text = response.bodyAsText()
         val obj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return
 
-        val access = obj["accessToken"]?.jsonPrimitive?.contentOrNull
-        val refreshValue = obj["refreshToken"]?.jsonPrimitive?.contentOrNull
+        // `/api/auth/login` and `/api/auth/refresh` both nest these under
+        // `tokens`. Reading them from the root found nothing, so nothing was
+        // ever stored and every later call went out unauthenticated. The root
+        // is still checked second, so an endpoint that returns them flat keeps
+        // working.
+        val holder = (obj["tokens"] as? JsonObject) ?: obj
+
+        val access = holder["accessToken"]?.jsonPrimitive?.contentOrNull
+        val refreshValue = holder["refreshToken"]?.jsonPrimitive?.contentOrNull
         if (access != null) tokens.save(access, refreshValue)
     }
 
