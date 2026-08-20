@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,7 @@ import {
   Phone, MapPin, Calendar, Building2, Briefcase, Eye, Edit,
   Trash2, Download, Filter, MoreHorizontal, Star, Shield,
   TrendingUp, Award, GraduationCap, Clock, DollarSign, Target,
-  CheckCircle2, AlertTriangle, ChevronDown,
+  CheckCircle2, AlertTriangle, ChevronDown, Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -207,9 +208,19 @@ export default function EmployeesPage() {
           <p className="text-muted-foreground text-sm mt-0.5">{items.length} total employees across {deptSummary.length} departments</p>
         </div>
         {rbac.canAny(["employees.create"]) && (
-          <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-md gap-2" onClick={() => { resetForm(); setCreateOpen(true); }}>
-            <UserPlus className="h-4 w-4" />Add Employee
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* The way a company that already has staff gets started. Adding
+                people one at a time is fine for a hire; it is not how anybody
+                moves an existing payroll onto this product. */}
+            <Button variant="outline" className="gap-2" asChild>
+              <Link href="/employees/import">
+                <Upload className="h-4 w-4" />Import from spreadsheet
+              </Link>
+            </Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-md gap-2" onClick={() => { resetForm(); setCreateOpen(true); }}>
+              <UserPlus className="h-4 w-4" />Add Employee
+            </Button>
+          </div>
         )}
       </div>
 

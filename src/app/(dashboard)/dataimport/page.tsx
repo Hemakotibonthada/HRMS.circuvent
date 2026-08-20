@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -116,17 +117,31 @@ export default function DataImportExportPage() {
         <TabsContent value="import" className="mt-4 space-y-4">
           <p className="text-xs text-muted-foreground">Select a template, download the sample file, fill your data, and upload to import.</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {IMPORT_TEMPLATES.map(t => (
-              <Card key={t.id} className="group cursor-pointer hover:shadow-lg transition-all" onClick={() => setSelectedTemplate(t)}>
+            {IMPORT_TEMPLATES.map(t => {
+              // Employee import is the one of these that exists. The rest are
+              // still tiles describing an importer nobody has written, and
+              // they open a dialog that reports success without reading the
+              // file — so they are marked as such rather than left looking
+              // identical to the one that works.
+              const built = t.module === "Employees";
+              return (
+              <Card key={t.id} className={cn("group transition-all", built ? "cursor-pointer hover:shadow-lg" : "opacity-60")}>
                 <CardContent className="p-4 text-center">
-                  <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${t.color} text-white shadow-md transition-transform group-hover:scale-110 mb-3`}><t.icon className="h-6 w-6" /></div>
+                  <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${t.color} text-white shadow-md transition-transform ${built ? "group-hover:scale-110" : ""} mb-3`}><t.icon className="h-6 w-6" /></div>
                   <h3 className="text-xs font-semibold">{t.name}</h3>
                   <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{t.description}</p>
                   <div className="flex justify-center gap-2 mt-2"><Badge variant="outline" className="text-[8px]">{t.fields} fields</Badge><Badge variant="outline" className="text-[8px]">{t.module}</Badge></div>
-                  <Button size="sm" className="w-full mt-3 text-xs bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-1"><Upload className="h-3 w-3" />Import</Button>
+                  {built ? (
+                    <Button size="sm" className="w-full mt-3 text-xs bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-1" asChild>
+                      <Link href="/employees/import"><Upload className="h-3 w-3" />Import</Link>
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" className="w-full mt-3 text-xs gap-1" disabled>Not available yet</Button>
+                  )}
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         </TabsContent>
 
