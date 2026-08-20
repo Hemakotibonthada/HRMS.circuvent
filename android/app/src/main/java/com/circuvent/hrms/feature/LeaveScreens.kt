@@ -43,6 +43,7 @@ import com.circuvent.hrms.core.design.MinTouchTarget
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
+import com.circuvent.hrms.core.ui.AppSwitch
 import com.circuvent.hrms.core.ui.AppText
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
@@ -309,7 +310,7 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AppText("Half day")
-            Switch(
+            AppSwitch(
                 checked = isHalfDay,
                 onCheckedChange = {
                     isHalfDay = it

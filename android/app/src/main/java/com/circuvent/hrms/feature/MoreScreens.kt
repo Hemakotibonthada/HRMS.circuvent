@@ -33,6 +33,7 @@ import com.circuvent.hrms.AppContainer
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
+import com.circuvent.hrms.core.ui.AppSwitch
 import com.circuvent.hrms.core.ui.AppText
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
@@ -292,7 +293,7 @@ fun SettingsScreen(container: AppContainer, viewModel: AppViewModel, user: Sessi
                     )
                 }
 
-                Switch(
+                AppSwitch(
                     checked = enabled,
                     enabled = support is Biometrics.Support.Available && activity != null,
                     onCheckedChange = { next ->
@@ -300,7 +301,7 @@ fun SettingsScreen(container: AppContainer, viewModel: AppViewModel, user: Sessi
                         if (!next) {
                             container.tokens.biometricEnabled = false
                             enabled = false
-                            return@Switch
+                            return@AppSwitch
                         }
                         scope.launch {
                             // Proved once before the setting is stored.

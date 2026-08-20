@@ -34,6 +34,13 @@ import com.circuvent.hrms.core.ui.SectionHeading
 import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.StatusPill
 import com.circuvent.hrms.core.ui.TextTone
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import com.circuvent.hrms.core.ui.rememberFormattedRange
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.LeaveBalanceDto
@@ -120,28 +127,12 @@ fun LeaveScreen(container: AppContainer, onApply: () -> Unit, onOpen: (String) -
                 Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                     if (balances.isNotEmpty()) {
                         SectionHeading("Your balance")
-                        balances.forEach { balance ->
-                            AppCard(
-                                contentDescription = "${balance.leaveType}: " +
-                                    "${balance.available.toInt()} of ${balance.entitled.toInt()} days available",
-                            ) {
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    AppText(
-                                        balance.leaveType.replaceFirstChar { it.uppercase() },
-                                        weight = FontWeight.Medium,
-                                    )
-                                    AppText(
-                                        "${balance.available.toInt()} of ${balance.entitled.toInt()} days",
-                                        tone = TextTone.MUTED,
-                                        size = Theme.type.footnote,
-                                        lineHeight = Theme.type.footnoteLine,
-                                    )
-                                }
-                            }
+                        // Entitlement first, and anything with none last. A list
+                        // that opens with "Compensatory 0 of 0" buries the two
+                        // numbers somebody actually came to read.
+                        val (held, none) = balances.partition { it.entitled > 0.0 }
+                        (held + none).forEach { balance ->
+                            LeaveBalanceRow(balance)
                         }
                     }
 
@@ -201,6 +192,104 @@ private fun LeaveRow(request: LeaveRequestDto, onOpen: (String) -> Unit) {
 }
 
 // ─── Shifts ──────────────────────────────────────────────────
+
+/**
+ * One leave type, as a quantity rather than a sentence.
+ *
+ * A balance is a proportion — how much of the year's entitlement is still
+ * there — and eight rows of "5 of 5 days" in identical cards made every type
+ * look the same at a glance. The bar is the answer to the only question being
+ * asked, and the number stays for anyone who needs the exact figure.
+ *
+ * Types carrying no entitlement keep their row, because their absence would
+ * read as a missing feature, but they lose the bar: a track at zero looks like
+ * leave that has been spent rather than leave that was never granted.
+ */
+@Composable
+private fun LeaveBalanceRow(balance: LeaveBalanceDto) {
+    val entitled = balance.entitled
+    val available = balance.available.coerceIn(0.0, maxOf(entitled, 0.0))
+    val hasEntitlement = entitled > 0.0
+    val fraction = if (hasEntitlement) (available / entitled).toFloat() else 0f
+    val spent = entitled - available
+    val name = balance.leaveType.replaceFirstChar { it.uppercase() }
+
+    AppCard(
+        contentDescription = if (hasEntitlement) {
+            "$name: ${available.toInt()} of ${entitled.toInt()} days available" +
+                if (spent > 0) ", ${spent.toInt()} taken or pending" else ""
+        } else {
+            "$name: none granted"
+        },
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AppText(
+                name,
+                weight = FontWeight.Medium,
+                tone = if (hasEntitlement) TextTone.DEFAULT else TextTone.MUTED,
+            )
+            if (hasEntitlement) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    AppText(
+                        available.trimZero(),
+                        weight = FontWeight.Bold,
+                        size = Theme.type.callout,
+                        lineHeight = Theme.type.calloutLine,
+                    )
+                    AppText(
+                        " of ${entitled.trimZero()} days",
+                        tone = TextTone.MUTED,
+                        size = Theme.type.footnote,
+                        lineHeight = Theme.type.footnoteLine,
+                    )
+                }
+            } else {
+                AppText(
+                    "None granted",
+                    tone = TextTone.MUTED,
+                    size = Theme.type.footnote,
+                    lineHeight = Theme.type.footnoteLine,
+                )
+            }
+        }
+
+        if (hasEntitlement) {
+            Spacer(Modifier.height(Theme.spacing.sm))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(Theme.radius.sm))
+                    .background(Theme.colors.borderSubtle)
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(fraction)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(Theme.radius.sm))
+                        .background(Theme.colors.primary)
+                )
+            }
+            if (spent > 0.0) {
+                Spacer(Modifier.height(Theme.spacing.xs))
+                AppText(
+                    "${spent.trimZero()} taken or awaiting a decision",
+                    tone = TextTone.MUTED,
+                    size = Theme.type.caption,
+                    lineHeight = Theme.type.captionLine,
+                )
+            }
+        }
+    }
+}
+
+/** "5" rather than "5.0", but "4.5" survives — half days are real. */
+private fun Double.trimZero(): String =
+    if (this % 1.0 == 0.0) toInt().toString() else toString()
 
 @Composable
 fun ShiftsScreen(container: AppContainer) {

@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -40,9 +42,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import com.circuvent.hrms.core.design.AccentTone
 import com.circuvent.hrms.core.design.MinTouchTarget
 import com.circuvent.hrms.core.design.Theme
 
@@ -430,6 +437,20 @@ fun EmptyState(
     title: String,
     modifier: Modifier = Modifier,
     description: String? = null,
+    /**
+     * A glyph for the void.
+     *
+     * An empty screen was two lines of text stranded in a full page of nothing,
+     * which reads as a failure to load rather than as "there is nothing here
+     * yet". The disc gives the eye somewhere to land and matches the badges used
+     * everywhere else, so an empty screen looks like part of the same product.
+     *
+     * Defaulted rather than required: every empty state gains one without
+     * twenty-eight call sites having to agree on it, and a screen with a better
+     * idea can still pass its own.
+     */
+    glyph: Glyph = Glyph.Vector(Icons.Outlined.Inbox),
+    tone: AccentTone = AccentTone.Violet,
     action: (@Composable () -> Unit)? = null,
 ) {
     Column(
@@ -440,6 +461,10 @@ fun EmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Theme.spacing.xs),
     ) {
+        // Decorative: the title says the same thing, and a screen reader
+        // announcing "inbox tray" before it is noise.
+        AccentBadge(glyph = glyph, tone = tone, diameter = 64.dp)
+        Spacer(Modifier.height(Theme.spacing.sm))
         AppText(
             title,
             size = Theme.type.callout,
@@ -460,6 +485,43 @@ fun EmptyState(
             Box(Modifier.padding(top = Theme.spacing.md)) { action() }
         }
     }
+}
+
+/**
+ * A switch that belongs to this product.
+ *
+ * Material's own unchecked style draws a ring in `outline` and a thumb the same
+ * weight. This palette's `border` is deliberately high-contrast — it exists so
+ * the edge of a text input is visible, which is the one place an edge carries
+ * meaning — and a control ringed in it reads as disabled rather than as off.
+ * People were looking at a switch they could perfectly well tap and concluding
+ * the form was locked.
+ *
+ * Off is therefore quiet: a pale track with a muted thumb, still meeting the
+ * 3:1 the thumb needs to be findable. On is unambiguous — the brand colour,
+ * filled, with a white thumb.
+ */
+@Composable
+fun AppSwitch(
+    checked: Boolean,
+    onCheckedChange: ((Boolean) -> Unit)?,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        enabled = enabled,
+        modifier = modifier,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = Theme.colors.onPrimary,
+            checkedTrackColor = Theme.colors.primary,
+            checkedBorderColor = Theme.colors.primary,
+            uncheckedThumbColor = Theme.colors.textMuted,
+            uncheckedTrackColor = Theme.colors.borderSubtle,
+            uncheckedBorderColor = Theme.colors.borderSubtle,
+        ),
+    )
 }
 
 /**

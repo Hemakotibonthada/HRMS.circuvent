@@ -1,6 +1,9 @@
 package com.circuvent.hrms.core.design
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ProvidableCompositionLocal
@@ -162,15 +165,70 @@ fun CircuventTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
+    val colors = if (darkTheme) DarkColors else LightColors
     CompositionLocalProvider(
-        LocalAppColors provides if (darkTheme) DarkColors else LightColors,
+        LocalAppColors provides colors,
         LocalAppSpacing provides AppSpacing(),
         LocalAppRadius provides AppRadius(),
         LocalAppElevation provides AppElevation(),
         LocalAppTypography provides AppTypography(),
         LocalAppMotion provides AppMotion(),
-        content = content,
-    )
+    ) {
+        // Material's scheme is still not where this app's own components read
+        // their colour from — they read the tokens above, which is what keeps
+        // the audited pairs intact.
+        //
+        // It is provided anyway, mapped from those same tokens, because the
+        // handful of Material components used directly — thirty-five text
+        // fields, nine switches, a slider — do not read tokens. Without this
+        // they fall back to Material's *baseline* palette: a different purple,
+        // a grey outline heavy enough that an unchecked switch reads as
+        // disabled, and none of it responding to dark mode the way the rest of
+        // the app does. Mapping once here is what makes a form look like it
+        // belongs to the same product as the screen around it.
+        MaterialTheme(
+            colorScheme = if (darkTheme) {
+                darkColorScheme(
+                    primary = colors.primary,
+                    onPrimary = colors.onPrimary,
+                    primaryContainer = colors.primarySubtle,
+                    onPrimaryContainer = colors.text,
+                    background = colors.background,
+                    onBackground = colors.text,
+                    surface = colors.surface,
+                    onSurface = colors.text,
+                    surfaceVariant = colors.surfaceElevated,
+                    onSurfaceVariant = colors.textMuted,
+                    outline = colors.border,
+                    outlineVariant = colors.borderSubtle,
+                    error = colors.danger,
+                    onError = colors.onPrimary,
+                    errorContainer = colors.dangerSubtle,
+                    scrim = colors.scrim,
+                )
+            } else {
+                lightColorScheme(
+                    primary = colors.primary,
+                    onPrimary = colors.onPrimary,
+                    primaryContainer = colors.primarySubtle,
+                    onPrimaryContainer = colors.text,
+                    background = colors.background,
+                    onBackground = colors.text,
+                    surface = colors.surface,
+                    onSurface = colors.text,
+                    surfaceVariant = colors.surfaceElevated,
+                    onSurfaceVariant = colors.textMuted,
+                    outline = colors.border,
+                    outlineVariant = colors.borderSubtle,
+                    error = colors.danger,
+                    onError = colors.onPrimary,
+                    errorContainer = colors.dangerSubtle,
+                    scrim = colors.scrim,
+                )
+            },
+            content = content,
+        )
+    }
 }
 
 /** Shorthand so screens read `Theme.colors.text` rather than a local lookup. */

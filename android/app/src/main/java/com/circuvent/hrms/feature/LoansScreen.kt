@@ -28,6 +28,7 @@ import com.circuvent.hrms.AppContainer
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
+import com.circuvent.hrms.core.ui.AppSwitch
 import com.circuvent.hrms.core.ui.AppText
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
@@ -151,7 +152,7 @@ fun LoansScreen(container: AppContainer) {
                                         weight = if (loanType == code) FontWeight.SemiBold
                                         else FontWeight.Normal,
                                     )
-                                    Switch(
+                                    AppSwitch(
                                         checked = loanType == code,
                                         onCheckedChange = { if (it) loanType = code },
                                     )

@@ -26,6 +26,7 @@ import com.circuvent.hrms.AppContainer
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
+import com.circuvent.hrms.core.ui.AppSwitch
 import com.circuvent.hrms.core.ui.AppText
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
@@ -177,7 +178,7 @@ fun RegularisationScreen(container: AppContainer) {
                                             weight = if (reason == code) FontWeight.SemiBold
                                             else FontWeight.Normal,
                                         )
-                                        Switch(
+                                        AppSwitch(
                                             checked = reason == code,
                                             onCheckedChange = { if (it) reason = code },
                                         )
@@ -223,7 +224,7 @@ fun RegularisationScreen(container: AppContainer) {
                                             "I can provide evidence",
                                             size = Theme.type.footnote,
                                         )
-                                        Switch(checked = hasProof, onCheckedChange = { hasProof = it })
+                                        AppSwitch(checked = hasProof, onCheckedChange = { hasProof = it })
                                     }
                                 }
 

@@ -28,6 +28,7 @@ import com.circuvent.hrms.AppContainer
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
+import com.circuvent.hrms.core.ui.AppSwitch
 import com.circuvent.hrms.core.ui.AppText
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
@@ -180,7 +181,7 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                                         lineHeight = Theme.type.footnoteLine,
                                     )
                                 }
-                                Switch(
+                                AppSwitch(
                                     checked = regime == "old",
                                     onCheckedChange = { regime = if (it) "old" else "new" },
                                 )
@@ -217,7 +218,7 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AppText("Delhi, Mumbai, Kolkata or Chennai", size = Theme.type.footnote)
-                                Switch(checked = metro, onCheckedChange = { metro = it })
+                                AppSwitch(checked = metro, onCheckedChange = { metro = it })
                             }
                         }
 
@@ -229,7 +230,7 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AppText("I or my family are 60 or over", size = Theme.type.footnote)
-                                Switch(checked = selfSenior, onCheckedChange = { selfSenior = it })
+                                AppSwitch(checked = selfSenior, onCheckedChange = { selfSenior = it })
                             }
                             Row(
                                 Modifier.fillMaxWidth().padding(top = Theme.spacing.xs),
@@ -237,7 +238,7 @@ fun TaxDeclarationScreen(container: AppContainer, onOpenForm16: () -> Unit) {
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AppText("My parents are 60 or over", size = Theme.type.footnote)
-                                Switch(checked = parentsSenior, onCheckedChange = { parentsSenior = it })
+                                AppSwitch(checked = parentsSenior, onCheckedChange = { parentsSenior = it })
                             }
                         }
 
