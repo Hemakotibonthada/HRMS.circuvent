@@ -14,8 +14,8 @@ All in `android\release-artifacts\`.
 
 | File | Size | What it is |
 | --- | --- | --- |
-| `circuvent-hr-1.8.0.aab` | 5.4 MB | **Upload this one.** Play requires a bundle for new apps. |
-| `circuvent-hr-1.8.0.apk` | 2.6 MB | Sideloading and manual testing only. Play will not accept it. |
+| `circuvent-hr-1.9.0.aab` | 6.0 MB | **Upload this one.** Play requires a bundle for new apps. |
+| `circuvent-hr-1.9.0.apk` | 3.0 MB | Sideloading and manual testing only. Play will not accept it. |
 | `play-icon-512.png` | 512×512 | Store listing icon, opaque. |
 | `play-feature-graphic-1024x500.png` | 1024×500 | Listing header, opaque. |
 | `play-screenshots\1-sign-in.png` … `4-profile.png` | 1080×1920 each | Phone screenshots, 9:16. |
@@ -35,8 +35,8 @@ slice.
 | Field | Value |
 | --- | --- |
 | Package name | `com.circuvent.hrms` |
-| Version name | `1.8.0` |
-| Version code | `10` |
+| Version name | `1.9.0` |
+| Version code | `11` |
 | Minimum SDK | 26 (Android 8.0) |
 | Target SDK | 36 (Android 16) |
 | Signature schemes | v2 + v3 (v1 deliberately off) |
@@ -49,7 +49,7 @@ slice.
 and it cannot be reused even if you delete the app. Be sure `com.circuvent.hrms`
 is what you want before you press publish.
 
-**Version code must increase on every upload.** Codes 1 to 9 have been consumed by
+**Version code must increase on every upload.** Codes 1 to 10 have been consumed by
 the first upload attempt, so this build is 2 and the next is 3. Play rejects a
 repeat at upload rather than at build time, and it is the single most common
 failed upload — including when the only change is a store listing.
@@ -213,6 +213,7 @@ not the same thing once dependencies have merged theirs in.
 | --- | --- |
 | `INTERNET`, `ACCESS_NETWORK_STATE` | Talking to your HRMS |
 | `ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION` | Recording where a clock-in happened, at the moment of the tap |
+| `CAMERA` | The punch photograph, **only** when an organisation has switched selfie punch on. Off by default. See below |
 | `USE_BIOMETRIC`, `USE_FINGERPRINT` | Unlocking the app and passkeys. `USE_FINGERPRINT` is merged in by AndroidX Biometric for older devices |
 | `com.circuvent.hrms.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | Added automatically by AndroidX Core; self-scoped, grants nothing external |
 
@@ -223,45 +224,48 @@ and the only credible promise that this one cannot is one the build enforces.
 That also means you will not face Play's background-location review, which is a
 questionnaire, a video, and weeks of delay.
 
-### If you ever switch on selfie punch
+### Selfie punch, and what you must declare
 
-Selfie punch — a photograph of the employee's face captured on every clock-in —
-is **not built**. This section exists so that the consequences are on record
-before somebody builds it, because most of them are not reversible once the
-first photograph has been taken.
+Selfie punch **is built** and ships in this bundle. It is **off for every
+organisation** until somebody with owner, admin or HR rights turns it on, and
+the server refuses to turn it on at all unless object storage is configured —
+so photographs cannot be taken and then silently discarded.
 
-Turning it on changes four things:
+While no organisation has enabled it, no photograph is ever captured: the app
+asks the server on every load and defaults to "no" if that call fails.
 
-1. **The permission list gains `CAMERA`.** Play shows added permissions to
-   existing users on update, and a camera permission appearing on an HR app is a
-   question you will be asked.
+**If you enable it for any organisation, you must change your data-safety
+declaration before that release goes live.** Specifically:
 
-2. **The data-safety declaration becomes wrong until you change it.** It
-   currently says no photos and no biometrics are collected. You would have to
-   declare *Photos and videos → Photos*, collected, **linked to the user's
-   identity**, and not optional if punching requires it. That entry appears on
-   your public store listing. Filing an inaccurate declaration is a policy
-   violation in its own right, separate from anything the app does.
+| Section | What to declare |
+|---|---|
+| Data types | **Photos and videos → Photos** |
+| Collected / shared | Collected. **Not** shared |
+| Linked to identity | **Yes** — the image is stored against a named employee's punch |
+| Optional | **No**, where punching requires it |
+| Purpose | App functionality — verifying attendance |
 
-3. **India's DPDP Act applies to the notice, not just the storage.** Employees
-   have to be told what is captured, why, how long it is kept and who can see
-   it, before the first capture — not in a policy page nobody opens. Employment
-   does not make consent automatic where a less intrusive control would do.
+That entry appears on your public store listing. Filing an inaccurate
+declaration is a policy violation in its own right, separate from anything the
+app does.
 
-4. **You inherit a retention decision.** A face photograph per punch is roughly
-   250 images per employee per year. Something has to delete them, and the
-   deletion rule has to exist before collection starts rather than after
-   somebody asks how long they are kept.
+Two further obligations are yours, not the code's:
 
-If it is built, it should be **per organisation and off by default** — the
-decision taken for this codebase — so that a customer who wants it can have it
-without it being imposed on every other tenant. The images belong in the object
-store (`src/lib/storage/object-store.ts`), not in a second storage path built
-alongside it.
+1. **Tell employees before the first capture.** India's DPDP Act requires
+   notice, and employment does not make consent automatic where a less
+   intrusive control would do. The app shows the notice on the clock-in card
+   before the button, worded from the server so it quotes your own retention
+   period — but a notice inside the app is not a substitute for telling people.
 
-Worth weighing first: the geofence already answers *was this person at work*,
-which is the question buddy-punching actually raises, and it does so without
-holding a single photograph.
+2. **Retention is enforced, not assumed.** Turning the feature on requires
+   choosing a period (1–365 days, default 90). The viewing endpoint refuses an
+   expired photograph, and `scripts/purge-punch-photos.ts` deletes the bytes —
+   **schedule it**, or the images stay in the bucket after they stop being
+   visible, which is not what the employee was told.
+
+Worth weighing before you enable it: the geofence already answers *was this
+person at work*, which is the question buddy-punching actually raises, and it
+does so without holding a photograph of anybody.
 
 ---
 
@@ -288,7 +292,7 @@ Answer the questionnaire honestly; for this app every answer is no.
 3. **Release → Testing → Internal testing** first. Not production. Internal
    testing has no review wait, so you find installation problems in minutes
    rather than days.
-4. **Create new release.** Upload `circuvent-hr-1.8.0.aab`.
+4. **Create new release.** Upload `circuvent-hr-1.9.0.aab`.
 5. Accept **Play App Signing** when offered. This is the point of no return for
    the key; from here Google holds the app signing key.
 6. Release notes — for a first release:
