@@ -92,6 +92,14 @@ class ApiSmokeTest {
                 Triple("myDetails", { api.myDetails() }, false),
                 Triple("wallPosts", { api.wallPosts() }, false),
                 Triple("loans", { api.loans() }, false),
+                Triple("reviewCycles", { api.reviewCycles() }, false),
+                Triple("taxDeclaration", { api.taxDeclaration() }, false),
+                Triple("benefitPlans", { api.benefitPlans() }, false),
+                Triple("benefitEnrolments", { api.benefitEnrolments() }, false),
+                Triple("assets", { api.assets() }, false),
+                Triple("courses", { api.courses() }, false),
+                Triple("enrolments", { api.enrolments() }, false),
+                Triple("shiftSwaps", { api.shiftSwaps() }, false),
             )
 
             val broken = mutableListOf<String>()

@@ -22,23 +22,29 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.EditCalendar
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -77,18 +83,26 @@ private val NAV_GROUPS: List<Pair<String, List<NavItem>>> = listOf(
     "My team" to listOf(
         NavItem(Screen.TEAM, Icons.Filled.Groups),
         NavItem(Screen.INBOX, Icons.Filled.Inbox),
+        NavItem(Screen.SWAPS, Icons.Filled.SwapHoriz),
     ),
     "People" to listOf(
         NavItem(Screen.DIRECTORY, Icons.Filled.PersonSearch),
         NavItem(Screen.PRAISE, Icons.Filled.EmojiEvents),
         NavItem(Screen.WALL, Icons.Filled.Forum),
     ),
+    "Growth" to listOf(
+        NavItem(Screen.GOALS, Icons.Filled.TrackChanges),
+        NavItem(Screen.LEARNING, Icons.Filled.School),
+    ),
     "Money" to listOf(
         NavItem(Screen.PAYSLIPS, Icons.Filled.ReceiptLong),
         NavItem(Screen.EXPENSES, Icons.Filled.Badge),
         NavItem(Screen.LOANS, Icons.Filled.AccountBalanceWallet),
+        NavItem(Screen.TAX, Icons.Filled.Calculate),
+        NavItem(Screen.BENEFITS, Icons.Filled.HealthAndSafety),
     ),
     "Company" to listOf(
+        NavItem(Screen.ASSETS, Icons.Filled.Devices),
         NavItem(Screen.HOLIDAYS, Icons.Filled.CalendarMonth),
         NavItem(Screen.ANNOUNCEMENTS, Icons.Filled.Campaign),
         NavItem(Screen.DOCUMENTS, Icons.Filled.Description),
@@ -128,13 +142,19 @@ fun Shell(state: AppState) {
                         Screen.CORRECTIONS -> CorrectionsScreen(state)
                         Screen.TEAM -> TeamScreen(state)
                         Screen.INBOX -> InboxScreen(state)
+                        Screen.SWAPS -> SwapsScreen(state)
                         Screen.DIRECTORY -> DirectoryScreen(state)
                         Screen.PRAISE -> PraiseScreen(state)
                         Screen.WALL -> WallScreen(state)
                         Screen.MY_DETAILS -> MyDetailsScreen(state)
+                        Screen.GOALS -> GoalsScreen(state)
+                        Screen.LEARNING -> LearningScreen(state)
                         Screen.PAYSLIPS -> PayslipsScreen(state)
                         Screen.EXPENSES -> ExpensesScreen(state)
                         Screen.LOANS -> LoansScreen(state)
+                        Screen.TAX -> TaxScreen(state)
+                        Screen.BENEFITS -> BenefitsScreen(state)
+                        Screen.ASSETS -> AssetsScreen(state)
                         Screen.HELPDESK -> HelpdeskScreen(state)
                         Screen.HOLIDAYS -> HolidaysScreen(state)
                         Screen.ANNOUNCEMENTS -> AnnouncementsScreen(state)

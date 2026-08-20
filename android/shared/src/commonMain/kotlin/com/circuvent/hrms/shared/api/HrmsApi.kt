@@ -290,6 +290,51 @@ class HrmsApi(
             put("purpose", JsonPrimitive(purpose))
         }) { }
 
+    // ─── Performance ─────────────────────────────────────────
+
+    suspend fun reviewCycles(): Result<List<ReviewCycle>> = getList("/api/performance/cycles")
+
+    /**
+     * Goals for one cycle.
+     *
+     * A cycle id is required by the endpoint, which is why nothing could reach
+     * this before `/api/performance/cycles` existed: a caller had to already
+     * know an id it had no way to obtain.
+     */
+    suspend fun goals(cycleId: String): Result<List<Goal>> =
+        getList("/api/performance/goals?cycleId=$cycleId")
+
+    /**
+     * Records progress on a goal.
+     *
+     * A parent goal is refused with a 409 that says why, because a parent
+     * computes from its children and letting it be set by hand makes the two
+     * disagree silently.
+     */
+    suspend fun setGoalProgress(goalId: String, percent: Int): Result<Unit> =
+        request("/api/performance/goals/$goalId", method = "PATCH", body = buildJson {
+            put("progressPercent", JsonPrimitive(percent))
+        }) { }
+
+    // ─── Tax ─────────────────────────────────────────────────
+
+    suspend fun taxDeclaration(): Result<TaxDeclaration> = get("/api/tax/declaration")
+
+    // ─── Benefits, assets, learning, shifts ──────────────────
+
+    suspend fun benefitPlans(): Result<List<BenefitPlan>> = getList("/api/benefits/plans")
+
+    suspend fun benefitEnrolments(): Result<List<BenefitEnrolment>> =
+        getList("/api/benefits/enrolments")
+
+    suspend fun assets(): Result<List<AssetItem>> = getList("/api/assets")
+
+    suspend fun courses(): Result<List<Course>> = getList("/api/learning/courses")
+
+    suspend fun enrolments(): Result<List<Enrolment>> = getList("/api/learning/enrolments")
+
+    suspend fun shiftSwaps(): Result<List<ShiftSwap>> = getList("/api/roster/swaps")
+
     // ─── Working elsewhere ───────────────────────────────────
 
     suspend fun workArrangements(): Result<List<WorkArrangementRequest>> =
