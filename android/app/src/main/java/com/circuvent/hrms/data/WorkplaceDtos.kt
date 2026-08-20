@@ -156,3 +156,45 @@ data class TeamPulseResponse(
     val birthdays: List<TeamBirthdayDto> = emptyList(),
     val anniversaries: List<TeamAnniversaryDto> = emptyList(),
 )
+
+/**
+ * One colleague's day.
+ *
+ * `presence` is decided on the server so that the phone, the web and iOS cannot
+ * reach three different conclusions about whether somebody was late. The phone
+ * chooses the words and the colour; it does not make the judgement.
+ */
+@Serializable
+data class TeamMemberDayDto(
+    val employeeId: String = "",
+    val name: String = "",
+    val designation: String = "",
+    val avatarUrl: String? = null,
+    /** on_leave | off | late | in | not_in | absent */
+    val presence: String = "not_in",
+    val clockInAt: String? = null,
+    val clockOutAt: String? = null,
+    /** Wall-clock `HH:mm` in the zone the working day is measured in. */
+    val clockInLocal: String? = null,
+    val clockOutLocal: String? = null,
+    /** Zero unless `presence` is `late`, so it is never a guess. */
+    val lateByMinutes: Int = 0,
+    val leaveType: String? = null,
+    val workingFromHome: Boolean = false,
+)
+
+@Serializable
+data class TeamAttendanceCounts(
+    val all: Int = 0,
+    val not_in: Int = 0,
+    val late: Int = 0,
+    val `in`: Int = 0,
+)
+
+@Serializable
+data class TeamAttendanceResponse(
+    val date: String = "",
+    val isToday: Boolean = true,
+    val counts: TeamAttendanceCounts = TeamAttendanceCounts(),
+    val members: List<TeamMemberDayDto> = emptyList(),
+)

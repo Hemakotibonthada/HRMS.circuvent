@@ -658,6 +658,33 @@
     <string name="myteam_empty_title">No team yet</string>
     <string name="myteam_empty_description">Once you have colleagues who share a manager with you, who is away and whose birthday is coming up appear here.</string>
     <string name="myteam_away_today_section_label">Away today</string>
+
+    <!-- Who is in: the team's attendance for a day -->
+    <string name="team_who_is_in_section_label">Who is in</string>
+    <string name="team_filter_all">Everyone</string>
+    <string name="team_filter_not_in">Not in</string>
+    <string name="team_filter_late">Late</string>
+    <string name="team_filter_on_time">On time</string>
+    <string name="team_presence_in">In</string>
+    <string name="team_presence_late">Late</string>
+    <!-- Today, and no punch yet: they could still arrive. -->
+    <string name="team_presence_not_in">Not in yet</string>
+    <!-- A past day with no punch and no leave. -->
+    <string name="team_presence_absent">No punch</string>
+    <string name="team_presence_on_leave">On leave</string>
+    <string name="team_presence_off">Day off</string>
+    <string name="team_no_colleagues">Nobody on your team yet.</string>
+    <string name="team_empty_not_in">Everybody has started their day.</string>
+    <string name="team_empty_late">No late arrivals.</string>
+    <string name="team_empty_on_time">Nobody has clocked in yet.</string>
+    <!-- %1$s is a time of day like 09:47 -->
+    <string name="team_arrived_template">Arrived %1$s</string>
+    <!-- %1$s is a time of day, %2$d the minutes late -->
+    <string name="team_late_by_template">Arrived %1$s · %2$d min late</string>
+    <!-- Spoken by a screen reader. %1$s name, %2$s status. -->
+    <string name="team_member_content_description">%1$s, %2$s</string>
+    <!-- %1$s name, %2$s status, %3$s arrival time. -->
+    <string name="team_member_content_description_with_time">%1$s, %2$s, arrived %3$s</string>
     <string name="myteam_everyone_in_label">Everyone is in.</string>
     <string name="myteam_away_content_description">%1$s is away today on %2$s</string>
     <string name="myteam_back_on_template">back on %1$s</string>

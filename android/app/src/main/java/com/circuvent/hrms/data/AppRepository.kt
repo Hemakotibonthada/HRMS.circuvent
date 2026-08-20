@@ -494,6 +494,19 @@ class AppRepository(private val api: ApiClient) {
     suspend fun teamPulse(): TeamPulseResponse =
         json.decodeFromString(api.get("/api/team/pulse"))
 
+    /**
+     * Who is in today, who is late, and who has not arrived.
+     *
+     * Separate from [teamPulse] because it answers a different question at a
+     * different rate: leave and birthdays are stable for days, this changes
+     * every time somebody punches. Merging them would mean re-fetching the
+     * birthday list to find out whether one person has arrived.
+     */
+    suspend fun teamAttendance(date: String? = null): TeamAttendanceResponse =
+        json.decodeFromString(
+            api.get("/api/team/attendance" + if (date != null) "?date=$date" else "")
+        )
+
     // ─── Your own record ─────────────────────────────────────
 
     /**

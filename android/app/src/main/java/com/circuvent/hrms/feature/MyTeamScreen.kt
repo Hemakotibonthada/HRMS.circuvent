@@ -74,6 +74,12 @@ fun MyTeamScreen(container: AppContainer) {
         contentPadding = screenPadding(),
         verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm),
     ) {
+        // Loaded separately from the pulse below. Attendance changes every time
+        // somebody punches; leave and birthdays are stable for days. One call
+        // for both would mean re-fetching the birthday list to find out whether
+        // one person has arrived.
+        item { TeamAttendanceSection(container) }
+
         item {
             when (val current = state) {
                 is Loaded.Loading -> SkeletonRows(count = 5, rowHeight = 72.dp)

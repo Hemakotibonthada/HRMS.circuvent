@@ -23,11 +23,12 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { and, eq, gte, inArray, lte, or } from "drizzle-orm";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { employees, leaveRequests } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { teamAnchor, teamPredicate } from "@/lib/team-scope";
 import {
   toIso as iso,
   upcomingAnniversaries,
@@ -66,15 +67,7 @@ export async function GET(request: NextRequest) {
       // row. They are different UUIDs joined by `employees.user_id`, and
       // comparing them directly matches nothing at all — which is what this
       // route did, so every team here was empty and no birthday ever showed.
-      const [me] = await tx
-        .select({
-          id: employees.id,
-          reportingToId: employees.reportingToId,
-          departmentId: employees.departmentId,
-        })
-        .from(employees)
-        .where(eq(employees.userId, ctx.userId))
-        .limit(1);
+      const me = await teamAnchor(tx, ctx.userId);
 
       // An account with no employee record has no colleagues to report on.
       // Several real accounts are in exactly this state — billing and abuse
@@ -82,12 +75,9 @@ export async function GET(request: NextRequest) {
       // than the whole organisation.
       if (!me) return { team: [], away: [] };
 
-      // Peers share a manager; reports report to me. Somebody with neither —
-      // a first hire, or anyone HR has not put a reporting line on yet — falls
-      // back to their department, because they do have colleagues and being
-      // told "no team yet" while sitting next to four of them is plainly
-      // wrong. The department is never null: every hire lands in one, and the
-      // organisation's default team exists for exactly this.
+      // Who counts as the team is decided in one place, shared with
+      // /api/team/attendance. Two screens disagreeing about the size of
+      // somebody's team is not a discrepancy anyone can debug from the phone.
       const team = await tx
         .select({
           id: employees.id,
@@ -98,24 +88,7 @@ export async function GET(request: NextRequest) {
           joinDate: employees.joinDate,
         })
         .from(employees)
-        .where(
-          and(
-            eq(employees.status, "active"),
-            or(
-              eq(employees.reportingToId, me.id),
-              me.reportingToId ? eq(employees.reportingToId, me.reportingToId) : undefined,
-              me.reportingToId ? eq(employees.id, me.reportingToId) : undefined,
-              // Only when there is no reporting line to go on. Somebody who
-              // has a manager gets their actual team, not everybody who shares
-              // a department with them — in a large one that is hundreds of
-              // people and no longer answers the question.
-              !me.reportingToId && me.departmentId
-                ? eq(employees.departmentId, me.departmentId)
-                : undefined,
-              eq(employees.id, me.id)
-            )
-          )
-        )
+        .where(teamPredicate(me))
         .limit(200);
 
       const teamIds = team.map((t) => t.id);
