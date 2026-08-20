@@ -52,21 +52,29 @@ struct RootView: View {
 
 struct HomeTabs: View {
     var body: some View {
+        // Home / Leave / Inbox / Team / Me, matching Android.
+        //
+        // Pay and People gave up their tabs. Both are still one tap away under
+        // Me, and the two that replaced them had been unreachable: approvals
+        // were split across screens by the kind of thing being approved, and
+        // "who is away today" had nowhere to live at all. Five is the platform
+        // limit worth keeping to — a sixth becomes a "More" tab that hides the
+        // thing somebody wanted.
         TabView {
             TodayScreen()
-                .tabItem { Label("Today", systemImage: "sun.max") }
+                .tabItem { Label("Home", systemImage: "house") }
 
             LeaveScreen()
                 .tabItem { Label("Leave", systemImage: "calendar") }
 
-            PayslipsScreen()
-                .tabItem { Label("Pay", systemImage: "indianrupeesign.circle") }
+            InboxScreen()
+                .tabItem { Label("Inbox", systemImage: "tray") }
 
-            DirectoryScreen()
-                .tabItem { Label("People", systemImage: "person.2") }
+            TeamScreen()
+                .tabItem { Label("Team", systemImage: "person.2") }
 
             MoreScreen()
-                .tabItem { Label("More", systemImage: "ellipsis.circle") }
+                .tabItem { Label("Me", systemImage: "person.crop.circle") }
         }
     }
 }

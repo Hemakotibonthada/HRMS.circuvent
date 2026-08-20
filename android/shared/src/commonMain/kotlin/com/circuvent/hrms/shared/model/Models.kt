@@ -24,6 +24,20 @@ data class Session(
     val role: String? = null,
     val orgId: String? = null,
     val orgName: String? = null,
+    /**
+     * The employment record, which is not the account.
+     *
+     * `id` above is the login. Everything in HR is keyed by the employee row,
+     * and the two are different uuids joined by `employees.user_id`. Sending
+     * one where the other is meant is what made clocking in answer "Employee
+     * <uuid> not found" and made every self-approval check refuse nobody.
+     *
+     * Null when the account has no employment record — a service mailbox, or
+     * somebody whose login was provisioned before HR created their row.
+     */
+    val employeeId: String? = null,
+    /** The code a person quotes to HR or reads off a badge, e.g. CIR-0042. */
+    val employeeCode: String? = null,
 )
 
 @Serializable
@@ -186,4 +200,95 @@ data class Page<T>(
     val page: Int = 1,
     val pageSize: Int = 50,
     val hasMore: Boolean = false,
+)
+
+// ─── Team ────────────────────────────────────────────────────
+
+/**
+ * Who is away, and whose day it is.
+ *
+ * Birthdays carry no year. The day and month are what a colleague needs to say
+ * happy birthday; the year is somebody's age, and an HR system publishing that
+ * to everyone is a disclosure nobody consented to. Anniversaries do carry it,
+ * because length of service is a fact about the job and "ten years today" is
+ * the entire point of mentioning it.
+ */
+@Serializable
+data class TeamPulse(
+    val teamSize: Int = 0,
+    val onLeave: List<AwayColleague> = emptyList(),
+    val birthdays: List<Celebration> = emptyList(),
+    val anniversaries: List<Celebration> = emptyList(),
+)
+
+@Serializable
+data class AwayColleague(
+    val employeeId: String,
+    val name: String,
+    val leaveType: String? = null,
+    val startDate: String? = null,
+    val endDate: String? = null,
+    val today: Boolean = false,
+)
+
+@Serializable
+data class Celebration(
+    val employeeId: String,
+    val name: String,
+    val designation: String? = null,
+    val on: String? = null,
+    val isToday: Boolean = false,
+    val years: Int? = null,
+)
+
+// ─── Working somewhere else, and correcting a day ────────────
+
+/** A request to work from home or on duty. This is not leave. */
+@Serializable
+data class WorkArrangementRequest(
+    val id: String,
+    val employeeId: String? = null,
+    val employeeName: String? = null,
+    val kind: String = "wfh",
+    val startDate: String = "",
+    val endDate: String = "",
+    val reason: String? = null,
+    val location: String? = null,
+    val status: String = "pending",
+)
+
+/** A correction to a day the reader missed. */
+@Serializable
+data class RegularisationRequest(
+    val id: String,
+    val employeeId: String? = null,
+    val employeeName: String? = null,
+    val workDate: String = "",
+    val requestedClockIn: String? = null,
+    val requestedClockOut: String? = null,
+    val reason: String? = null,
+    val note: String? = null,
+    val status: String = "pending",
+)
+
+/**
+ * Today's punch, and the boundary it is judged against.
+ *
+ * The fence is null for remote and field staff, whose location has no
+ * coordinates. A client must read that as "clock in from anywhere" rather than
+ * as an error, or home-based employees can never punch.
+ */
+@Serializable
+data class ClockState(
+    val record: AttendanceRecord? = null,
+    val fence: Geofence? = null,
+)
+
+@Serializable
+data class Geofence(
+    val id: String? = null,
+    val name: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val radiusMetres: Double? = null,
 )

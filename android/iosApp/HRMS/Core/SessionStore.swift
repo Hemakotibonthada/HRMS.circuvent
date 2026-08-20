@@ -20,6 +20,19 @@ final class SessionStore: ObservableObject {
     @Published var signingIn = false
     @Published var error: String?
 
+    /**
+     * The signed-in person's employment record, which is not their account.
+     *
+     * `Session.id` is the login. Everything in HR is keyed by the employee row,
+     * and screens that decide "is this mine" — the inbox above all — must
+     * compare against this. Null is honest: a service mailbox, or somebody
+     * whose login exists before HR created their row.
+     */
+    var employeeId: String? {
+        if case .signedIn(let session) = state { return session.employeeId }
+        return nil
+    }
+
     let api: HrmsApi
 
     init(baseUrl: String = AppConfig.baseUrl) {

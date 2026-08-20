@@ -119,14 +119,29 @@ class HrmsApi(
             put("isHalfDay", JsonPrimitive(isHalfDay))
         }) { json.decodeFromString(it.bodyAsText()) }
 
+    /**
+     * Clocks in or out.
+     *
+     * `/api/attendance/clock`, not `/api/attendance`. The latter exports GET
+     * only — it is the history list — so this posted into a route with no POST
+     * handler and every punch came back 405. It was the shared module's only
+     * write path for attendance, which means clocking in has never once worked
+     * from iOS.
+     *
+     * `method` is sent because the server records how a punch was made, and its
+     * default is "web". A punch from a phone that files itself as web is a
+     * small lie in an attendance record, which is the one place records are
+     * meant to be trustworthy.
+     */
     suspend fun punch(
         kind: String,
         latitude: Double?,
         longitude: Double?,
         accuracy: Double?,
     ): Result<AttendanceRecord> =
-        request("/api/attendance", method = "POST", body = buildJson {
+        request("/api/attendance/clock", method = "POST", body = buildJson {
             put("action", JsonPrimitive(kind))
+            put("method", JsonPrimitive("mobile"))
             latitude?.let { put("latitude", JsonPrimitive(it)) }
             longitude?.let { put("longitude", JsonPrimitive(it)) }
             accuracy?.let { put("accuracyMetres", JsonPrimitive(it)) }
@@ -148,6 +163,78 @@ class HrmsApi(
     suspend fun decideLeave(id: String, approve: Boolean, reason: String?): Result<Unit> =
         request("/api/leave/$id/decision", method = "POST", body = buildJson {
             put("action", JsonPrimitive(if (approve) "approve" else "reject"))
+            reason?.let { put("reason", JsonPrimitive(it)) }
+        }) { }
+
+    // ─── Today's punch, and where it is judged from ──────────
+
+    /** Today's record and the geofence, for the punch button's state. */
+    suspend fun clockState(): Result<ClockState> = get("/api/attendance/clock")
+
+    // ─── Team ────────────────────────────────────────────────
+
+    suspend fun teamPulse(): Result<TeamPulse> = get("/api/team/pulse")
+
+    // ─── Working elsewhere ───────────────────────────────────
+
+    suspend fun workArrangements(): Result<List<WorkArrangementRequest>> =
+        getList("/api/work-arrangements")
+
+    suspend fun requestWorkArrangement(
+        kind: String,
+        startDate: String,
+        endDate: String,
+        reason: String?,
+        location: String?,
+    ): Result<Unit> =
+        request("/api/work-arrangements", method = "POST", body = buildJson {
+            put("kind", JsonPrimitive(kind))
+            put("startDate", JsonPrimitive(startDate))
+            put("endDate", JsonPrimitive(endDate))
+            reason?.let { put("reason", JsonPrimitive(it)) }
+            location?.let { put("location", JsonPrimitive(it)) }
+        }) { }
+
+    // ─── Correcting a day ────────────────────────────────────
+
+    suspend fun regularisations(): Result<List<RegularisationRequest>> =
+        getList("/api/attendance/regularisation")
+
+    suspend fun requestRegularisation(
+        workDate: String,
+        clockIn: String?,
+        clockOut: String?,
+        reason: String,
+        note: String?,
+    ): Result<Unit> =
+        request("/api/attendance/regularisation", method = "POST", body = buildJson {
+            put("workDate", JsonPrimitive(workDate))
+            clockIn?.let { put("requestedClockIn", JsonPrimitive(it)) }
+            clockOut?.let { put("requestedClockOut", JsonPrimitive(it)) }
+            put("reason", JsonPrimitive(reason))
+            note?.let { put("note", JsonPrimitive(it)) }
+        }) { }
+
+    // ─── Deciding ────────────────────────────────────────────
+
+    /**
+     * Approving or rejecting anything that is not leave.
+     *
+     * The word differs by queue and it is not a typo to fix here: leave takes
+     * "approve", these take "approved". Absorbing the difference in one place
+     * beats every screen remembering which endpoint wants which.
+     */
+    suspend fun decideWorkArrangement(id: String, approve: Boolean, reason: String?): Result<Unit> =
+        request("/api/work-arrangements", method = "PATCH", body = buildJson {
+            put("id", JsonPrimitive(id))
+            put("status", JsonPrimitive(if (approve) "approved" else "rejected"))
+            reason?.let { put("reason", JsonPrimitive(it)) }
+        }) { }
+
+    suspend fun decideRegularisation(id: String, approve: Boolean, reason: String?): Result<Unit> =
+        request("/api/attendance/regularisation", method = "PATCH", body = buildJson {
+            put("id", JsonPrimitive(id))
+            put("status", JsonPrimitive(if (approve) "approved" else "rejected"))
             reason?.let { put("reason", JsonPrimitive(it)) }
         }) { }
 
@@ -173,7 +260,12 @@ class HrmsApi(
                 element
             } else {
                 val obj = element.jsonObject
-                listOf("items", "data", "results", "notifications", "holidays", "balances")
+                listOf(
+                    "items", "data", "results", "notifications", "holidays",
+                    "balances", "documents", "requests", "payslips", "cycles",
+                    "pending", "swaps", "assets", "plans", "enrolments",
+                    "dependants", "courses", "tickets", "goals",
+                )
                     .firstNotNullOfOrNull { obj[it] as? kotlinx.serialization.json.JsonArray }
                     ?: kotlinx.serialization.json.JsonArray(emptyList())
             }

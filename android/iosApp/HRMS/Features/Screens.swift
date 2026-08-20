@@ -520,10 +520,40 @@ struct MoreScreen: View {
     var body: some View {
         NavigationStack {
             List {
-                NavigationLink("Helpdesk") { HelpdeskScreen() }
-                NavigationLink("Expenses") { ExpensesScreen() }
-                NavigationLink("Holidays") { HolidaysScreen() }
-                NavigationLink("Documents") { DocumentsScreen() }
+                // The person, first. A hub that opens with a list of features
+                // makes you check you are signed in as yourself.
+                if case .signedIn(let me) = session.state {
+                    Section {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(me.displayName ?? me.email).font(.headline)
+                            Text(me.email).font(.subheadline).foregroundStyle(.secondary)
+                            if let code = me.employeeCode {
+                                // The code, not the id. Eight characters of a
+                                // uuid identify nobody to a human being, and
+                                // this is the number people quote to HR.
+                                Text(code).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
+                Section("Money") {
+                    // Kept reachable after Pay lost its tab.
+                    NavigationLink("Payslips") { PayslipsScreen() }
+                    NavigationLink("Expenses") { ExpensesScreen() }
+                }
+
+                Section("Time") {
+                    NavigationLink("Holidays") { HolidaysScreen() }
+                }
+
+                Section("Workplace") {
+                    // Kept reachable after People lost its tab.
+                    NavigationLink("Directory") { DirectoryScreen() }
+                    NavigationLink("Documents") { DocumentsScreen() }
+                    NavigationLink("Helpdesk") { HelpdeskScreen() }
+                }
 
                 Section {
                     Button("Sign out", role: .destructive) {
@@ -531,7 +561,7 @@ struct MoreScreen: View {
                     }
                 }
             }
-            .navigationTitle("More")
+            .navigationTitle("Me")
         }
     }
 }
