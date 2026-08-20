@@ -526,11 +526,14 @@ fun IdCardScreen(user: SessionUser?) {
                                 weight = FontWeight.Medium,
                             )
                         }
-                        if (user.employeeId != null) {
+                        if (user.employeeCode != null) {
                             Column(Modifier.weight(1f)) {
                                 AppText("Employee", tone = TextTone.MUTED, size = Theme.type.caption)
+                                // The code, not the id. The first eight characters
+                                // of a UUID identify nobody to a human being, and
+                                // this card exists to be shown to one.
                                 AppText(
-                                    user.employeeId.take(8),
+                                    user.employeeCode,
                                     weight = FontWeight.Medium,
                                 )
                             }

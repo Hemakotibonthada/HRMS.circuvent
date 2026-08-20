@@ -26,6 +26,7 @@ import { NeonEmployeeRepository } from "@/db/repositories/employee.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
 import { canViewOthersBankDetails } from "@/lib/rbac";
 import { issuesFailed } from "@/lib/validation-response";
 import {
@@ -36,6 +37,9 @@ import {
 } from "@/lib/bank-details-rules";
 
 function fail(error: unknown) {
+  if (error instanceof NoEmployeeRecordError) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
   if (error instanceof NotFoundError) {
     return NextResponse.json({ error: "Employee not found" }, { status: 404 });
   }
@@ -89,16 +93,25 @@ export async function GET(request: NextRequest) {
   // would make a permission bug look, from the client, exactly like a
   // successful call — nobody would ever notice they got the wrong account.
   const privileged = canViewOthersBankDetails(ctx.role);
-  if (requested && requested !== ctx.userId && !privileged) {
-    return NextResponse.json(
-      { error: "You can only view your own bank details" },
-      { status: 403 }
-    );
-  }
-
-  const employeeId = privileged && requested ? requested : ctx.userId;
 
   try {
+    // ctx.userId is the signing-in account, not the employment record bank
+    // details are keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+
+    if (requested && requested !== self && !privileged) {
+      return NextResponse.json(
+        { error: "You can only view your own bank details" },
+        { status: 403 }
+      );
+    }
+
+    const employeeId = privileged && requested ? requested : self;
+
+    if (!employeeId) {
+      return NextResponse.json({ error: "Employee not found" }, { status: 404 });
+    }
+
     const raw = await new NeonEmployeeRepository(ctx).getBankDetails(employeeId);
     return NextResponse.json({ employeeId, ...toBankDetailsView(raw) });
   } catch (error) {
@@ -146,16 +159,17 @@ export async function PUT(request: NextRequest) {
     return issuesFailed(issues);
   }
 
-  // ctx.userId, never a value from the request: writing bank details is not a
-  // thing this product lets anyone do on someone else's behalf (see
-  // canWriteBankDetails in lib/bank-details-rules.ts), so the body is never
-  // even asked which employee it is for.
+  // The caller's own employee id, never a value from the request: writing
+  // bank details is not a thing this product lets anyone do on someone else's
+  // behalf (see canWriteBankDetails in lib/bank-details-rules.ts), so the body
+  // is never even asked which employee it is for.
   try {
+    const employeeId = await requireCurrentEmployeeId(ctx);
     const updated = await new NeonEmployeeRepository(ctx).updateBankDetails(
-      ctx.userId,
+      employeeId,
       toBankDetailsUpdate(parsed.data)
     );
-    return NextResponse.json({ employeeId: ctx.userId, ...toBankDetailsView(updated) });
+    return NextResponse.json({ employeeId, ...toBankDetailsView(updated) });
   } catch (error) {
     return fail(error);
   }

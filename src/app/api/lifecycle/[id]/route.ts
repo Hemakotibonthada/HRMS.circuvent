@@ -16,6 +16,7 @@ import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
 import { roleHasPermission } from "@/lib/rbac";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 const decisionSchema = z
   .object({
@@ -63,11 +64,12 @@ export async function GET(
 
     // Someone can read their own; everything else needs HR. Reported as not
     // found rather than forbidden, so the response does not confirm that a
-    // named colleague is being offboarded.
-    if (
-      journey.employeeId !== ctx.userId &&
-      !roleHasPermission(ctx.role, "employees.edit")
-    ) {
+    // named colleague is being offboarded. ctx.userId is the login, not the
+    // employment record a checklist is keyed by — an unresolved caller is
+    // never "their own".
+    const self = await currentEmployeeId(ctx);
+    const isOwn = self !== null && journey.employeeId === self;
+    if (!isOwn && !roleHasPermission(ctx.role, "employees.edit")) {
       return NextResponse.json({ error: "Checklist not found" }, { status: 404 });
     }
 

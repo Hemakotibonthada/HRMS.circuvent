@@ -30,6 +30,7 @@ import {
 } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 import {
   buildForm16PartB,
   quarterly24Q,
@@ -77,11 +78,19 @@ export async function GET(request: NextRequest) {
   }
 
   const privileged = CAN_VIEW_OTHERS.includes(ctx.role);
-  const employeeId = privileged ? parsed.data.employeeId ?? ctx.userId : ctx.userId;
   const financialYear = parsed.data.financialYear ?? currentFinancialYear();
   const window = monthsOfFinancialYear(financialYear);
 
   try {
+    // ctx.userId is the signing-in account, not the employment record a Form
+    // 16 is assembled for — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+    const employeeId = privileged ? (parsed.data.employeeId ?? self) : self;
+
+    if (!employeeId) {
+      return NextResponse.json({ error: "Employee not found" }, { status: 404 });
+    }
+
     const data = await withTenant(ctx, async (tx) => {
       const [employee] = await tx
         .select({

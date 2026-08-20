@@ -23,6 +23,7 @@ import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
 import { roleHasPermission } from "@/lib/rbac";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 const schema = z
   .object({
@@ -77,10 +78,17 @@ export async function POST(
 
     const { action, reason, approvedAmountMinor } = parsed.data;
 
+    // `existing.employeeId` is an employment record; `ctx.userId` is the
+    // login. Comparing the two directly is always false for anyone hired
+    // through the app, which quietly disarmed both checks below — self-cancel
+    // fell through to "not yours", and self-approval refused nobody.
+    const myEmployeeId = await currentEmployeeId(ctx);
+
     if (action === "cancel") {
       // Claimants withdraw their own; HR can cancel on anyone's behalf.
       const mayCancel =
-        existing.employeeId === ctx.userId || roleHasPermission(ctx.role, "expenses.view_all");
+        (myEmployeeId !== null && existing.employeeId === myEmployeeId) ||
+        roleHasPermission(ctx.role, "expenses.view_all");
       if (!mayCancel) {
         return NextResponse.json(
           { error: "You can only cancel your own expense claim" },
@@ -95,7 +103,7 @@ export async function POST(
     }
 
     // Self-approval defeats the control entirely, regardless of role.
-    if (existing.employeeId === ctx.userId) {
+    if (myEmployeeId !== null && existing.employeeId === myEmployeeId) {
       return NextResponse.json(
         { error: "You cannot approve your own expense claim" },
         { status: 403 }

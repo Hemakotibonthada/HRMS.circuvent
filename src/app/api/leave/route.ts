@@ -14,6 +14,7 @@ import { NeonLeaveRepository } from "@/db/repositories/leave.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId, NoEmployeeRecordError } from "@/lib/current-employee";
 import { describeIssues, toFieldIssues } from "@/lib/validation-response";
 
 const LEAVE_TYPES = [
@@ -52,6 +53,9 @@ const listSchema = z.object({
 const PRIVILEGED = ["owner", "admin", "hr", "manager"];
 
 function fail(error: unknown) {
+  if (error instanceof NoEmployeeRecordError) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
   if (error instanceof RepositoryError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
@@ -77,10 +81,28 @@ export async function GET(request: NextRequest) {
   // An ordinary employee sees only their own requests, whatever they ask for.
   // Scoping this in the handler rather than trusting a query parameter is the
   // whole point of routing through the server.
+  const privileged = PRIVILEGED.includes(ctx.role);
   const requestedEmployee = searchParams.get("employeeId") ?? undefined;
-  const employeeId = PRIVILEGED.includes(ctx.role) ? requestedEmployee : ctx.userId;
 
   try {
+    // ctx.userId is the signing-in account, not the employment record a
+    // leave request is keyed by — see lib/current-employee.ts.
+    const self = privileged ? null : await currentEmployeeId(ctx);
+    const employeeId = privileged ? requestedEmployee : self;
+
+    // An unprivileged caller with no employee record must get nothing, not
+    // everything. The filter below is spread conditionally, so letting a null
+    // through here would drop the restriction and list the whole organisation.
+    if (!privileged && !employeeId) {
+      return NextResponse.json({
+        items: [],
+        total: 0,
+        page: parsed.data.page ?? 1,
+        pageSize: parsed.data.pageSize ?? 50,
+        hasMore: false,
+      });
+    }
+
     const repo = new NeonLeaveRepository(ctx);
     const page = await repo.list({
       ...parsed.data,
@@ -132,8 +154,11 @@ export async function POST(request: NextRequest) {
 
   // Applying for someone else is an HR action. Silently rewriting the id to
   // the caller would hide the attempt; refusing it makes the boundary explicit.
-  const target = parsed.data.employeeId ?? ctx.userId;
-  if (target !== ctx.userId && !["owner", "admin", "hr"].includes(ctx.role)) {
+  // ctx.userId is the signing-in account, not the employment record a leave
+  // request is keyed by — see lib/current-employee.ts.
+  const self = await currentEmployeeId(ctx);
+  const target = parsed.data.employeeId ?? self;
+  if (target !== self && !["owner", "admin", "hr"].includes(ctx.role)) {
     return NextResponse.json(
       { error: "You can only apply for your own leave" },
       { status: 403 }
@@ -141,6 +166,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    if (!target) {
+      throw new NoEmployeeRecordError(ctx.userId);
+    }
+
     const repo = new NeonLeaveRepository(ctx);
     const created = await repo.apply({ ...parsed.data, employeeId: target });
     return NextResponse.json(created, { status: 201 });

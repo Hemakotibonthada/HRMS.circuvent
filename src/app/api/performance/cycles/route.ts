@@ -19,6 +19,7 @@ import { withTenant } from "@/db/client";
 import { performanceGoals, reviewCycles } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 export async function GET(request: NextRequest) {
   let ctx;
@@ -38,15 +39,23 @@ export async function GET(request: NextRequest) {
   const requested = url.searchParams.get("employeeId");
   const isManagerish = ["owner", "admin", "hr", "manager"].includes(ctx.role);
 
-  // Same rule as check-ins: an ordinary employee sees their own goals and
-  // nobody else's, and asking for somebody else's is refused rather than
-  // quietly answered with their own.
-  if (requested && requested !== ctx.userId && !isManagerish) {
-    return NextResponse.json({ error: "You can only view your own" }, { status: 403 });
-  }
-  const employeeId = requested ?? ctx.userId;
-
   try {
+    // ctx.userId is the signing-in account, not the employment record goals
+    // are keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+
+    // Same rule as check-ins: an ordinary employee sees their own goals and
+    // nobody else's, and asking for somebody else's is refused rather than
+    // quietly answered with their own.
+    if (requested && requested !== self && !isManagerish) {
+      return NextResponse.json({ error: "You can only view your own" }, { status: 403 });
+    }
+    const employeeId = requested ?? self;
+
+    if (!employeeId) {
+      return NextResponse.json({ cycles: [] });
+    }
+
     const payload = await withTenant({ orgId: ctx.orgId, userId: ctx.userId }, async (tx) => {
       // Draft cycles are excluded. A draft is HR still deciding the dates, and
       // showing one invites somebody to write goals against a period that then

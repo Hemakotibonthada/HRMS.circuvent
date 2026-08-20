@@ -8,6 +8,7 @@ import { NeonAttendanceRepository } from "@/db/repositories/attendance.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 const schema = z.object({
   employeeId: z.string().uuid().optional(),
@@ -34,9 +35,29 @@ export async function GET(request: NextRequest) {
   }
 
   const privileged = ["owner", "admin", "hr", "manager"].includes(ctx.role);
-  const employeeId = privileged ? parsed.data.employeeId ?? ctx.userId : ctx.userId;
 
   try {
+    // ctx.userId is the signing-in account, not the employment record
+    // attendance is keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+    const employeeId = privileged ? parsed.data.employeeId ?? self : self;
+
+    if (!employeeId) {
+      return NextResponse.json({
+        employeeId: null,
+        month: parsed.data.month,
+        year: parsed.data.year,
+        presentDays: 0,
+        absentDays: 0,
+        lateDays: 0,
+        halfDays: 0,
+        leaveDays: 0,
+        wfhDays: 0,
+        totalWorkedMinutes: 0,
+        totalOvertimeMinutes: 0,
+      });
+    }
+
     const summary = await new NeonAttendanceRepository(ctx).summary(
       employeeId,
       parsed.data.month,

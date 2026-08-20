@@ -10,6 +10,7 @@ import { NeonBenefitsRepository } from "@/db/repositories/benefits.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
 
 const electSchema = z.object({
   action: z.literal("elect"),
@@ -53,11 +54,19 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const requested = searchParams.get("employeeId") ?? undefined;
   const privileged = ["owner", "admin", "hr"].includes(ctx.role);
-  const employeeId = privileged && requested ? requested : ctx.userId;
 
   const planYear = Number(searchParams.get("planYear")) || undefined;
 
   try {
+    // ctx.userId is the signing-in account, not the employment record
+    // benefits enrolments are keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+    const employeeId = privileged && requested ? requested : self;
+
+    if (!employeeId) {
+      return NextResponse.json({ employeeId: null, enrolments: [] });
+    }
+
     const enrolments = await new NeonBenefitsRepository(ctx).enrolmentsFor(
       employeeId,
       planYear
@@ -102,11 +111,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // ctx.userId is the signing-in account, not the employment record
+    // benefits enrolments are keyed by — see lib/current-employee.ts.
+    const employeeId = await requireCurrentEmployeeId(ctx);
     const repo = new NeonBenefitsRepository(ctx);
 
     if (parsed.data.action === "waive") {
       await repo.waive(
-        ctx.userId,
+        employeeId,
         parsed.data.planId,
         parsed.data.planYear,
         parsed.data.reason
@@ -117,7 +129,7 @@ export async function POST(request: NextRequest) {
     const today = new Date().toISOString().slice(0, 10);
     const enrolment = await repo.elect(
       {
-        employeeId: ctx.userId,
+        employeeId,
         planId: parsed.data.planId,
         planYear: parsed.data.planYear,
         dependantIds: parsed.data.dependantIds,
@@ -128,6 +140,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(enrolment, { status: 201 });
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: "Plan not found" }, { status: 404 });
     }

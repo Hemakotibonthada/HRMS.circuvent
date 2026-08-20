@@ -26,6 +26,8 @@ data class SessionUser(
     val lastName: String = "",
     val role: String = "employee",
     val employeeId: String? = null,
+    /** The code a person quotes to HR or reads off a badge, e.g. CIR-0042. */
+    val employeeCode: String? = null,
     val organizationId: String = "",
 )
 

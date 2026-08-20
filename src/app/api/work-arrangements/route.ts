@@ -18,6 +18,7 @@ import { withTenant } from "@/db/client";
 import { employees, workArrangementRequests } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
 
 const APPROVERS = ["owner", "admin", "hr", "manager"];
 
@@ -92,19 +93,26 @@ export async function GET(request: NextRequest) {
         .from(workArrangementRequests)
         .innerJoin(employees, eq(employees.id, workArrangementRequests.employeeId));
 
-      return queue
-        ? await base
-            .where(eq(workArrangementRequests.status, "pending"))
-            .orderBy(desc(workArrangementRequests.startDate))
-            .limit(100)
-        : await base
-            .where(eq(workArrangementRequests.employeeId, ctx.userId))
-            .orderBy(desc(workArrangementRequests.startDate))
-            .limit(60);
+      if (queue) {
+        return base
+          .where(eq(workArrangementRequests.status, "pending"))
+          .orderBy(desc(workArrangementRequests.startDate))
+          .limit(100);
+      }
+
+      // ctx.userId is the signing-in account, not the employment record a
+      // work arrangement request is keyed by — see lib/current-employee.ts.
+      const employeeId = await currentEmployeeId(ctx, tx);
+      if (!employeeId) return null;
+
+      return base
+        .where(eq(workArrangementRequests.employeeId, employeeId))
+        .orderBy(desc(workArrangementRequests.startDate))
+        .limit(60);
     });
 
     return NextResponse.json({
-      requests: rows.map((r) => ({
+      requests: (rows ?? []).map((r) => ({
         ...r,
         employeeName: `${r.firstName} ${r.lastName}`.trim(),
       })),
@@ -157,6 +165,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const outcome = await withTenant(ctx, async (tx) => {
+      // ctx.userId is the signing-in account, not the employment record a
+      // work arrangement request is keyed by — see lib/current-employee.ts.
+      const employeeId = await requireCurrentEmployeeId(ctx, tx);
+
       // Overlapping requests are the quiet failure here: two approved WFH
       // ranges covering the same day means the attendance record has two
       // reasons for one day and payroll picks whichever it reads first.
@@ -165,7 +177,7 @@ export async function POST(request: NextRequest) {
         .from(workArrangementRequests)
         .where(
           and(
-            eq(workArrangementRequests.employeeId, ctx.userId),
+            eq(workArrangementRequests.employeeId, employeeId),
             ne(workArrangementRequests.status, "rejected"),
             ne(workArrangementRequests.status, "cancelled"),
             lte(workArrangementRequests.startDate, body.endDate),
@@ -180,7 +192,7 @@ export async function POST(request: NextRequest) {
         .insert(workArrangementRequests)
         .values({
           orgId: ctx.orgId,
-          employeeId: ctx.userId,
+          employeeId,
           kind: body.kind,
           startDate: body.startDate,
           endDate: body.endDate,
@@ -205,6 +217,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ id: outcome.id, status: "pending" });
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Work arrangement create failed:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -240,8 +255,12 @@ export async function PATCH(request: NextRequest) {
       if (!existing) return { code: 404 as const };
       if (existing.status !== "pending") return { code: 409 as const };
 
+      // ctx.userId is the signing-in account, not the employment record a
+      // work arrangement request is keyed by — see lib/current-employee.ts.
+      const employeeId = await requireCurrentEmployeeId(ctx, tx);
+
       if (body.status === "cancelled") {
-        if (existing.employeeId !== ctx.userId) return { code: 403 as const };
+        if (existing.employeeId !== employeeId) return { code: 403 as const };
         await tx
           .update(workArrangementRequests)
           .set({ status: "cancelled", updatedAt: new Date() })
@@ -253,7 +272,7 @@ export async function PATCH(request: NextRequest) {
 
       // The database refuses this too. Both, because the route is not the only
       // writer a system ends up with.
-      if (existing.employeeId === ctx.userId) {
+      if (existing.employeeId === employeeId) {
         return { code: 422 as const, message: "You cannot decide your own request." };
       }
 
@@ -268,7 +287,7 @@ export async function PATCH(request: NextRequest) {
         .update(workArrangementRequests)
         .set({
           status: body.status,
-          decidedById: ctx.userId,
+          decidedById: employeeId,
           decidedAt: new Date(),
           decisionReason: body.reason ?? null,
           updatedAt: new Date(),
@@ -291,6 +310,9 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ ok: true });
     }
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Work arrangement decision failed:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

@@ -8,6 +8,7 @@ import { NeonGovernanceRepository } from "@/db/repositories/governance.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 export async function GET(request: NextRequest) {
   let ctx;
@@ -28,16 +29,23 @@ export async function GET(request: NextRequest) {
   const requested = new URL(request.url).searchParams.get("employeeId");
   const privileged = ["owner", "admin", "hr"].includes(ctx.role);
 
-  if (requested && requested !== ctx.userId && !privileged) {
-    return NextResponse.json(
-      { error: "You can only request your own data" },
-      { status: 403 }
-    );
-  }
-
-  const employeeId = requested ?? ctx.userId;
-
   try {
+    // ctx.userId is the signing-in account, not the employment record this
+    // report is keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+
+    if (requested && requested !== self && !privileged) {
+      return NextResponse.json(
+        { error: "You can only request your own data" },
+        { status: 403 }
+      );
+    }
+
+    const employeeId = requested ?? self;
+    if (!employeeId) {
+      return NextResponse.json({ error: "Employee not found" }, { status: 404 });
+    }
+
     const result = await new NeonGovernanceRepository(ctx).subjectAccess(employeeId);
     return NextResponse.json(result, {
       headers: {

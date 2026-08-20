@@ -10,6 +10,7 @@ import { NeonPerformanceRepository } from "@/db/repositories/performance.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
 
 const bodySchema = z.object({
   employeeId: z.string().uuid(),
@@ -41,19 +42,26 @@ export async function GET(request: NextRequest) {
   const requested = new URL(request.url).searchParams.get("employeeId");
   const isManagerish = ["owner", "admin", "hr", "manager"].includes(ctx.role);
 
-  if (requested && requested !== ctx.userId && !isManagerish) {
-    return NextResponse.json({ error: "You can only view your own" }, { status: 403 });
-  }
-
-  const employeeId = requested ?? ctx.userId;
-
   try {
+    // ctx.userId is the signing-in account, not the employment record a
+    // check-in's subject and viewer are keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+
+    if (requested && requested !== self && !isManagerish) {
+      return NextResponse.json({ error: "You can only view your own" }, { status: 403 });
+    }
+
+    const employeeId = requested ?? self;
+    if (!employeeId) {
+      return NextResponse.json({ employeeId: null, checkIns: [] });
+    }
+
     // Private notes are stripped by the repository unless the caller is the
     // manager who wrote them — selecting and filtering later would put them in
     // a response body one mistake away from being rendered.
     const history = await new NeonPerformanceRepository(ctx).checkInHistory(
       employeeId,
-      ctx.userId,
+      self ?? "",
       isManagerish
     );
     return NextResponse.json({ employeeId, checkIns: history });
@@ -96,30 +104,37 @@ export async function POST(request: NextRequest) {
   }
 
   const isManagerish = ["owner", "admin", "hr", "manager"].includes(ctx.role);
-  const isOwn = parsed.data.employeeId === ctx.userId;
-
-  if (!isOwn && !isManagerish) {
-    return NextResponse.json({ error: "You cannot record this check-in" }, { status: 403 });
-  }
-
-  // A private note is the manager's own aide-memoire, not part of the
-  // employee's record. Someone writing about themselves has no use for one,
-  // and accepting it would put text in a field the employee cannot see on a
-  // record that is theirs.
-  if (parsed.data.privateNotes && isOwn) {
-    return NextResponse.json(
-      { error: "Private notes can only be added by a manager" },
-      { status: 403 }
-    );
-  }
 
   try {
+    // ctx.userId is the signing-in account, not the employment record a
+    // check-in's subject and manager are keyed by — see lib/current-employee.ts.
+    const self = await requireCurrentEmployeeId(ctx);
+    const isOwn = parsed.data.employeeId === self;
+
+    if (!isOwn && !isManagerish) {
+      return NextResponse.json({ error: "You cannot record this check-in" }, { status: 403 });
+    }
+
+    // A private note is the manager's own aide-memoire, not part of the
+    // employee's record. Someone writing about themselves has no use for one,
+    // and accepting it would put text in a field the employee cannot see on a
+    // record that is theirs.
+    if (parsed.data.privateNotes && isOwn) {
+      return NextResponse.json(
+        { error: "Private notes can only be added by a manager" },
+        { status: 403 }
+      );
+    }
+
     const result = await new NeonPerformanceRepository(ctx).recordCheckIn({
       ...parsed.data,
-      managerId: isOwn ? undefined : ctx.userId,
+      managerId: isOwn ? undefined : self,
     });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof RepositoryError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

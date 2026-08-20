@@ -21,6 +21,7 @@ import { NeonExpenseRepository } from "@/db/repositories/expense.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId, NoEmployeeRecordError } from "@/lib/current-employee";
 import { roleHasPermission } from "@/lib/rbac";
 import { EXPENSE_CATEGORIES } from "@/lib/expense-rules";
 
@@ -57,6 +58,9 @@ const submitSchema = z.object({
 });
 
 function fail(error: unknown) {
+  if (error instanceof NoEmployeeRecordError) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
   if (error instanceof RepositoryError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
@@ -86,7 +90,27 @@ export async function GET(request: NextRequest) {
   // `employeeId` they asked for. Filtering in the page instead would mean the
   // whole organization's spending had already crossed the wire.
   const seesAll = roleHasPermission(ctx.role, "expenses.view_all");
-  const employeeId = seesAll ? parsed.data.employeeId : ctx.userId;
+  // ctx.userId is the signing-in account, not the employment record an
+  // expense claim is keyed by — see lib/current-employee.ts.
+  const self = await currentEmployeeId(ctx);
+  const employeeId = seesAll ? parsed.data.employeeId : self;
+
+  // `filters.employeeId` is passed straight through below, and the repository
+  // treats a falsy value as "no filter". An unprivileged caller with no
+  // employee record must get nothing back, not everyone's expenses.
+  if (!seesAll && !self) {
+    return NextResponse.json({
+      data: [],
+      items: [],
+      summary: { total: 0, pending: 0, approved: 0, reimbursed: 0, totalAmountMinor: "0" },
+      pagination: {
+        page: parsed.data.page ?? 1,
+        pageSize: parsed.data.pageSize ?? parsed.data.limit ?? 50,
+        total: 0,
+        hasMore: false,
+      },
+    });
+  }
 
   try {
     const repo = new NeonExpenseRepository(ctx);
@@ -105,7 +129,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const summary = await repo.summary(employeeId);
+    const summary = await repo.summary(employeeId ?? undefined);
 
     // `data` rather than `items`: this route predates the paged convention and
     // collection-service already absorbs the difference. Both are sent so a
@@ -162,7 +186,10 @@ export async function POST(request: NextRequest) {
 
   // Filing on someone else's behalf is an HR action. Without this check the
   // `employeeId` field is a way to attribute your own spending to a colleague.
-  const onBehalf = parsed.data.employeeId && parsed.data.employeeId !== ctx.userId;
+  // ctx.userId is the signing-in account, not the employment record an
+  // expense claim is keyed by — see lib/current-employee.ts.
+  const self = await currentEmployeeId(ctx);
+  const onBehalf = parsed.data.employeeId && parsed.data.employeeId !== self;
   if (onBehalf && !roleHasPermission(ctx.role, "expenses.view_all")) {
     return NextResponse.json(
       { error: "You can only submit your own expenses" },
@@ -171,9 +198,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const employeeId = parsed.data.employeeId ?? self;
+    if (!employeeId) {
+      throw new NoEmployeeRecordError(ctx.userId);
+    }
+
     const claim = await new NeonExpenseRepository(ctx).submit({
       ...parsed.data,
-      employeeId: parsed.data.employeeId ?? ctx.userId,
+      employeeId,
     });
 
     return NextResponse.json({ data: claim, message: "Expense submitted" }, { status: 201 });

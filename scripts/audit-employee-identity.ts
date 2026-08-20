@@ -54,6 +54,14 @@ const RULES: { name: string; re: RegExp }[] = [
     name: "employee id defaulted to the account id",
     re: /\bconst\s+employeeId\s*=\s*[^;]*\bctx\.userId\b/,
   },
+  {
+    // The form that hid `benefits/dependants` from the first version of this
+    // script: passed as an argument rather than assigned or compared. Matched
+    // only in first position, where repositories take the employee. Actor and
+    // approver arguments come later in the list and are left alone.
+    name: "account id passed where a method's first argument is an employee",
+    re: /\.[a-z][\w$]*\(\s*ctx\.userId\s*[,)]/,
+  },
 ];
 
 const ALLOW = /\/\/\s*account-id:/;

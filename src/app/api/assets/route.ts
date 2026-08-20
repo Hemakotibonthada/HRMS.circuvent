@@ -5,6 +5,7 @@ import { NeonAssetsRepository } from "@/db/repositories/assets.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 import type { AssetState } from "@/lib/assets";
 
 const STATES: AssetState[] = [
@@ -35,12 +36,23 @@ export async function GET(request: NextRequest) {
   const requested = searchParams.get("assignedToId");
   const privileged = ["owner", "admin", "hr", "manager"].includes(ctx.role);
 
-  // Someone without standing sees what they hold, not the whole register. The
-  // register lists serial numbers and locations of every laptop in the
-  // company, which is a shopping list.
-  const assignedToId = privileged ? (requested ?? undefined) : ctx.userId;
-
   try {
+    // ctx.userId is the signing-in account, not the employment record assets
+    // are assigned to — see lib/current-employee.ts.
+    const self = privileged ? null : await currentEmployeeId(ctx);
+
+    if (!privileged && !self) {
+      return NextResponse.json({
+        assets: [],
+        summary: { total: 0, assigned: 0, inStock: 0, inRepair: 0, warrantyExpiringSoon: 0 },
+      });
+    }
+
+    // Someone without standing sees what they hold, not the whole register. The
+    // register lists serial numbers and locations of every laptop in the
+    // company, which is a shopping list.
+    const assignedToId = privileged ? (requested ?? undefined) : (self ?? undefined);
+
     const items = await new NeonAssetsRepository(ctx).list({
       state: (state as AssetState) ?? undefined,
       assignedToId,

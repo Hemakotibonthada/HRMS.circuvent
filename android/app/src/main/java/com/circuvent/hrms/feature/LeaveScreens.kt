@@ -95,6 +95,15 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
 
     val scope = rememberCoroutineScope()
 
+    // The form is longer than the screen and Submit sits at the bottom, so a
+    // banner at the top is off-screen at the exact moment it is written. An
+    // error nobody scrolls back up to find is the same as no error at all, so
+    // the form returns to it.
+    val formScroll = rememberScrollState()
+    LaunchedEffect(banner, errors) {
+        if (banner != null || errors.isNotEmpty()) formScroll.animateScrollTo(0)
+    }
+
     // Loaded so the calendar can mark the days the office is already closed.
     // A failure leaves the map empty, which downgrades the calendar to weekends
     // only rather than blocking the form — somebody still has to be able to
@@ -188,7 +197,7 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(formScroll)
             .padding(screenPadding()),
         verticalArrangement = Arrangement.spacedBy(Theme.spacing.md),
     ) {

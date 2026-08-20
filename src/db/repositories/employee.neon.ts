@@ -18,7 +18,7 @@ import {
   leaveBalances,
   leavePolicies,
 } from "@/db/schema/hrms";
-import { auditLog } from "@/db/schema/identity";
+import { auditLog, users } from "@/db/schema/identity";
 import {
   drainDueGroupJoins,
   drainDueGroupLeaves,
@@ -45,6 +45,7 @@ import {
   type LifecycleDocumentKind,
 } from "@/lib/intern-documents";
 import { decryptNullable, encryptNullable } from "@/lib/crypto/field-encryption";
+import { currentEmployeeId } from "@/lib/current-employee";
 import {
   canWriteBankDetails,
   toAuditSnapshot,
@@ -281,6 +282,60 @@ export class NeonEmployeeRepository implements EmployeeRepository {
           ctcMinor: toMinor(data.salary),
         })
         .returning();
+
+      // If an account already exists for this address in this organisation,
+      // link it. Nothing else in the product ever sets `employees.user_id`:
+      // only founder registration does, and it gets away with it by creating
+      // both rows at once. Every other hire was left unlinked, and an unlinked
+      // employee cannot be resolved from a login — which is why attendance,
+      // leave, payslips and expenses only ever worked for the founder and for
+      // the two accounts the owner-backfill script repaired.
+      //
+      // Matched on the work email, lower-cased, and only when that account is
+      // not already claimed by another employee. Anything ambiguous is left
+      // null rather than guessed: attaching the wrong person's employment
+      // record to a login is far worse than leaving it unattached.
+      const [account] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          and(
+            eq(users.orgId, this.ctx.orgId),
+            sql`lower(${users.email}) = lower(${data.email})`,
+            isNull(users.deletedAt)
+          )
+        )
+        .limit(1);
+
+      if (account) {
+        // `employees.user_id` is UNIQUE, so exactly one employee row may hold
+        // an account. `remove()` soft-deletes and leaves `user_id` in place,
+        // which means a departed employee would keep the account for ever:
+        // a re-hire on the same address could not be linked, and the resolver
+        // — which ignores deleted rows — would find nobody.
+        //
+        // So a live employee takes the account, and a departed one gives it
+        // up. A live holder is never disturbed: that would be attaching one
+        // person's employment record to another's login, which is far worse
+        // than leaving this one unlinked.
+        const [claimed] = await tx
+          .select({ id: employees.id, deletedAt: employees.deletedAt })
+          .from(employees)
+          .where(eq(employees.userId, account.id))
+          .limit(1);
+
+        if (claimed?.deletedAt) {
+          await tx
+            .update(employees)
+            .set({ userId: null })
+            .where(eq(employees.id, claimed.id));
+        }
+
+        if (!claimed || claimed.deletedAt) {
+          await tx.update(employees).set({ userId: account.id }).where(eq(employees.id, row.id));
+          row.userId = account.id;
+        }
+      }
 
       // Leave balances, in the same transaction as the hire.
       //
@@ -785,14 +840,20 @@ export class NeonEmployeeRepository implements EmployeeRepository {
     data: BankDetailsUpdate,
   ): Promise<RawEmployeeBankDetails> {
     // The route this backs never accepts a target employeeId in its request
-    // body at all — it always calls this with employeeId === ctx.userId — so
-    // this can only ever fire if some future caller (a script, an admin
-    // tool, a route refactored without re-reading this comment) passes a
-    // mismatched id. Checked here anyway: `canWriteBankDetails` is the one
+    // body at all — it always calls this with the caller's own resolved
+    // employee id — so this can only ever fire if some future caller (a
+    // script, an admin tool, a route refactored without re-reading this
+    // comment) passes a mismatched id. Checked here anyway: `canWriteBankDetails` is the one
     // place this rule is written down, and a rule enforced at only one of its
     // two possible call sites is a rule that quietly stops applying the day
     // someone adds a second one.
-    if (!canWriteBankDetails(this.ctx.userId ?? "", employeeId)) {
+    //
+    // `this.ctx.userId` is the signing-in account, not the employment record
+    // — see lib/current-employee.ts — so it has to be resolved before it can
+    // be compared against an `employees.id`.
+    const { orgId, userId } = this.ctx;
+    const callerId = userId ? await currentEmployeeId({ orgId, userId }) : null;
+    if (!canWriteBankDetails(callerId ?? "", employeeId)) {
       throw new RepositoryError("You can only update your own bank details", 403);
     }
 

@@ -34,6 +34,7 @@ import com.circuvent.hrms.core.ui.SectionHeading
 import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.StatusPill
 import com.circuvent.hrms.core.ui.TextTone
+import com.circuvent.hrms.core.ui.rememberFormattedRange
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.LeaveBalanceDto
 import com.circuvent.hrms.data.LeaveRequestDto
@@ -172,9 +173,11 @@ private fun LeaveRow(request: LeaveRequestDto, onOpen: (String) -> Unit) {
         else -> PillTone.NEUTRAL
     }
 
+    val dateRange = rememberFormattedRange(request.startDate, request.endDate)
+
     AppCard(
         onClick = { onOpen(request.id) },
-        contentDescription = "${request.leaveType} leave, ${request.startDate} to ${request.endDate}, ${request.status}",
+        contentDescription = "${request.leaveType} leave, $dateRange, ${request.status}",
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -188,7 +191,7 @@ private fun LeaveRow(request: LeaveRequestDto, onOpen: (String) -> Unit) {
             StatusPill(request.status.replaceFirstChar { it.uppercase() }, tone)
         }
         AppText(
-            "${request.startDate} – ${request.endDate} · " +
+            "$dateRange · " +
                 if (request.isHalfDay) "half day" else "${request.totalDays.toInt()} days",
             size = Theme.type.footnote,
             lineHeight = Theme.type.footnoteLine,

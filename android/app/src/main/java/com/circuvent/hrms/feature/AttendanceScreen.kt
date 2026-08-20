@@ -41,6 +41,7 @@ import com.circuvent.hrms.core.ui.PillTone
 import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.StatusPill
 import com.circuvent.hrms.core.ui.TextTone
+import com.circuvent.hrms.core.ui.rememberFormattedDate
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.AttendanceRowDto
 import com.circuvent.hrms.data.AttendanceSummaryDto
@@ -239,8 +240,10 @@ private fun AttendanceRow(row: AttendanceRowDto) {
         AttendanceRules.Tone.NEUTRAL -> PillTone.NEUTRAL
     }
 
+    val workDate = rememberFormattedDate(row.workDate)
+
     AppCard(
-        contentDescription = "${row.workDate}, ${AttendanceRules.statusLabel(row.status)}, $times",
+        contentDescription = "$workDate, ${AttendanceRules.statusLabel(row.status)}, $times",
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -248,7 +251,7 @@ private fun AttendanceRow(row: AttendanceRowDto) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                AppText(row.workDate, weight = FontWeight.Medium)
+                AppText(workDate, weight = FontWeight.Medium)
                 AppText(
                     times + (row.workedMinutes?.let { " · ${ShiftRules.formatDuration(it)}" } ?: ""),
                     size = Theme.type.footnote,

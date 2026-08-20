@@ -11,6 +11,7 @@ import { NeonWorkflowRepository } from "@/db/repositories/workflow.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
 
 const schema = z
   .object({
@@ -60,9 +61,12 @@ export async function POST(
   }
 
   try {
+    // The approver list is employee ids, so the actor must be one too — the
+    // permission check inside `decide` compares them directly.
+    const employeeId = await requireCurrentEmployeeId(ctx);
     const result = await new NeonWorkflowRepository(ctx).decide(
       id,
-      ctx.userId,
+      employeeId,
       parsed.data.decision,
       parsed.data.comment
     );
@@ -79,6 +83,9 @@ export async function POST(
   } catch (error) {
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: "Workflow not found" }, { status: 404 });
+    }
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     if (error instanceof RepositoryError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

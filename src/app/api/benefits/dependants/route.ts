@@ -10,6 +10,11 @@ import { NeonBenefitsRepository } from "@/db/repositories/benefits.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import {
+  NoEmployeeRecordError,
+  currentEmployeeId,
+  requireCurrentEmployeeId,
+} from "@/lib/current-employee";
 import { describeIssues, toFieldIssues } from "@/lib/validation-response";
 
 const addSchema = z.object({
@@ -32,7 +37,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const rows = await new NeonBenefitsRepository(ctx).listDependants(ctx.userId);
+    // The account id is not the employment record id, and `dependants.employee_id`
+    // is a foreign key to `employees`. Passing the account id listed nothing and,
+    // on the POST below, raised a constraint violation as a 500.
+    const employeeId = await currentEmployeeId(ctx);
+    if (!employeeId) return NextResponse.json({ dependants: [] });
+
+    const rows = await new NeonBenefitsRepository(ctx).listDependants(employeeId);
     return NextResponse.json({
       dependants: rows.map((d) => ({
         id: d.id,
@@ -90,9 +101,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const id = await new NeonBenefitsRepository(ctx).addDependant(ctx.userId, parsed.data);
+    const employeeId = await requireCurrentEmployeeId(ctx);
+    const id = await new NeonBenefitsRepository(ctx).addDependant(employeeId, parsed.data);
     return NextResponse.json({ id }, { status: 201 });
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof RepositoryError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

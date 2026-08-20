@@ -17,6 +17,7 @@ import { withTenant } from "@/db/client";
 import { performanceGoals } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 const patchSchema = z
   .object({
@@ -75,7 +76,13 @@ export async function PATCH(
 
       const goal = existing[0];
       if (!goal) return { kind: "notFound" as const };
-      if (goal.employeeId !== ctx.userId && !isManagerish) {
+      // ctx.userId is the signing-in account, not the employment record a
+      // goal is keyed by — see lib/current-employee.ts. Resolved inside the
+      // same transaction; an unresolvable caller is never treated as owning
+      // the goal.
+      const self = await currentEmployeeId(ctx, tx);
+      const isOwn = self !== null && goal.employeeId === self;
+      if (!isOwn && !isManagerish) {
         return { kind: "forbidden" as const };
       }
 

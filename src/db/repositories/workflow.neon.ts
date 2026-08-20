@@ -131,6 +131,9 @@ export class NeonWorkflowRepository {
   /**
    * Records a decision and advances the instance.
    *
+   * `actorId` is an employee id: it is checked against `approversFor`, which
+   * speaks employee ids, and it is recorded in the history as who decided.
+   *
    * The instance row is locked for the whole operation: two approvers clicking
    * at once would otherwise both read step 1, both advance to step 2, and the
    * second write would silently overwrite the first's history entry.
@@ -211,8 +214,13 @@ export class NeonWorkflowRepository {
     });
   }
 
-  /** Instances awaiting this user's decision. */
-  async pendingFor(userId: string): Promise<PendingApproval[]> {
+  /**
+   * Instances awaiting this employee's decision.
+   *
+   * An employee id, not an account id: `approversFor` speaks employee ids
+   * because the org structure does.
+   */
+  async pendingFor(employeeId: string): Promise<PendingApproval[]> {
     return withTenant(this.ctx, async (tx) => {
       const rows = await tx
         .select({ instance: workflowInstances, definition: workflowDefinitions })
@@ -235,7 +243,7 @@ export class NeonWorkflowRepository {
           step,
           instance.initiatedById ?? undefined
         );
-        if (!approvers.includes(userId)) continue;
+        if (!approvers.includes(employeeId)) continue;
 
         pending.push({
           instanceId: instance.id,
@@ -371,10 +379,27 @@ export class NeonWorkflowRepository {
           .where(and(eq(userRoles.orgId, this.ctx.orgId), eq(userRoles.role, step.role as never)))
       : [];
 
+    // Everything this returns must be one kind of id, and employee ids are the
+    // only kind the org structure can speak: `reportingToId` and a department's
+    // `headId` are both employees. `user_roles` is keyed by account, so those
+    // are translated here.
+    //
+    // Mixing the two silently half-worked: a step routed to a role matched the
+    // caller's account id and a step routed to a manager matched nothing, so
+    // managers were refused as approvers on their own reports' requests. An
+    // account with no employee record approves nothing and is dropped.
+    const employeeByUser = new Map(
+      staff.flatMap((e) => (e.userId ? [[e.userId, e.id] as const] : []))
+    );
+
     const org: OrgContext = {
       managerOf: (id) => managerByEmployee.get(id),
       headOfDepartment: (id) => headByDepartment.get(id),
-      usersWithRole: () => roleRows.map((r) => r.userId),
+      usersWithRole: () =>
+        roleRows.flatMap((r) => {
+          const employeeId = employeeByUser.get(r.userId);
+          return employeeId ? [employeeId] : [];
+        }),
     };
 
     return resolveApprovers(

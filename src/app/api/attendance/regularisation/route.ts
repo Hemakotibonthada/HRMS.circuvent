@@ -18,6 +18,7 @@ import { withTenant } from "@/db/client";
 import { attendanceRegularisations, employees, payrollRuns } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
 import {
   DEFAULT_POLICY,
   canDecide,
@@ -94,19 +95,26 @@ export async function GET(request: NextRequest) {
         .from(attendanceRegularisations)
         .innerJoin(employees, eq(employees.id, attendanceRegularisations.employeeId));
 
-      return queue
-        ? await base
-            .where(eq(attendanceRegularisations.status, "pending"))
-            .orderBy(desc(attendanceRegularisations.createdAt))
-            .limit(100)
-        : await base
-            .where(eq(attendanceRegularisations.employeeId, ctx.userId))
-            .orderBy(desc(attendanceRegularisations.attendanceDate))
-            .limit(60);
+      if (queue) {
+        return base
+          .where(eq(attendanceRegularisations.status, "pending"))
+          .orderBy(desc(attendanceRegularisations.createdAt))
+          .limit(100);
+      }
+
+      // ctx.userId is the signing-in account, not the employment record a
+      // regularisation request is keyed by — see lib/current-employee.ts.
+      const employeeId = await currentEmployeeId(ctx, tx);
+      if (!employeeId) return null;
+
+      return base
+        .where(eq(attendanceRegularisations.employeeId, employeeId))
+        .orderBy(desc(attendanceRegularisations.attendanceDate))
+        .limit(60);
     });
 
     return NextResponse.json({
-      requests: rows,
+      requests: rows ?? [],
       policy: DEFAULT_POLICY,
     });
   } catch (error) {
@@ -136,6 +144,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const decided = await withTenant(ctx, async (tx) => {
+      // ctx.userId is the signing-in account, not the employment record a
+      // regularisation request is keyed by — see lib/current-employee.ts.
+      const employeeId = await requireCurrentEmployeeId(ctx, tx);
       const { month, year } = monthOf(body.date);
 
       // Everything the rules need, read once. Asking the rules to fetch would
@@ -145,7 +156,7 @@ export async function POST(request: NextRequest) {
         .from(attendanceRegularisations)
         .where(
           and(
-            eq(attendanceRegularisations.employeeId, ctx.userId),
+            eq(attendanceRegularisations.employeeId, employeeId),
             eq(attendanceRegularisations.attendanceDate, body.date),
             eq(attendanceRegularisations.status, "pending")
           )
@@ -158,7 +169,7 @@ export async function POST(request: NextRequest) {
         .from(attendanceRegularisations)
         .where(
           and(
-            eq(attendanceRegularisations.employeeId, ctx.userId),
+            eq(attendanceRegularisations.employeeId, employeeId),
             eq(attendanceRegularisations.status, "approved"),
             gte(attendanceRegularisations.attendanceDate, monthStart)
           )
@@ -179,7 +190,7 @@ export async function POST(request: NextRequest) {
 
       const outcome = evaluate(
         {
-          employeeId: ctx.userId,
+          employeeId,
           date: body.date,
           reason: body.reason,
           note: body.note,
@@ -202,7 +213,7 @@ export async function POST(request: NextRequest) {
         .insert(attendanceRegularisations)
         .values({
           orgId: ctx.orgId,
-          employeeId: ctx.userId,
+          employeeId,
           attendanceDate: body.date,
           reason: body.reason,
           note: body.note ?? null,
@@ -229,6 +240,9 @@ export async function POST(request: NextRequest) {
       notes: decided.outcome.notes,
     });
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Regularisation create failed:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -263,10 +277,14 @@ export async function PATCH(request: NextRequest) {
 
       if (!existing) return { code: 404 as const };
 
+      // ctx.userId is the signing-in account, not the employment record a
+      // regularisation request is keyed by — see lib/current-employee.ts.
+      const employeeId = await requireCurrentEmployeeId(ctx, tx);
+
       // Withdrawing your own is not approving your own, and is the one action
       // the requester may take on their own request.
       if (body.status === "cancelled") {
-        if (existing.employeeId !== ctx.userId) return { code: 403 as const };
+        if (existing.employeeId !== employeeId) return { code: 403 as const };
         if (existing.status !== "pending") return { code: 409 as const };
         await tx
           .update(attendanceRegularisations)
@@ -279,7 +297,7 @@ export async function PATCH(request: NextRequest) {
       if (existing.status !== "pending") return { code: 409 as const };
 
       const permitted = canDecide({
-        approverId: ctx.userId,
+        approverId: employeeId,
         requesterId: existing.employeeId,
         status: body.status,
         reason: body.reason,
@@ -291,7 +309,7 @@ export async function PATCH(request: NextRequest) {
         .update(attendanceRegularisations)
         .set({
           status: body.status,
-          decidedById: ctx.userId,
+          decidedById: employeeId,
           decidedAt: new Date(),
           decisionReason: body.reason ?? null,
           updatedAt: new Date(),
@@ -317,6 +335,9 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ ok: true });
     }
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Regularisation decision failed:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

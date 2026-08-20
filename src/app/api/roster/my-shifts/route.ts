@@ -8,6 +8,7 @@ import { NeonRosteringRepository } from "@/db/repositories/rostering.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -41,9 +42,17 @@ export async function GET(request: NextRequest) {
 
   const requested = searchParams.get("employeeId");
   const privileged = ["owner", "admin", "hr", "manager"].includes(ctx.role);
-  const employeeId = privileged && requested ? requested : ctx.userId;
 
   try {
+    // ctx.userId is the signing-in account, not the employment record a
+    // roster is keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+    const employeeId = privileged && requested ? requested : self;
+
+    if (!employeeId) {
+      return NextResponse.json({ employeeId: null, from, to, shifts: [], totalMinutes: 0 });
+    }
+
     const shifts = await new NeonRosteringRepository(ctx).myShifts(employeeId, from, to);
     return NextResponse.json({
       employeeId,

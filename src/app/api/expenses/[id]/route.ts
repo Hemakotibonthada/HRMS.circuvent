@@ -12,6 +12,7 @@ import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
 import { roleHasPermission } from "@/lib/rbac";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 export async function GET(
   request: NextRequest,
@@ -39,7 +40,12 @@ export async function GET(
     // A claim carries what someone spent and where they were. Anyone without
     // `expenses.view_all` sees only their own — reported as not found rather
     // than forbidden, so the response does not confirm the claim exists.
-    if (claim.employeeId !== ctx.userId && !roleHasPermission(ctx.role, "expenses.view_all")) {
+    // ctx.userId is the signing-in account, not the employment record a claim
+    // is keyed by — see lib/current-employee.ts. An unresolved caller is
+    // never "their own".
+    const self = await currentEmployeeId(ctx);
+    const isOwn = self !== null && claim.employeeId === self;
+    if (!isOwn && !roleHasPermission(ctx.role, "expenses.view_all")) {
       return NextResponse.json({ error: "Expense claim not found" }, { status: 404 });
     }
 

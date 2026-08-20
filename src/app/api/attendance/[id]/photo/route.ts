@@ -19,6 +19,7 @@ import { DEFAULT_RETENTION_DAYS, selfieExpired } from "@/lib/attendance-selfie";
 import { getObjectBytes } from "@/lib/storage/object-store";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 const CAN_VIEW_OTHERS = new Set(["owner", "admin", "hr", "manager"]);
 
@@ -73,13 +74,23 @@ export async function GET(
         .where(eq(attendancePolicies.orgId, ctx.orgId))
         .limit(1);
 
-      return { record: rows[0], retention: policy[0]?.retention ?? DEFAULT_RETENTION_DAYS };
+      // ctx.userId is the signing-in account, not the employment record the
+      // punch is keyed by — see lib/current-employee.ts. Resolved inside the
+      // same transaction so an unresolvable caller never gets treated as a
+      // match against someone else's photograph.
+      const self = await currentEmployeeId(ctx, tx);
+
+      return {
+        record: rows[0],
+        retention: policy[0]?.retention ?? DEFAULT_RETENTION_DAYS,
+        self,
+      };
     });
 
     if (!found) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const { record, retention } = found;
-    const own = record.employeeId === ctx.userId;
+    const { record, retention, self } = found;
+    const own = self !== null && record.employeeId === self;
     if (!own && !CAN_VIEW_OTHERS.has(ctx.role)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }

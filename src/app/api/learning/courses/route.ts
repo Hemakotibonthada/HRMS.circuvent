@@ -5,6 +5,7 @@ import { NeonLearningRepository } from "@/db/repositories/learning.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 export async function GET(request: NextRequest) {
   let ctx;
@@ -18,11 +19,20 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const requested = searchParams.get("employeeId");
   const privileged = ["owner", "admin", "hr", "manager"].includes(ctx.role);
-  const employeeId = privileged && requested ? requested : ctx.userId;
 
   const today = new Date().toISOString().slice(0, 10);
 
   try {
+    // ctx.userId is the signing-in account, not the employment record the
+    // catalogue's eligibility and enrolment state are keyed by — see
+    // lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+    const employeeId = privileged && requested ? requested : self;
+
+    if (!employeeId) {
+      return NextResponse.json({ employeeId: null, courses: [] });
+    }
+
     const catalogue = await new NeonLearningRepository(ctx).catalogue(employeeId, today);
     return NextResponse.json({ employeeId, courses: catalogue });
   } catch (error) {

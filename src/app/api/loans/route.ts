@@ -24,6 +24,7 @@ import { withTenant } from "@/db/client";
 import { employeeLoans, loanBenchmarkRates, loanRepayments } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
 import {
   loanPerquisite,
   monthlyInstalment,
@@ -95,10 +96,15 @@ export async function GET(request: NextRequest) {
 
   try {
     const payload = await withTenant(ctx, async (tx) => {
+      // ctx.userId is the signing-in account, not the employment record a
+      // loan is keyed by — see lib/current-employee.ts.
+      const employeeId = await currentEmployeeId(ctx, tx);
+      if (!employeeId) return { loans: [], repayments: [], rates: [] };
+
       const loans = await tx
         .select()
         .from(employeeLoans)
-        .where(eq(employeeLoans.employeeId, ctx.userId))
+        .where(eq(employeeLoans.employeeId, employeeId))
         .orderBy(desc(employeeLoans.createdAt));
 
       if (loans.length === 0) return { loans: [], repayments: [], rates: [] };
@@ -209,6 +215,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ financialYear, loans: result });
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Loan list failed:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -235,6 +244,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const id = await withTenant(ctx, async (tx) => {
+      // ctx.userId is the signing-in account, not the employment record a
+      // loan is keyed by — see lib/current-employee.ts.
+      const employeeId = await requireCurrentEmployeeId(ctx, tx);
       const now = new Date();
       // Recovery starts the month after the request, since this month's payroll
       // may already have been prepared.
@@ -245,7 +257,7 @@ export async function POST(request: NextRequest) {
         .insert(employeeLoans)
         .values({
           orgId: ctx.orgId,
-          employeeId: ctx.userId,
+          employeeId,
           loanType: body.loanType,
           principalMinor: body.principalMinor,
           tenureMonths: body.tenureMonths,
@@ -261,6 +273,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ id, status: "pending" });
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Loan request failed:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

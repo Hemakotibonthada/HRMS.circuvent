@@ -21,6 +21,7 @@ import { withTenant } from "@/db/client";
 import { itDeclarationItems, itDeclarations } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
 import {
   DEDUCTION_SECTIONS,
   allowedDeductions,
@@ -85,10 +86,31 @@ export async function GET(request: NextRequest) {
   }
 
   const privileged = CAN_VIEW_OTHERS.includes(ctx.role);
-  const employeeId = privileged ? parsed.data.employeeId ?? ctx.userId : ctx.userId;
   const financialYear = parsed.data.financialYear ?? currentFinancialYear();
 
   try {
+    // ctx.userId is the signing-in account, not the employment record a
+    // declaration is keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+    const employeeId = privileged ? (parsed.data.employeeId ?? self) : self;
+
+    if (!employeeId) {
+      return NextResponse.json({
+        declaration: null,
+        items: [],
+        summary: null,
+        sections: DEDUCTION_SECTIONS.map((s) => ({
+          code: s.code,
+          label: s.label,
+          note: s.note,
+          capMinor: s.capMinor?.toString() ?? null,
+          sharedCapGroup: s.sharedCapGroup ?? null,
+          allowedInNewRegime: s.allowedInNewRegime,
+          requiresProof: s.requiresProof,
+        })),
+      });
+    }
+
     const payload = await withTenant(ctx, async (tx) => {
       let [declaration] = await tx
         .select()
@@ -193,7 +215,6 @@ export async function PUT(request: NextRequest) {
   // Writing somebody else's declaration is not a privilege anyone holds here.
   // Finance verifies proofs, which is a different act from claiming a
   // deduction on a colleague's behalf.
-  const employeeId = ctx.userId;
   const financialYear = body.financialYear ?? currentFinancialYear();
 
   const unknown = body.items.map((i) => i.section).filter((s) => !sectionFor(s));
@@ -225,6 +246,10 @@ export async function PUT(request: NextRequest) {
 
   try {
     await withTenant(ctx, async (tx) => {
+      // ctx.userId is the signing-in account, not the employment record a
+      // declaration is keyed by — see lib/current-employee.ts.
+      const employeeId = await requireCurrentEmployeeId(ctx, tx);
+
       let [declaration] = await tx
         .select()
         .from(itDeclarations)
@@ -282,6 +307,9 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ saved: true, financialYear, warnings: problems });
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof LockedError) {
       return NextResponse.json(
         { error: "This declaration is locked for the year and can no longer be changed." },

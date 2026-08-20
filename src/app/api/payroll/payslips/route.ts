@@ -10,6 +10,7 @@ import { NeonPayrollRepository } from "@/db/repositories/payroll.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 export async function GET(request: NextRequest) {
   let ctx;
@@ -25,19 +26,29 @@ export async function GET(request: NextRequest) {
   // Salary is the most sensitive field in the product. Managers are excluded
   // deliberately: a reporting line is not authority to see someone's pay.
   const privileged = ["owner", "admin", "hr"].includes(ctx.role);
-  if (requested && requested !== ctx.userId && !privileged) {
-    return NextResponse.json(
-      { error: "You can only view your own payslips" },
-      { status: 403 }
-    );
-  }
-
-  const employeeId = privileged && requested ? requested : ctx.userId;
-  if (!z.string().uuid().safeParse(employeeId).success) {
-    return NextResponse.json({ error: "Invalid employee id" }, { status: 400 });
-  }
 
   try {
+    // ctx.userId is the signing-in account, not the employment record a
+    // payslip is keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+
+    if (requested && requested !== self && !privileged) {
+      return NextResponse.json(
+        { error: "You can only view your own payslips" },
+        { status: 403 }
+      );
+    }
+
+    const employeeId = privileged && requested ? requested : self;
+
+    if (!employeeId) {
+      return NextResponse.json({ employeeId: null, payslips: [] });
+    }
+
+    if (!z.string().uuid().safeParse(employeeId).success) {
+      return NextResponse.json({ error: "Invalid employee id" }, { status: 400 });
+    }
+
     const payslips = await new NeonPayrollRepository(ctx).payslipsFor(employeeId);
     return NextResponse.json({ employeeId, payslips });
   } catch (error) {

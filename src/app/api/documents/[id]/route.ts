@@ -5,6 +5,7 @@ import { NeonDocumentsRepository } from "@/db/repositories/documents.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 export async function GET(
   request: NextRequest,
@@ -27,8 +28,11 @@ export async function GET(
     }
 
     // Documents are personnel records. Someone may read their own; anyone
-    // else's needs HR standing.
-    const isOwn = document.employeeId === ctx.userId;
+    // else's needs HR standing. ctx.userId is the login, not the employment
+    // record a document is keyed by — an unresolved caller is never "their
+    // own".
+    const self = await currentEmployeeId(ctx);
+    const isOwn = self !== null && document.employeeId === self;
     if (!isOwn && !["owner", "admin", "hr"].includes(ctx.role)) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }

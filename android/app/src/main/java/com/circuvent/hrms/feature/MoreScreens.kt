@@ -42,6 +42,7 @@ import com.circuvent.hrms.core.ui.PillTone
 import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.StatusPill
 import com.circuvent.hrms.core.ui.TextTone
+import com.circuvent.hrms.core.ui.rememberFormattedRange
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.PayslipDetailDto
 import com.circuvent.hrms.data.PendingLeaveDto
@@ -143,7 +144,7 @@ fun ApprovalsScreen(container: AppContainer, user: SessionUser?) {
 
                     AppText(
                         "${request.leaveType.replaceFirstChar { it.uppercase() }} · " +
-                            "${request.startDate} – ${request.endDate} · " +
+                            "${rememberFormattedRange(request.startDate, request.endDate)} · " +
                             if (request.isHalfDay) "half day" else "${request.totalDays.toInt()} days",
                         size = Theme.type.footnote,
                         lineHeight = Theme.type.footnoteLine,

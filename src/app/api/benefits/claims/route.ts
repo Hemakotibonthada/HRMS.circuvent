@@ -10,6 +10,7 @@ import { NeonBenefitsRepository } from "@/db/repositories/benefits.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
 import { describeIssues, toFieldIssues } from "@/lib/validation-response";
 
 const submitSchema = z.object({
@@ -35,9 +36,17 @@ export async function GET(request: NextRequest) {
   // administer benefits see them.
   const privileged = ["owner", "admin", "hr"].includes(ctx.role);
   const requested = searchParams.get("employeeId") ?? undefined;
-  const employeeId = privileged && requested ? requested : ctx.userId;
 
   try {
+    // ctx.userId is the signing-in account, not the employment record a
+    // claim is keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+    const employeeId = privileged && requested ? requested : self;
+
+    if (!employeeId) {
+      return NextResponse.json({ items: [], total: 0, page: 1, pageSize: 50, hasMore: false });
+    }
+
     const page = await new NeonBenefitsRepository(ctx).listClaims({
       page: Number(searchParams.get("page")) || undefined,
       pageSize: Number(searchParams.get("pageSize")) || undefined,
@@ -91,10 +100,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // ctx.userId is the signing-in account, not the employment record a
+    // claim is keyed by — see lib/current-employee.ts.
+    const employeeId = await requireCurrentEmployeeId(ctx);
     const id = await new NeonBenefitsRepository(ctx).submitClaim({
       enrolmentId: parsed.data.enrolmentId,
       // Always the caller: claiming on someone else's cover is fraud.
-      employeeId: ctx.userId,
+      employeeId,
       dependantId: parsed.data.dependantId,
       claimedAmountMinor: BigInt(Math.round(parsed.data.claimedAmount * 100)),
       incidentDate: parsed.data.incidentDate,
@@ -104,6 +116,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ id }, { status: 201 });
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: "Enrolment not found" }, { status: 404 });
     }

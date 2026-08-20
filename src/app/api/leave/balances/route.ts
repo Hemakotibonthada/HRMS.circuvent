@@ -8,6 +8,7 @@ import { NeonLeaveRepository } from "@/db/repositories/leave.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 const schema = z.object({
   employeeId: z.string().uuid().optional(),
@@ -30,10 +31,18 @@ export async function GET(request: NextRequest) {
   }
 
   const privileged = ["owner", "admin", "hr", "manager"].includes(ctx.role);
-  const employeeId = privileged ? parsed.data.employeeId ?? ctx.userId : ctx.userId;
   const year = parsed.data.year ?? new Date().getFullYear();
 
   try {
+    // ctx.userId is the signing-in account, not the employment record leave
+    // balances are keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+    const employeeId = privileged ? parsed.data.employeeId ?? self : self;
+
+    if (!employeeId) {
+      return NextResponse.json({ employeeId: null, year, balances: [] });
+    }
+
     const balances = await new NeonLeaveRepository(ctx).balances(employeeId, year);
     return NextResponse.json({ employeeId, year, balances });
   } catch (error) {

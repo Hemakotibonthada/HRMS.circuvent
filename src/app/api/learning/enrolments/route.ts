@@ -9,6 +9,7 @@ import { NeonLearningRepository } from "@/db/repositories/learning.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId, NoEmployeeRecordError } from "@/lib/current-employee";
 
 const enrolSchema = z.object({
   action: z.literal("enrol"),
@@ -34,11 +35,19 @@ export async function GET(request: NextRequest) {
 
   const requested = new URL(request.url).searchParams.get("employeeId");
   const privileged = ["owner", "admin", "hr", "manager"].includes(ctx.role);
-  const employeeId = privileged && requested ? requested : ctx.userId;
 
   const today = new Date().toISOString().slice(0, 10);
 
   try {
+    // ctx.userId is the signing-in account, not the employment record
+    // learning enrolments are keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+    const employeeId = privileged && requested ? requested : self;
+
+    if (!employeeId) {
+      return NextResponse.json({ employeeId: null, enrolments: [] });
+    }
+
     const enrolments = await new NeonLearningRepository(ctx).myLearning(employeeId, today);
     return NextResponse.json({ employeeId, enrolments });
   } catch (error) {
@@ -94,20 +103,31 @@ export async function POST(request: NextRequest) {
     }
 
     const target = parsed.data.employeeId;
-    if (target && target !== ctx.userId && !privileged) {
+    // ctx.userId is the signing-in account, not the employment record an
+    // enrolment is keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+
+    if (target && target !== self && !privileged) {
       return NextResponse.json({ error: "You cannot enrol someone else" }, { status: 403 });
     }
 
-    const employeeId = target ?? ctx.userId;
+    const employeeId = target ?? self;
+    if (!employeeId) {
+      throw new NoEmployeeRecordError(ctx.userId);
+    }
+
     const enrolment = await repo.enrol(
       parsed.data.courseId,
       employeeId,
       today,
-      employeeId === ctx.userId ? undefined : ctx.userId
+      employeeId === self ? undefined : ctx.userId
     );
 
     return NextResponse.json(enrolment, { status: 201 });
   } catch (error) {
+    if (error instanceof NoEmployeeRecordError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }

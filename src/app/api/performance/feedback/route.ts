@@ -9,6 +9,7 @@ import { NeonPerformanceRepository } from "@/db/repositories/performance.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 const bodySchema = z.object({
   cycleId: z.string().uuid(),
@@ -31,7 +32,12 @@ export async function GET(request: NextRequest) {
   try {
     // Always the caller's own list. Whose feedback someone owes reveals who is
     // being reviewed by whom, which is part of what anonymity protects.
-    const pending = await new NeonPerformanceRepository(ctx).pendingFeedbackFor(ctx.userId);
+    //
+    // `feedback_requests.respondent_id` is an employee, not an account.
+    const employeeId = await currentEmployeeId(ctx);
+    if (!employeeId) return NextResponse.json({ pending: [] });
+
+    const pending = await new NeonPerformanceRepository(ctx).pendingFeedbackFor(employeeId);
     return NextResponse.json({ pending });
   } catch (error) {
     if (error instanceof RepositoryError) {

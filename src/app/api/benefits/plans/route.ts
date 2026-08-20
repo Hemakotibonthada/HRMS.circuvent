@@ -10,6 +10,7 @@ import { NeonBenefitsRepository } from "@/db/repositories/benefits.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 export async function GET(request: NextRequest) {
   let ctx;
@@ -24,13 +25,21 @@ export async function GET(request: NextRequest) {
   // Benefits elections reveal family structure and health choices, so an
   // ordinary employee sees only their own.
   const privileged = ["owner", "admin", "hr"].includes(ctx.role);
-  const employeeId = privileged && requested ? requested : ctx.userId;
-
-  if (!z.string().uuid().safeParse(employeeId).success) {
-    return NextResponse.json({ error: "Invalid employee id" }, { status: 400 });
-  }
 
   try {
+    // ctx.userId is the signing-in account, not the employment record a plan
+    // eligibility check is keyed by — see lib/current-employee.ts.
+    const self = await currentEmployeeId(ctx);
+    const employeeId = privileged && requested ? requested : self;
+
+    if (!employeeId) {
+      return NextResponse.json({ plans: [] });
+    }
+
+    if (!z.string().uuid().safeParse(employeeId).success) {
+      return NextResponse.json({ error: "Invalid employee id" }, { status: 400 });
+    }
+
     const today = new Date().toISOString().slice(0, 10);
     const plans = await new NeonBenefitsRepository(ctx).availablePlans(employeeId, today);
     return NextResponse.json({ plans });

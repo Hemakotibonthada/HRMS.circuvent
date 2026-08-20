@@ -14,6 +14,7 @@ import { NeonHelpdeskRepository } from "@/db/repositories/helpdesk.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 
 const states = [
   "new",
@@ -51,7 +52,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const items = await new NeonHelpdeskRepository(ctx).listVisible(ctx.userId, ctx.role, {
+    // `raised_by_id` and the assignment column are foreign keys to `employees`,
+    // so the viewer has to be an employee id or "my tickets" matches nothing.
+    // Without an employment record there is nothing of one's own to see, and
+    // an empty string can never equal a uuid — so confidential tickets stay
+    // hidden rather than being widened by a null.
+    const viewerId = (await currentEmployeeId(ctx)) ?? "";
+    const items = await new NeonHelpdeskRepository(ctx).listVisible(viewerId, ctx.role, {
       state: (state as (typeof states)[number]) ?? undefined,
       assignedToMe: searchParams.get("assignedToMe") === "true",
       breachRisk: searchParams.get("breachRisk") === "true",

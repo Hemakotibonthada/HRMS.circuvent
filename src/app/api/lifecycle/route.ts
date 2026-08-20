@@ -18,6 +18,7 @@ import { NeonLifecycleRepository } from "@/db/repositories/lifecycle.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
 import { roleHasPermission } from "@/lib/rbac";
 
 const kindSchema = z.enum(["onboarding", "offboarding"]);
@@ -82,9 +83,26 @@ export async function GET(request: NextRequest) {
   // joiner should be able to follow their own onboarding without being handed
   // the whole company's exits.
   const seesAll = roleHasPermission(ctx.role, "employees.edit");
-  const employeeId = seesAll ? parsed.data.employeeId : ctx.userId;
 
   try {
+    // ctx.userId is the signing-in account, not the employment record a
+    // checklist is keyed by — see lib/current-employee.ts.
+    const self = seesAll ? null : await currentEmployeeId(ctx);
+    const employeeId = seesAll ? parsed.data.employeeId : (self ?? undefined);
+
+    if (!seesAll && !self) {
+      return NextResponse.json({
+        data: [],
+        items: [],
+        pagination: {
+          page: parsed.data.page ?? 1,
+          pageSize: parsed.data.pageSize ?? parsed.data.limit ?? 50,
+          total: 0,
+          hasMore: false,
+        },
+      });
+    }
+
     const repo = new NeonLifecycleRepository(ctx);
     const page = await repo.list(parsed.data.kind, {
       page: parsed.data.page,
