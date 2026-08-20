@@ -112,7 +112,7 @@ fun MyDetailsScreen(state: AppState) {
         Loaded(loaded) { d ->
             DeskCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Initials("${d.firstName} ${d.lastName}", 44.dp)
+                    Avatar("${d.firstName} ${d.lastName}", imageUrl = d.avatarUrl, size = 44.dp)
                     Spacer(Modifier.width(Desk.spacing.md))
                     Column(Modifier.weight(1f)) {
                         Text(

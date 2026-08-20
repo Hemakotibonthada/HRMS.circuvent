@@ -108,7 +108,7 @@ fun DirectoryScreen(state: AppState) {
                     list.forEach { p ->
                         TableRow {
                             Row(Modifier.weight(2f), verticalAlignment = Alignment.CenterVertically) {
-                                Initials(p.fullName, 28.dp)
+                                Avatar(p.fullName, imageUrl = p.avatarUrl, size = 28.dp)
                                 Spacer(Modifier.width(Desk.spacing.sm))
                                 Text(
                                     p.fullName,
@@ -180,7 +180,7 @@ fun PraiseScreen(state: AppState) {
                     matches.take(6).forEach { person ->
                         TableRow {
                             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                                Initials(person.fullName, 26.dp)
+                                Avatar(person.fullName, imageUrl = person.avatarUrl, size = 26.dp)
                                 Spacer(Modifier.width(Desk.spacing.sm))
                                 Text(
                                     person.fullName,
@@ -194,7 +194,7 @@ fun PraiseScreen(state: AppState) {
                     }
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Initials(picked.fullName, 30.dp)
+                        Avatar(picked.fullName, imageUrl = picked.avatarUrl, size = 30.dp)
                         Spacer(Modifier.width(Desk.spacing.sm))
                         Text(
                             picked.fullName,
@@ -267,7 +267,7 @@ fun PraiseScreen(state: AppState) {
                 list.forEach { p ->
                     DeskCard {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Initials(p.toName, 32.dp)
+                            Avatar(p.toName, imageUrl = p.toAvatarUrl, size = 32.dp)
                             Spacer(Modifier.width(Desk.spacing.md))
                             Text(
                                 p.toName,

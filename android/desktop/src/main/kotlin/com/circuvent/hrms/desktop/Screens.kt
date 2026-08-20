@@ -31,9 +31,11 @@ import androidx.compose.ui.unit.dp
 import com.circuvent.hrms.shared.api.HrmsApi
 import com.circuvent.hrms.shared.model.AttendanceRecord
 import com.circuvent.hrms.shared.model.ClockState
+import com.circuvent.hrms.shared.model.Holiday
 import com.circuvent.hrms.shared.model.LeaveBalance
 import com.circuvent.hrms.shared.model.LeaveRequest
 import com.circuvent.hrms.shared.model.TeamAttendance
+import com.circuvent.hrms.shared.model.TeamPulse
 import com.circuvent.hrms.shared.model.WorkArrangementRequest
 import com.circuvent.hrms.shared.model.RegularisationRequest
 import kotlinx.coroutines.launch
@@ -80,13 +82,30 @@ private fun statusTone(status: String): PillTone = when (status.lowercase()) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TODAY
+// TODAY — an overview, not one long table
 // ═══════════════════════════════════════════════════════════════
+//
+// This screen used to be a clock card and then the full leave-balance table:
+// nine rows, four columns, mostly zeroes, filling a 1440px window to answer a
+// question nobody opened the app to ask. The balances belong on the Leave
+// screen, next to the form that spends them, and they are there now.
+//
+// What replaces it is the set of things that change during a day and that a
+// person would otherwise have to visit four screens to learn: whether they are
+// clocked in, what is waiting for their decision, who on their team is missing,
+// what is left to book, and what is coming.
+//
+// Every tile is a real number or it is absent. A dashboard that fills space
+// with a zero it did not measure teaches people to ignore it.
 
 @Composable
 fun HomeScreen(state: AppState) {
     var clock by remember { mutableStateOf<Load<ClockState>>(Load.Loading) }
     var balances by remember { mutableStateOf<Load<List<LeaveBalance>>>(Load.Loading) }
+    var team by remember { mutableStateOf<Load<TeamAttendance>>(Load.Loading) }
+    var pulse by remember { mutableStateOf<Load<TeamPulse>>(Load.Loading) }
+    var holidays by remember { mutableStateOf<Load<List<Holiday>>>(Load.Loading) }
+    var mine by remember { mutableStateOf<Load<List<LeaveRequest>>>(Load.Loading) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -95,6 +114,16 @@ fun HomeScreen(state: AppState) {
     suspend fun refresh() {
         clock = state.api.clockState().toLoad()
         balances = state.api.leaveBalances().toLoad()
+        team = state.api.teamAttendance().toLoad()
+        pulse = state.api.teamPulse().toLoad()
+        holidays = state.api.holidays().toLoad()
+        mine = state.api.leaveRequests().toLoad().let {
+            when (it) {
+                is Load.Ready -> Load.Ready(it.value.items)
+                is Load.Failed -> it
+                Load.Loading -> Load.Loading
+            }
+        }
     }
 
     LaunchedEffect(Unit) { refresh() }
@@ -102,6 +131,7 @@ fun HomeScreen(state: AppState) {
     Scroller {
         message?.let { ErrorBanner(it) }
 
+        // ─── Clocking in ───
         Loaded(clock) { value ->
             val record = value.record
             val inAt = record?.checkInAt
@@ -123,8 +153,7 @@ fun HomeScreen(state: AppState) {
                             listOfNotNull(
                                 inAt?.let { "In ${clockPart(it)}" },
                                 outAt?.let { "Out ${clockPart(it)}" },
-                            ).joinToString(" · ").ifBlank { "No punch recorded today" },
-                            Modifier.padding(top = Desk.spacing.xs),
+                            ).joinToString(" · ").ifBlank { "No punch recorded today" }
                         )
                     }
 
@@ -160,32 +189,152 @@ fun HomeScreen(state: AppState) {
             }
         }
 
-        SectionTitle("Your leave")
+        // ─── The four numbers ───
+        Row(horizontalArrangement = Arrangement.spacedBy(Desk.spacing.md)) {
+            val leaveLeft = (balances as? Load.Ready)?.value?.sumOf {
+                it.openingDays + it.accruedDays + it.carryForwardDays - it.usedDays - it.pendingDays
+            }
+            StatTile(
+                "Leave left",
+                leaveLeft?.let { days(it) },
+                "days across all types",
+                Modifier.weight(1f),
+            ) { state.screen = Screen.LEAVE }
 
-        Loaded(balances) { list ->
-            if (list.isEmpty()) {
-                EmptyState("No leave types yet", "HR has not set up leave balances for you.")
-            } else {
+            val waiting = (mine as? Load.Ready)?.value?.count { it.status == "pending" }
+            StatTile(
+                "Your requests",
+                waiting?.toString(),
+                if (waiting == 1) "waiting on a decision" else "waiting on a decision",
+                Modifier.weight(1f),
+            ) { state.screen = Screen.LEAVE }
+
+            val notIn = (team as? Load.Ready)?.value?.counts?.notIn
+            StatTile(
+                "Team not in",
+                notIn?.toString(),
+                "of ${(team as? Load.Ready)?.value?.counts?.all ?: 0} on your team",
+                Modifier.weight(1f),
+            ) { state.screen = Screen.TEAM }
+
+            val late = (team as? Load.Ready)?.value?.counts?.late
+            StatTile(
+                "Late today",
+                late?.toString(),
+                "arrived after their shift",
+                Modifier.weight(1f),
+            ) { state.screen = Screen.TEAM }
+        }
+
+        // ─── Two short lists ───
+        Row(horizontalArrangement = Arrangement.spacedBy(Desk.spacing.md)) {
+            Column(Modifier.weight(1f)) {
                 DeskCard {
-                    TableHeader(
-                        "Type" to 2f, "Entitled" to 1f, "Taken" to 1f,
-                        "Pending" to 1f, "Left" to 1f,
-                    )
-                    list.forEach { b ->
-                        val entitled = b.openingDays + b.accruedDays + b.carryForwardDays
-                        TableRow {
-                            Cell(titleCase(b.leaveType), 2f, bold = true)
-                            Cell(days(entitled), 1f)
-                            Cell(days(b.usedDays), 1f)
-                            Cell(days(b.pendingDays), 1f)
-                            Cell(days(entitled - b.usedDays - b.pendingDays), 1f)
+                    SectionTitle("Away today")
+                    Spacer(Modifier.height(Desk.spacing.sm))
+                    Loaded(pulse) { p ->
+                        val today = p.onLeave.filter { it.today }
+                        if (today.isEmpty()) {
+                            Muted("Everyone is in.")
+                        } else {
+                            today.take(5).forEach { a ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        a.name,
+                                        modifier = Modifier.weight(1f),
+                                        color = Desk.colors.text,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    StatusPill(titleCase(a.leaveType ?: "leave"), PillTone.INFO)
+                                }
+                            }
                         }
                     }
+                }
+            }
+
+            Column(Modifier.weight(1f)) {
+                DeskCard {
+                    SectionTitle("Coming up")
+                    Spacer(Modifier.height(Desk.spacing.sm))
+
+                    var anything = false
+
+                    Loaded(pulse) { p ->
+                        p.birthdays.take(2).forEach { b ->
+                            anything = true
+                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                                Text(
+                                    b.name,
+                                    modifier = Modifier.weight(1f),
+                                    color = Desk.colors.text,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Muted("birthday")
+                            }
+                        }
+                    }
+
+                    Loaded(holidays) { list ->
+                        val next = list.filter { it.date.isNotBlank() }.sortedBy { it.date }
+                            .firstOrNull { it.date >= todayIso() }
+                        if (next != null) {
+                            anything = true
+                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                                Text(
+                                    next.name,
+                                    modifier = Modifier.weight(1f),
+                                    color = Desk.colors.text,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Muted(next.date)
+                            }
+                        }
+                    }
+
+                    if (!anything) Muted("Nothing in the next few weeks.")
                 }
             }
         }
     }
 }
+
+/**
+ * One number, with what it means underneath.
+ *
+ * Shows a dash rather than a zero while the number is unknown. A tile that says
+ * "0 late" before the answer has arrived is a statement, and it will be wrong
+ * about a third of the time.
+ */
+@Composable
+private fun StatTile(
+    label: String,
+    value: String?,
+    detail: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
+    DeskCard(modifier = modifier, onClick = onClick) {
+        Muted(label)
+        Text(
+            value ?: "—",
+            style = MaterialTheme.typography.headlineMedium,
+            color = if (value == null) Desk.colors.textMuted else Desk.colors.text,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Text(
+            detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = Desk.colors.textMuted,
+            maxLines = 1,
+        )
+    }
+}
+
+private fun todayIso(): String = java.time.LocalDate.now().toString()
 
 private fun days(value: Double): String =
     if (value == value.toLong().toDouble()) value.toLong().toString() else "%.1f".format(value)
@@ -207,6 +356,7 @@ private fun clockPart(iso: String): String =
 @Composable
 fun LeaveScreen(state: AppState) {
     var requests by remember { mutableStateOf<Load<List<LeaveRequest>>>(Load.Loading) }
+    var balances by remember { mutableStateOf<Load<List<LeaveBalance>>>(Load.Loading) }
     var applying by remember { mutableStateOf(false) }
     var type by remember { mutableStateOf("casual") }
     var from by remember { mutableStateOf("") }
@@ -225,12 +375,50 @@ fun LeaveScreen(state: AppState) {
                 Load.Loading -> Load.Loading
             }
         }
+        balances = state.api.leaveBalances().toLoad()
     }
 
     LaunchedEffect(Unit) { load() }
 
     Scroller {
         error?.let { ErrorBanner(it) }
+
+        // Balances sit here, beside the form that spends them, rather than
+        // filling the Today screen with nine rows of mostly zeroes. Somebody
+        // deciding whether to book three days wants the number in front of
+        // them at that moment, not on a screen they have already left.
+        Loaded(balances) { list ->
+            val withAny = list.filter {
+                it.openingDays + it.accruedDays + it.carryForwardDays + it.usedDays + it.pendingDays > 0.0
+            }
+            // Types with nothing in any column are noise: HR has defined them
+            // and this person has no entitlement under them.
+            val shown = if (withAny.isEmpty()) list.take(4) else withAny
+
+            if (shown.isEmpty()) {
+                EmptyState("No leave types yet", "HR has not set up leave balances for you.")
+            } else {
+                DeskCard {
+                    TableHeader(
+                        "Type" to 2f, "Entitled" to 1f, "Taken" to 1f,
+                        "Pending" to 1f, "Left" to 1f,
+                    )
+                    shown.forEach { b ->
+                        val entitled = b.openingDays + b.accruedDays + b.carryForwardDays
+                        TableRow {
+                            Cell(titleCase(b.leaveType), 2f, bold = true)
+                            Cell(days(entitled), 1f)
+                            Cell(days(b.usedDays), 1f)
+                            Cell(days(b.pendingDays), 1f)
+                            Cell(days(entitled - b.usedDays - b.pendingDays), 1f)
+                        }
+                    }
+                }
+                if (withAny.isEmpty() && list.size > shown.size) {
+                    Muted("${list.size - shown.size} more leave types with no entitlement recorded.")
+                }
+            }
+        }
 
         if (applying) {
             DeskCard {
@@ -434,7 +622,7 @@ fun TeamScreen(state: AppState) {
                     shown.forEach { m ->
                         TableRow {
                             Row(Modifier.weight(2f), verticalAlignment = Alignment.CenterVertically) {
-                                Initials(m.name, 28.dp)
+                                Avatar(m.name, imageUrl = m.avatarUrl, size = 28.dp)
                                 Spacer(Modifier.width(Desk.spacing.sm))
                                 Text(
                                     m.name,

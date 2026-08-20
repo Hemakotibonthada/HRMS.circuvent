@@ -291,7 +291,7 @@ private fun TopBar(state: AppState) {
                     Muted(session.orgName ?: state.baseUrl.removePrefix("https://"))
                 }
                 Spacer(Modifier.width(Desk.spacing.md))
-                Initials(session.displayName ?: session.email, 34.dp)
+                Avatar(session.displayName ?: session.email, imageUrl = session.avatarUrl, size = 34.dp)
             }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(Desk.colors.borderSubtle))

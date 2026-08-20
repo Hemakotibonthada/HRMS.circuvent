@@ -38,6 +38,13 @@ data class Session(
     val employeeId: String? = null,
     /** The code a person quotes to HR or reads off a badge, e.g. CIR-0042. */
     val employeeCode: String? = null,
+    /**
+     * The photograph, when there is one.
+     *
+     * `/api/auth/me` returns it and this type did not carry it, so every client
+     * on this module drew initials for people who had uploaded a picture.
+     */
+    val avatarUrl: String? = null,
 )
 
 @Serializable

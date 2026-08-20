@@ -56,7 +56,19 @@ fun SignInScreen(state: AppState) {
         scope.launch {
             if (server.trim().trimEnd('/') != state.baseUrl) state.useServer(server)
             when (val result = state.api.signIn(email.trim(), password)) {
-                is HrmsApi.Result.Ok -> state.session = result.value
+                is HrmsApi.Result.Ok -> {
+                    // The login response carries a thin user — id, email, name,
+                    // role — while `/api/auth/me` adds the employee id, the
+                    // employee code and the photograph. Without this second
+                    // call the app draws initials for somebody who has uploaded
+                    // a picture, and has no employee id to work with.
+                    state.session = when (val full = state.api.me()) {
+                        is HrmsApi.Result.Ok -> full.value
+                        // A failure here is not worth blocking a sign-in that
+                        // already succeeded; the thin session still works.
+                        else -> result.value
+                    }
+                }
                 is HrmsApi.Result.Failed -> error = result.message
                 is HrmsApi.Result.Offline ->
                     error = "Could not reach ${state.baseUrl}. ${result.message}"
