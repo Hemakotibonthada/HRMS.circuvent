@@ -385,3 +385,97 @@ data class Praise(
     val toAvatarUrl: String? = null,
     val fromName: String? = null,
 )
+
+// ─── Your own record ─────────────────────────────────────────
+
+/**
+ * The details an employee owns about themselves.
+ *
+ * Only the self-editable subset plus the few read-only facts a person needs to
+ * check. Pay, bank details and statutory identifiers are deliberately not here:
+ * the endpoint behind this does not return them, and a client type that names
+ * them invites a screen that expects them.
+ */
+@Serializable
+data class MyDetails(
+    val id: String = "",
+    val firstName: String = "",
+    val lastName: String = "",
+    val employeeCode: String = "",
+    val workEmail: String = "",
+    val personalEmail: String? = null,
+    val phone: String? = null,
+    val avatarUrl: String? = null,
+    val dateOfBirth: String? = null,
+    val bloodGroup: String? = null,
+    val maritalStatus: String? = null,
+    val addressLine1: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val postalCode: String? = null,
+    val country: String? = null,
+    val designation: String? = null,
+    val joinDate: String? = null,
+    /** Set once. HR corrects it afterwards, because it decides statutory age. */
+    val dateOfBirthLocked: Boolean = false,
+)
+
+// ─── The wall ────────────────────────────────────────────────
+
+@Serializable
+data class WallPost(
+    val id: String = "",
+    val author: String = "",
+    val department: String = "",
+    val content: String = "",
+    val tags: List<String> = emptyList(),
+    val likes: Int = 0,
+    val createdAt: String = "",
+    val liked: Boolean = false,
+    val type: String = "post",
+)
+
+@Serializable
+data class WallComment(
+    val id: String = "",
+    val createdAt: String? = null,
+    val body: String = "",
+    val authorName: String? = null,
+    val authorAvatarUrl: String? = null,
+)
+
+// ─── Money owed ──────────────────────────────────────────────
+
+@Serializable
+data class LoanRequest(
+    val id: String = "",
+    val kind: String = "",
+    val principalMinor: Long = 0,
+    val outstandingMinor: Long = 0,
+    val months: Int = 0,
+    val status: String = "pending",
+    val purpose: String? = null,
+    val requestedAt: String? = null,
+)
+
+/**
+ * What this employee may borrow.
+ *
+ * Measured on recorded monthly basic pay, never estimated from CTC. An
+ * indicative payslip can fall back to a percentage; a decision about how much
+ * money somebody may have cannot.
+ */
+@Serializable
+data class LoanLimit(
+    val kind: String = "",
+    val months: Int = 0,
+    val maxMinor: Long = 0,
+)
+
+@Serializable
+data class LoanOverview(
+    val items: List<LoanRequest> = emptyList(),
+    val limits: List<LoanLimit> = emptyList(),
+    val outstandingMinor: Long = 0,
+    val monthlyBasicMinor: Long? = null,
+)

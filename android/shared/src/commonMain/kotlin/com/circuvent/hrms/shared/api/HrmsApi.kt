@@ -4,9 +4,12 @@ import com.circuvent.hrms.shared.model.*
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -223,6 +226,70 @@ class HrmsApi(
             put("message", JsonPrimitive(message))
         }) { }
 
+    // ─── Your own record ─────────────────────────────────────
+
+    suspend fun myDetails(): Result<MyDetails> = get("/api/employees/me")
+
+    /**
+     * Corrects your own details.
+     *
+     * Only the fields a person owns are sendable. Designation, join date and
+     * anything to do with pay are HR's to change, and a client that offered
+     * them would be offering an edit the server refuses.
+     */
+    suspend fun saveMyDetails(
+        phone: String?,
+        personalEmail: String?,
+        dateOfBirth: String?,
+        bloodGroup: String?,
+        addressLine1: String?,
+        city: String?,
+        state: String?,
+        postalCode: String?,
+    ): Result<Unit> =
+        request("/api/employees/me", method = "PATCH", body = buildJson {
+            phone?.let { put("phone", JsonPrimitive(it)) }
+            personalEmail?.let { put("personalEmail", JsonPrimitive(it)) }
+            dateOfBirth?.let { put("dateOfBirth", JsonPrimitive(it)) }
+            bloodGroup?.let { put("bloodGroup", JsonPrimitive(it)) }
+            addressLine1?.let { put("addressLine1", JsonPrimitive(it)) }
+            city?.let { put("city", JsonPrimitive(it)) }
+            state?.let { put("state", JsonPrimitive(it)) }
+            postalCode?.let { put("postalCode", JsonPrimitive(it)) }
+        }) { }
+
+    // ─── The wall ────────────────────────────────────────────
+
+    suspend fun wallPosts(): Result<List<WallPost>> = getList("/api/collections/socialPosts")
+
+    suspend fun publishWallPost(content: String): Result<Unit> =
+        request("/api/collections/socialPosts", method = "POST", body = buildJson {
+            put("content", JsonPrimitive(content))
+            put("type", JsonPrimitive("post"))
+            put("likes", JsonPrimitive(0))
+        }) { }
+
+    suspend fun wallComments(postId: String): Result<List<WallComment>> =
+        getList("/api/wall/comments?postId=$postId")
+
+    suspend fun addWallComment(postId: String, body: String): Result<Unit> =
+        request("/api/wall/comments", method = "POST", body = buildJson {
+            put("postId", JsonPrimitive(postId))
+            put("body", JsonPrimitive(body))
+        }) { }
+
+    // ─── Money owed ──────────────────────────────────────────
+
+    suspend fun loans(): Result<LoanOverview> = get("/api/loans")
+
+    suspend fun requestLoan(kind: String, amountMinor: Long, months: Int, purpose: String): Result<Unit> =
+        request("/api/loans", method = "POST", body = buildJson {
+            put("kind", JsonPrimitive(kind))
+            put("principalMinor", JsonPrimitive(amountMinor))
+            put("months", JsonPrimitive(months))
+            put("purpose", JsonPrimitive(purpose))
+        }) { }
+
     // ─── Working elsewhere ───────────────────────────────────
 
     suspend fun workArrangements(): Result<List<WorkArrangementRequest>> =
@@ -372,20 +439,46 @@ class HrmsApi(
         }
     }
 
-    private suspend fun send(path: String, method: String, body: JsonObject?): HttpResponse =
-        if (method == "GET") {
-            client.get("$baseUrl$path") {
+    private suspend fun send(path: String, method: String, body: JsonObject?): HttpResponse {
+        val url = "$baseUrl$path"
+
+        // Every verb the callers actually declare. This used to be "GET or
+        // POST", so the two decision routes that take PATCH — approving a work
+        // arrangement and approving an attendance correction — were posted
+        // instead, landing on the *create* handler with a decision payload.
+        return when (method.uppercase()) {
+            "GET" -> client.get(url) {
                 nativeClient()
                 authorise()
             }
-        } else {
-            client.post("$baseUrl$path") {
+
+            "PATCH" -> client.patch(url) {
+                nativeClient()
+                authorise()
+                contentType(ContentType.Application.Json)
+                if (body != null) setBody(body.toString())
+            }
+
+            "PUT" -> client.put(url) {
+                nativeClient()
+                authorise()
+                contentType(ContentType.Application.Json)
+                if (body != null) setBody(body.toString())
+            }
+
+            "DELETE" -> client.delete(url) {
+                nativeClient()
+                authorise()
+            }
+
+            else -> client.post(url) {
                 nativeClient()
                 authorise()
                 contentType(ContentType.Application.Json)
                 if (body != null) setBody(body.toString())
             }
         }
+    }
 
     /**
      * Marks the caller as a native client.

@@ -245,18 +245,23 @@ fun LeaveScreen(state: AppState) {
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
-                    OutlinedTextField(
+                    DeskDateField(
+                        label = "First day",
                         value = from,
-                        onValueChange = { from = it },
-                        label = { Text("First day (YYYY-MM-DD)") },
-                        singleLine = true,
+                        onValueChange = {
+                            from = it
+                            // A range that starts after it ends is not a
+                            // choice anybody makes on purpose, and refusing it
+                            // after submission wastes the whole form.
+                            if (to.isBlank() || to < it) to = it
+                        },
                         modifier = Modifier.weight(1f),
                     )
-                    OutlinedTextField(
+                    DeskDateField(
+                        label = "Last day",
                         value = to,
                         onValueChange = { to = it },
-                        label = { Text("Last day (YYYY-MM-DD)") },
-                        singleLine = true,
+                        minDate = runCatching { java.time.LocalDate.parse(from) }.getOrNull(),
                         modifier = Modifier.weight(1f),
                     )
                 }

@@ -19,14 +19,19 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.EditCalendar
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Schedule
@@ -65,6 +70,8 @@ private val NAV_GROUPS: List<Pair<String, List<NavItem>>> = listOf(
         NavItem(Screen.HOME, Icons.Filled.Today),
         NavItem(Screen.LEAVE, Icons.Filled.EventAvailable),
         NavItem(Screen.ATTENDANCE, Icons.Filled.Schedule),
+        NavItem(Screen.WORK_AWAY, Icons.Filled.Home),
+        NavItem(Screen.CORRECTIONS, Icons.Filled.EditCalendar),
     ),
     "My team" to listOf(
         NavItem(Screen.TEAM, Icons.Filled.Groups),
@@ -73,16 +80,19 @@ private val NAV_GROUPS: List<Pair<String, List<NavItem>>> = listOf(
     "People" to listOf(
         NavItem(Screen.DIRECTORY, Icons.Filled.PersonSearch),
         NavItem(Screen.PRAISE, Icons.Filled.EmojiEvents),
+        NavItem(Screen.WALL, Icons.Filled.Forum),
     ),
     "Money" to listOf(
         NavItem(Screen.PAYSLIPS, Icons.Filled.ReceiptLong),
         NavItem(Screen.EXPENSES, Icons.Filled.Badge),
+        NavItem(Screen.LOANS, Icons.Filled.AccountBalanceWallet),
     ),
     "Company" to listOf(
         NavItem(Screen.HOLIDAYS, Icons.Filled.CalendarMonth),
         NavItem(Screen.ANNOUNCEMENTS, Icons.Filled.Campaign),
         NavItem(Screen.DOCUMENTS, Icons.Filled.Description),
         NavItem(Screen.HELPDESK, Icons.Filled.SupportAgent),
+        NavItem(Screen.MY_DETAILS, Icons.Filled.ManageAccounts),
         NavItem(Screen.SETTINGS, Icons.Filled.Settings),
     ),
 )
@@ -99,12 +109,17 @@ fun Shell(state: AppState) {
                     Screen.HOME -> HomeScreen(state)
                     Screen.LEAVE -> LeaveScreen(state)
                     Screen.ATTENDANCE -> AttendanceScreen(state)
+                    Screen.WORK_AWAY -> WorkAwayScreen(state)
+                    Screen.CORRECTIONS -> CorrectionsScreen(state)
                     Screen.TEAM -> TeamScreen(state)
                     Screen.INBOX -> InboxScreen(state)
                     Screen.DIRECTORY -> DirectoryScreen(state)
                     Screen.PRAISE -> PraiseScreen(state)
+                    Screen.WALL -> WallScreen(state)
+                    Screen.MY_DETAILS -> MyDetailsScreen(state)
                     Screen.PAYSLIPS -> PayslipsScreen(state)
                     Screen.EXPENSES -> ExpensesScreen(state)
+                    Screen.LOANS -> LoansScreen(state)
                     Screen.HELPDESK -> HelpdeskScreen(state)
                     Screen.HOLIDAYS -> HolidaysScreen(state)
                     Screen.ANNOUNCEMENTS -> AnnouncementsScreen(state)
