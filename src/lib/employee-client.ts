@@ -43,6 +43,18 @@ export interface EmployeeFormValues {
   location: string;
   status: string;
   salary: string;
+  /**
+   * The candidate this person was hired as, and the application it came from.
+   *
+   * Required by `POST /api/employees` unless an override reason is given: an
+   * employee with nobody behind them is how a mailbox gets created for someone
+   * who was never hired. Optional in this type because the same form is used
+   * for editing, where the link already exists.
+   */
+  candidateId?: string;
+  applicationId?: string;
+  /** A written justification for a founder, an acquisition or a corrected record. */
+  provenanceOverrideReason?: string;
 }
 
 /** Field-level problems, in the shape the API reports them. */
@@ -164,6 +176,35 @@ export async function resolveDepartmentId(
 }
 
 /** Maps the form onto the API contract and creates the employee. */
+
+/**
+ * Candidates with an offer behind them who are not yet employees.
+ *
+ * Fills the Add Employee dialog's candidate picker. The server applies the same
+ * provenance rule the create endpoint will, so a name that appears selectable
+ * here is one the create will accept — anything else is a form somebody fills
+ * in completely before being told they cannot submit it.
+ */
+export interface PendingHire {
+  candidateId: string;
+  applicationId: string | null;
+  name: string;
+  email: string;
+  designation: string | null;
+  offerStatus: string | null;
+  registrationSubmittedAt: string | null;
+  ready: boolean;
+  blockers: string[];
+}
+
+export async function listPendingHires(search?: string): Promise<PendingHire[]> {
+  const query = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
+  const response = await fetch(`/api/hires/pending${query}`, { credentials: "include" });
+  if (!response.ok) await readError(response);
+  const body = (await response.json()) as { items?: PendingHire[] };
+  return body.items ?? [];
+}
+
 export async function createEmployee(
   form: EmployeeFormValues,
   departments: DepartmentOption[]
@@ -195,6 +236,15 @@ export async function createEmployee(
   // Omitted entirely when blank. Sending `0` would record everyone as earning
   // nothing, which payroll would then faithfully act on.
   if (form.salary.trim()) payload.salary = Number(form.salary);
+
+  // The hire this record stands for. The server refuses a create without one
+  // unless an override reason is supplied, and records both against the
+  // employee either way.
+  if (form.candidateId?.trim()) payload.candidateId = form.candidateId.trim();
+  if (form.applicationId?.trim()) payload.applicationId = form.applicationId.trim();
+  if (form.provenanceOverrideReason?.trim()) {
+    payload.provenanceOverrideReason = form.provenanceOverrideReason.trim();
+  }
 
   const response = await fetch("/api/employees", {
     method: "POST",

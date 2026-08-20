@@ -10,6 +10,7 @@ import {
 import { retryDelayMinutes } from "@/lib/onboarding-groups";
 import type { DocumentPdfDrainResult } from "@/lib/document-pdf-outbox";
 import { documentPdfRetryDelayMinutes } from "@/lib/document-pdf-outbox";
+import type { MailboxDrainResult } from "@/lib/mailbox-outbox";
 
 function paystubResult(over: Partial<PaystubDrainResult> = {}): PaystubDrainResult {
   return { attempted: 0, synced: 0, failed: 0, retired: 0, ...over };
@@ -25,6 +26,10 @@ function groupLeaveResult(over: Partial<LeaveDrainResult> = {}): LeaveDrainResul
 
 function documentPdfResult(over: Partial<DocumentPdfDrainResult> = {}): DocumentPdfDrainResult {
   return { attempted: 0, succeeded: 0, failed: 0, ...over };
+}
+
+function mailboxResult(over: Partial<MailboxDrainResult> = {}): MailboxDrainResult {
+  return { attempted: 0, completed: 0, blocked: 0, failed: 0, ...over };
 }
 
 describe("what a sweep does with a row", () => {
@@ -91,6 +96,7 @@ describe("sweeping every tenant", () => {
       drainGroups,
       drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs,
+      drainMailboxes: async () => mailboxResult(),
     });
 
     expect(result.organisations).toBe(2);
@@ -114,6 +120,7 @@ describe("sweeping every tenant", () => {
       drainGroups: async () => groupResult(),
       drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs: async () => documentPdfResult(),
+      drainMailboxes: async () => mailboxResult(),
     });
 
     expect(seen).toEqual(["org-a", "org-b"]);
@@ -133,6 +140,7 @@ describe("sweeping every tenant", () => {
       drainGroups: async () => groupResult({ joined: 1 }),
       drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs: async () => documentPdfResult(),
+      drainMailboxes: async () => mailboxResult(),
     });
 
     expect(result.totals.paystubSynced).toBe(2);
@@ -162,6 +170,7 @@ describe("sweeping every tenant", () => {
       drainGroups: async () => groupResult(),
       drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs: async () => documentPdfResult(),
+      drainMailboxes: async () => mailboxResult(),
     });
 
     expect(result.totals.paystubFailed).toBe(1);
@@ -177,6 +186,7 @@ describe("sweeping every tenant", () => {
       drainGroups: async () => groupResult(),
       drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs: async () => documentPdfResult({ attempted: 2, succeeded: 1, failed: 1 }),
+      drainMailboxes: async () => mailboxResult(),
     });
 
     expect(result.totals.documentPdfsStored).toBe(1);
@@ -196,6 +206,7 @@ describe("sweeping every tenant", () => {
       drainGroups: async () => groupResult({ attempted: 3, joined: 3 }),
       drainGroupLeaves: async () => groupLeaveResult({ attempted: 2, left: 1, failed: 1 }),
       drainDocumentPdfs: async () => documentPdfResult(),
+      drainMailboxes: async () => mailboxResult(),
     });
 
     expect(result.totals.groupsJoined).toBe(3);
@@ -222,6 +233,7 @@ describe("sweeping every tenant", () => {
       drainGroups: async () => groupResult(),
       drainGroupLeaves,
       drainDocumentPdfs: async () => documentPdfResult(),
+      drainMailboxes: async () => mailboxResult(),
     });
 
     expect(result.totals.groupsLeft).toBe(2);
@@ -229,6 +241,66 @@ describe("sweeping every tenant", () => {
     expect(result.problems).toHaveLength(1);
     expect(result.problems[0]).toContain("org-bad");
     expect(result.problems[0]).toContain("identity provider unreachable");
+  });
+
+  it("drains the mailbox outbox for every organisation", async () => {
+    // The drain was written and tested before anything called it. A tested
+    // drain nobody invokes is a queue that fills and never empties, and the
+    // symptom -- a former intern still carrying "cvi-" months later -- looks
+    // like a rule that was never implemented rather than one that never ran.
+    const drainMailboxes = vi.fn(async () => mailboxResult({ attempted: 1, completed: 1 }));
+
+    const result = await sweepOutboxes(50, {
+      listOrgs: async () => ["org-a", "org-b"],
+      drainPaystub: async () => paystubResult(),
+      drainGroups: async () => groupResult(),
+      drainGroupLeaves: async () => groupLeaveResult(),
+      drainDocumentPdfs: async () => documentPdfResult(),
+      drainMailboxes,
+    });
+
+    expect(drainMailboxes).toHaveBeenCalledTimes(2);
+    expect(drainMailboxes).toHaveBeenCalledWith({ orgId: "org-a" }, 50);
+    expect(result.totals.mailboxesMoved).toBe(2);
+  });
+
+  it("counts a blocked mailbox move apart from a failed one", async () => {
+    // "No mail server configured" is a fact somebody should read once, not an
+    // error somebody should chase every day. Folding the two together would
+    // make a deployment that provisions mailboxes elsewhere look permanently
+    // broken, and would hide a genuine mail-server failure inside that noise.
+    const result = await sweepOutboxes(50, {
+      listOrgs: async () => ["org-a"],
+      drainPaystub: async () => paystubResult(),
+      drainGroups: async () => groupResult(),
+      drainGroupLeaves: async () => groupLeaveResult(),
+      drainDocumentPdfs: async () => documentPdfResult(),
+      drainMailboxes: async () => mailboxResult({ attempted: 3, completed: 1, blocked: 1, failed: 1 }),
+    });
+
+    expect(result.totals.mailboxesMoved).toBe(1);
+    expect(result.totals.mailboxesBlocked).toBe(1);
+    expect(result.totals.mailboxesFailed).toBe(1);
+  });
+
+  it("keeps sweeping the other organisations when a mailbox drain throws", async () => {
+    const drainMailboxes = vi.fn(async (ctx: { orgId: string }) => {
+      if (ctx.orgId === "org-bad") throw new Error("mail server unreachable");
+      return mailboxResult({ attempted: 1, completed: 1 });
+    });
+
+    const result = await sweepOutboxes(50, {
+      listOrgs: async () => ["org-a", "org-bad", "org-b"],
+      drainPaystub: async () => paystubResult(),
+      drainGroups: async () => groupResult(),
+      drainGroupLeaves: async () => groupLeaveResult(),
+      drainDocumentPdfs: async () => documentPdfResult(),
+      drainMailboxes,
+    });
+
+    expect(result.totals.mailboxesMoved).toBe(2);
+    expect(result.problems).toHaveLength(1);
+    expect(result.problems[0]).toContain("org-bad");
   });
 
   it("hands the batch limit down to each drain", async () => {
@@ -240,6 +312,7 @@ describe("sweeping every tenant", () => {
       drainGroups: async () => groupResult(),
       drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs,
+      drainMailboxes: async () => mailboxResult(),
     });
 
     expect(drainPaystub).toHaveBeenCalledWith({ orgId: "org-a" }, 7);

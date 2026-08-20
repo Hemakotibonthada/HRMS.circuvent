@@ -33,6 +33,7 @@ import {
   type DepartmentOption,
 } from "@/lib/employee-client";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { HirePicker } from "@/components/employees/hire-picker";
 import { useRBAC } from "@/hooks/use-rbac";
 import { createEmployeeAcrossApps, syncEmployeeToOtherApps } from "@/lib/cross-app-sync";
 import { clickable } from "@/lib/a11y/clickable";
@@ -69,7 +70,7 @@ export default function EmployeesPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [tab, setTab] = useState("all");
   // Form state
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", department: "", designation: "", joiningDate: "", employmentType: "Full-time", location: "", status: "active", salary: "", password: "", syncToApps: true });
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", department: "", designation: "", joiningDate: "", employmentType: "Full-time", location: "", status: "active", salary: "", password: "", syncToApps: true, candidateId: "", applicationId: "", provenanceOverrideReason: "" });
   const [creating, setCreating] = useState(false);
 
   /**
@@ -119,7 +120,7 @@ export default function EmployeesPage() {
   const totalOnNotice = items.filter(e => e.status === "notice_period").length;
   const newThisMonth = items.filter(e => { if (!e.joiningDate) return false; const d = new Date(e.joiningDate); const now = new Date(); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); }).length;
 
-  const resetForm = () => setForm({ firstName: "", lastName: "", email: "", phone: "", department: "", designation: "", joiningDate: "", employmentType: "Full-time", location: "", status: "active", salary: "", password: "", syncToApps: true });
+  const resetForm = () => setForm({ firstName: "", lastName: "", email: "", phone: "", department: "", designation: "", joiningDate: "", employmentType: "Full-time", location: "", status: "active", salary: "", password: "", syncToApps: true, candidateId: "", applicationId: "", provenanceOverrideReason: "" });
 
   const handleCreate = async () => {
     // Checked here so a bad address, a past joining date or a title with digits
@@ -191,7 +192,7 @@ export default function EmployeesPage() {
 
   const openEdit = (emp: EmployeeDoc) => {
     setSelectedEmp(emp);
-    setForm({ firstName: emp.firstName || "", lastName: emp.lastName || "", email: emp.email || "", phone: emp.phone || "", department: emp.department || "", designation: emp.designation || "", joiningDate: emp.joiningDate || "", employmentType: emp.employmentType || "Full-time", location: emp.location || "", status: emp.status || "active", salary: emp.salary?.toString() || "", password: "", syncToApps: false });
+    setForm({ firstName: emp.firstName || "", lastName: emp.lastName || "", email: emp.email || "", phone: emp.phone || "", department: emp.department || "", designation: emp.designation || "", joiningDate: emp.joiningDate || "", employmentType: emp.employmentType || "Full-time", location: emp.location || "", status: emp.status || "active", salary: emp.salary?.toString() || "", password: "", syncToApps: false, candidateId: "", applicationId: "", provenanceOverrideReason: "" });
     setEditOpen(true);
   };
 
@@ -453,6 +454,34 @@ export default function EmployeesPage() {
             )}
             {!editOpen && (
               <>
+                <HirePicker
+                  value={{
+                    candidateId: form.candidateId,
+                    applicationId: form.applicationId,
+                    provenanceOverrideReason: form.provenanceOverrideReason,
+                  }}
+                  onChange={(selection) =>
+                    setForm((p) => ({
+                      ...p,
+                      candidateId: selection.candidateId ?? "",
+                      applicationId: selection.applicationId ?? "",
+                      provenanceOverrideReason: selection.provenanceOverrideReason ?? "",
+                    }))
+                  }
+                  onPrefill={(hire) => {
+                    // Only fills what is still empty. Overwriting something HR
+                    // has already typed would silently discard a correction —
+                    // a legal name that differs from the application, say.
+                    const [first, ...rest] = (hire.name || "").split(/\s+/).filter(Boolean);
+                    setForm((p) => ({
+                      ...p,
+                      firstName: p.firstName || first || "",
+                      lastName: p.lastName || rest.join(" "),
+                      email: p.email || hire.email || "",
+                      designation: p.designation || hire.designation || "",
+                    }));
+                  }}
+                />
                 <Separator />
                 <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                   <h4 className="text-xs font-semibold text-muted-foreground">Sign-in and mailbox</h4>
@@ -463,11 +492,11 @@ export default function EmployeesPage() {
                       Saying what actually happens beats a control that looks
                       like it works. */}
                   <p className="text-[10px] text-muted-foreground leading-relaxed">
-                    Adding somebody here records them in HRMS only. Their mailbox and
-                    single sign-on account are created when a candidate is hired through
-                    the ATS, which is the normal route — Careers, then ATS, then employee.
-                    For anyone added here, create the mailbox in Mail and they will be
-                    linked on their first sign-in.
+                    Adding somebody here records them in HRMS only. Their mailbox is
+                    created by the person themselves: on accepting their offer they are
+                    emailed a link to mail.circuvent.com, choose their address — an
+                    intern&apos;s carries the <span className="font-mono">cvi-</span> prefix —
+                    and HR or an administrator approves it before it goes live.
                   </p>
                 </div>
               </>

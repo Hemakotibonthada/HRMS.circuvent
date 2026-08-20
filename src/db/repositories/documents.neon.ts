@@ -314,19 +314,18 @@ export class NeonDocumentsRepository {
         values = { ...(await this.employeeTokens(tx, request.employeeId)), ...values };
       }
 
-      const validation = validateTemplate(template, values, {
-        // A company registration number is required on a contract issued by a
-        // company that has one, and does not exist for a partnership, a sole
-        // proprietorship or a foreign entity. Requiring it unconditionally
-        // blocked every letter a newly registered tenant tried to issue, with
-        // a 422 naming a token; fabricating one would put a false statutory
-        // identifier on a signed contract, which is the specific harm the
-        // template catalog was written to avoid.
-        //
-        // So it renders as blank when the organisation has not set one. The
-        // letterhead loses a line; nothing untrue is printed.
-        optional: ["company_registration"],
-      });
+      // A company registration number is required on a contract issued by a
+      // company that has one, and does not exist for a partnership, a sole
+      // proprietorship or a foreign entity. Requiring it unconditionally
+      // blocked every letter a newly registered tenant tried to issue, with
+      // a 422 naming a token; fabricating one would put a false statutory
+      // identifier on a signed contract, which is the specific harm the
+      // template catalog was written to avoid.
+      //
+      // So it renders as blank when the organisation has not set one. The
+      // letterhead loses a line; nothing untrue is printed.
+      const optionalTokens = ["company_registration"];
+      const validation = validateTemplate(template, values, { optional: optionalTokens });
       if (!validation.valid) {
         throw new RepositoryError(
           `${validation.reason}: ${validation.missing.join(", ")}`,
@@ -334,7 +333,22 @@ export class NeonDocumentsRepository {
         );
       }
 
-      const { body: renderedText } = render(template.body, values);
+      const { body: renderedText, missing: unresolvedOptional } = render(template.body, values);
+      // render() leaves `{{token}}` in place for anything it can't resolve —
+      // right for a preview (see previewTemplate() in
+      // lib/document-templates/validation.ts), wrong here: validateTemplate()
+      // above has already guaranteed every *required* token resolved, so
+      // anything still in `unresolvedOptional` is one of `optionalTokens`
+      // that this tenant has never set. Left alone, that is raw template
+      // syntax baked into a signed contract — exactly the "nothing untrue is
+      // printed" comment above promised would not happen, but the promise
+      // was never kept: render() has no notion of "optional" and always
+      // leaves the placeholder text, it never blanks it. Stripping those
+      // specific placeholders here is what actually keeps that promise.
+      const blankedText = unresolvedOptional.reduce(
+        (text, token) => text.split(`{{${token}}}`).join(""),
+        renderedText
+      );
       // Resolved here, once, rather than substituted as a `{{token}}` — see
       // `letter-kit.mjs`'s header comment for why a raw token can't do this
       // safely (render() has no conditionals, so a tenant with no logo would
@@ -343,7 +357,7 @@ export class NeonDocumentsRepository {
       // invisible to `extractTokens()`, so it never shows up as a missing
       // token either. Resolving before the hash is taken, not on every read,
       // means a signature attests to the masthead the signatory actually saw.
-      const body = applyCompanyLogo(renderedText, resolveCompanyLogoUrl(identity?.logoUrl));
+      const body = applyCompanyLogo(blankedText, resolveCompanyLogoUrl(identity?.logoUrl));
       const contentHash = await hashContent(body);
 
       const expiresAt = request.expiresInDays

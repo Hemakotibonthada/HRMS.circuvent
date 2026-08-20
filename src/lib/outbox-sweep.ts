@@ -34,6 +34,7 @@ import { organizations } from "@/db/schema/identity";
 import { drainDueGroupJoins, drainDueGroupLeaves, type DrainResult, type LeaveDrainResult } from "@/lib/directory-group-outbox";
 import { drainDuePaystubSyncs, type PaystubDrainResult } from "@/lib/paystub-sync-outbox";
 import { drainDueDocumentPdfStorage, type DocumentPdfDrainResult } from "@/lib/document-pdf-outbox";
+import { drainMailboxChanges, type MailboxDrainResult } from "@/lib/mailbox-outbox";
 
 export interface OrgSweepResult {
   orgId: string;
@@ -41,6 +42,7 @@ export interface OrgSweepResult {
   groupJoins: DrainResult;
   groupLeaves: LeaveDrainResult;
   documentPdfs: DocumentPdfDrainResult;
+  mailboxChanges: MailboxDrainResult;
 }
 
 export interface SweepResult {
@@ -56,6 +58,9 @@ export interface SweepResult {
     groupsLeaveFailed: number;
     documentPdfsStored: number;
     documentPdfsFailed: number;
+    mailboxesMoved: number;
+    mailboxesBlocked: number;
+    mailboxesFailed: number;
   };
   /** One entry per tenant that could not be swept at all, naming which. */
   problems: string[];
@@ -102,6 +107,7 @@ export async function sweepOutboxes(
     drainGroups?: (ctx: { orgId: string }, limit: number) => Promise<DrainResult>;
     drainGroupLeaves?: (ctx: { orgId: string }, limit: number) => Promise<LeaveDrainResult>;
     drainDocumentPdfs?: (ctx: { orgId: string }, limit: number) => Promise<DocumentPdfDrainResult>;
+    drainMailboxes?: (ctx: { orgId: string }, limit: number) => Promise<MailboxDrainResult>;
   } = {}
 ): Promise<SweepResult> {
   const listOrgs = deps.listOrgs ?? activeOrganisationIds;
@@ -109,6 +115,7 @@ export async function sweepOutboxes(
   const drainGroups = deps.drainGroups ?? drainDueGroupJoins;
   const drainGroupLeaves = deps.drainGroupLeaves ?? drainDueGroupLeaves;
   const drainDocumentPdfs = deps.drainDocumentPdfs ?? drainDueDocumentPdfStorage;
+  const drainMailboxes = deps.drainMailboxes ?? drainMailboxChanges;
 
   const result: SweepResult = {
     organisations: 0,
@@ -123,6 +130,9 @@ export async function sweepOutboxes(
       groupsLeaveFailed: 0,
       documentPdfsStored: 0,
       documentPdfsFailed: 0,
+      mailboxesMoved: 0,
+      mailboxesBlocked: 0,
+      mailboxesFailed: 0,
     },
     problems: [],
   };
@@ -149,8 +159,9 @@ export async function sweepOutboxes(
       const groupJoins = await drainGroups(ctx, limitPerOrg);
       const groupLeaves = await drainGroupLeaves(ctx, limitPerOrg);
       const documentPdfs = await drainDocumentPdfs(ctx, limitPerOrg);
+      const mailboxChanges = await drainMailboxes(ctx, limitPerOrg);
 
-      result.orgs.push({ orgId, paystub, groupJoins, groupLeaves, documentPdfs });
+      result.orgs.push({ orgId, paystub, groupJoins, groupLeaves, documentPdfs, mailboxChanges });
       result.totals.paystubSynced += paystub.synced;
       result.totals.paystubFailed += paystub.failed;
       result.totals.paystubRetired += paystub.retired;
@@ -160,6 +171,9 @@ export async function sweepOutboxes(
       result.totals.groupsLeaveFailed += groupLeaves.failed;
       result.totals.documentPdfsStored += documentPdfs.succeeded;
       result.totals.documentPdfsFailed += documentPdfs.failed;
+      result.totals.mailboxesMoved += mailboxChanges.completed;
+      result.totals.mailboxesBlocked += mailboxChanges.blocked;
+      result.totals.mailboxesFailed += mailboxChanges.failed;
     } catch (error) {
       result.problems.push(`${orgId}: ${error instanceof Error ? error.message : String(error)}`);
     }

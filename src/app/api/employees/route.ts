@@ -22,6 +22,9 @@ import {
   normaliseEmploymentType,
   validateEmployeeFields,
 } from "@/lib/employee-rules";
+import { checkHireProvenance, provenanceAuditNote } from "@/lib/hire-provenance";
+import { loadHireProvenance } from "@/db/repositories/hire-provenance.neon";
+import { recordProvenance } from "@/db/repositories/hire-provenance.audit";
 
 const listQuerySchema = z.object({
   search: z.string().trim().max(200).optional(),
@@ -51,6 +54,18 @@ const createSchema = z.object({
     .enum(["active", "on_leave", "probation", "notice_period", "terminated", "inactive"])
     .optional(),
   joinDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Joining date must be YYYY-MM-DD"),
+  /**
+   * The candidate and application this person was hired against.
+   *
+   * Optional in the schema and required by `checkHireProvenance`, so that a
+   * submission missing them is answered with the rule's own sentence — "pick
+   * the candidate this person was hired as" — rather than a Zod type error
+   * that says nothing about why.
+   */
+  candidateId: z.string().uuid().optional(),
+  applicationId: z.string().uuid().optional(),
+  /** A written justification for a founder, an acquisition or a corrected record. */
+  provenanceOverrideReason: z.string().trim().max(500).optional(),
   location: z.string().trim().max(150).optional(),
   /**
    * Only the outer bound here; the sign is checked by the shared rules.
@@ -219,14 +234,51 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // ── Where did this hire come from? ──
+  //
+  // The ATS handoff refuses to create an employee without an accepted offer
+  // and stamps `candidate_id`/`application_id` when it does. This route — the
+  // dialog HR uses daily — did neither: it created a row with both link
+  // columns NULL from nothing but a typed name and address. The pipeline was
+  // enforced on the path nobody uses by hand and unenforced on the one
+  // everybody does.
+  //
+  // The exception for a founder, an acquisition or a corrected record is
+  // deliberate and audited; see `lib/hire-provenance.ts` for why refusing
+  // outright would be worse than a door with a name on it.
+  const provenance = await loadHireProvenance(ctx, {
+    candidateId: parsed.data.candidateId,
+    applicationId: parsed.data.applicationId,
+  });
+  const decision = checkHireProvenance(provenance, {
+    overrideReason: parsed.data.provenanceOverrideReason,
+  });
+  if (!decision.ok) {
+    return NextResponse.json(
+      { error: decision.issues.map((i) => i.message).join("\n"), issues: decision.issues },
+      { status: 422 }
+    );
+  }
+
   try {
     const repo = new NeonEmployeeRepository(ctx);
-    const { allowPastJoiningDate: _allowPast, employmentType, ...employee } = parsed.data;
+    const {
+      allowPastJoiningDate: _allowPast,
+      employmentType,
+      provenanceOverrideReason: _overrideReason,
+      ...employee
+    } = parsed.data;
     // Normalised only now that it is known to be one of the accepted spellings.
     const created = await repo.create({
       ...employee,
       employmentType: employmentType ? normaliseEmploymentType(employmentType) ?? undefined : undefined,
     });
+
+    // Recorded whether or not it was an exception: an ordinary hire's audit
+    // entry names the candidate it came from, which is what makes the link
+    // auditable rather than merely present.
+    await recordProvenance(ctx, created.id, decision, provenance);
+
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     // A duplicate work email or employee code trips a unique index; that is

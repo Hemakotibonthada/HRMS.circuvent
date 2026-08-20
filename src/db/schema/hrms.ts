@@ -524,6 +524,69 @@ export const directoryGroupLeaveOutbox = hrms.table(
   ]
 );
 
+/**
+ * Mailbox address changes that still have to be carried out on the mail
+ * server, with the same at-least-once retry the directory-group outboxes get.
+ *
+ * An outbox rather than a direct call, for a reason specific to what this
+ * carries: the mail server has **no rename**. A Maildir path is derived from
+ * the address, so moving `cvi-rahul@` to `rahul@` is a create, a delete and an
+ * alias — three separate calls to a single small VM, in that order, any of
+ * which can fail on its own. Doing that inline would leave a converted intern
+ * with an HRMS record naming an address that does not exist yet.
+ *
+ * Which is why `employees.work_email` is NOT updated when the change is
+ * queued. It is updated when `toAddress` is confirmed to exist, and not
+ * before: an HRMS record pointing at a mailbox nobody can deliver to is worse
+ * than one still naming the old address, because everybody who reads it —
+ * payroll, the directory, a colleague looking somebody up — would use it.
+ */
+export const mailboxChangeOutbox = hrms.table(
+  "mailbox_change_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    /** What they have been writing from. */
+    fromAddress: text("from_address").notNull(),
+    /** What they keep. */
+    toAddress: text("to_address").notNull(),
+    /** Why the change was raised — today only "intern_converted", named so the reason survives into the audit trail. */
+    reason: text("reason").notNull(),
+    /**
+     * Whether the old address should keep delivering to the new mailbox.
+     *
+     * Mail sent to a converted intern's old address is ordinary
+     * correspondence from people who have not heard, not a mistake to bounce.
+     */
+    aliasOldAddress: boolean("alias_old_address").notNull().default(true),
+    /**
+     * How far the three-step move has got, so a retry does not repeat a step
+     * that already succeeded: `pending` → `created` → `deleted` → `aliased`
+     * → `completed`, or `failed`.
+     */
+    status: text("status").notNull().default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One outstanding move per employee per target: a conversion clicked
+    // twice queues one change, matching the idempotency the conversion
+    // itself already guarantees under its row lock.
+    uniqueIndex("mailbox_change_outbox_employee_target_key").on(t.orgId, t.employeeId, t.toAddress),
+    index("mailbox_change_outbox_retry_idx").on(t.status, t.nextAttemptAt),
+  ]
+);
+
 export const employeeDocuments = hrms.table(
   "employee_documents",
   {
