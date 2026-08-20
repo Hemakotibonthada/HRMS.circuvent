@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   CreditCard, Check, Users, Calendar, ArrowRight, Shield, Zap,
-  Star, Download, Clock, AlertTriangle,
+  Star, Download, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SUBSCRIPTION_PLANS } from "@/lib/constants";
@@ -35,9 +35,28 @@ export default function BillingPage() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
 
   const currentPlan = SUBSCRIPTION_PLANS[1]; // Professional
-  const currentEmployees = 148;
-  const maxEmployees = 200;
-  const employeeUsage = (currentEmployees / maxEmployees) * 100;
+
+  /*
+   * Usage figures.
+   *
+   * Null, because nothing measures them. There is a `subscriptions` table in
+   * the identity schema, but no billing API route and no code that populates
+   * `useBillingStore` — its `subscription` is initialised to null and never
+   * set. The numbers that used to sit here — 148 of 200 employees, 23.4 GB of
+   * 50 GB, and a monthly cost derived from that headcount — were typed in.
+   *
+   * They were not harmless. This page is shown to a paying tenant about their
+   * own account, the headcount drove a progress bar, and at 74% it tripped an
+   * "Approaching limit — consider upgrading" warning. That is an invented
+   * reason to spend money.
+   *
+   * An em dash under a heading is honest; a precise wrong number is not. It
+   * also follows the rule the rest of this codebase works to: a metric with no
+   * data is null, never a zero or a plausible-looking figure.
+   */
+  const currentEmployees: number | null = null;
+  const maxEmployees: number | null = null;
+  const storageUsedGb: number | null = null;
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
@@ -58,9 +77,12 @@ export default function BillingPage() {
                 <Badge className="bg-emerald-400/20 text-emerald-100 border-0">Active</Badge>
               </div>
               <h2 className="text-3xl font-extrabold mt-3">
-                ${currentPlan.price}<span className="text-lg font-normal opacity-80">/{currentPlan.interval}</span>
+                {currentPlan.currency === "USD" ? "$" : ""}{currentPlan.price}
+                <span className="text-lg font-normal opacity-80">/{currentPlan.interval}</span>
               </h2>
-              <p className="text-sm opacity-70 mt-1">Billed monthly — Next billing: April 1, 2026</p>
+              {/* The billing date came from nowhere — no subscription record is
+                  read on this page — so it is not stated. */}
+              <p className="text-sm opacity-70 mt-1">List price, {currentPlan.currency}</p>
             </div>
             <Button
               onClick={() => setIsUpgradeOpen(true)}
@@ -74,23 +96,32 @@ export default function BillingPage() {
           <div className="grid gap-6 sm:grid-cols-3">
             <div>
               <p className="text-xs font-medium text-muted-foreground">Employee Usage</p>
-              <p className="mt-1 text-lg font-bold">{currentEmployees} / {maxEmployees}</p>
-              <Progress value={employeeUsage} className="mt-2 h-2" />
-              {employeeUsage > 80 && (
-                <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" /> Approaching limit — consider upgrading
-                </p>
+              <p className="mt-1 text-lg font-bold">
+                {currentEmployees === null || maxEmployees === null
+                  ? "—"
+                  : `${currentEmployees} / ${maxEmployees}`}
+              </p>
+              {currentEmployees !== null && maxEmployees !== null ? (
+                <Progress value={(currentEmployees / maxEmployees) * 100} className="mt-2 h-2" />
+              ) : (
+                <p className="mt-1.5 text-xs text-muted-foreground">Not reported yet</p>
               )}
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground">Monthly Cost</p>
-              <p className="mt-1 text-lg font-bold">${currentPlan.price * currentEmployees}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{currentEmployees} × ${currentPlan.price}/employee</p>
+              <p className="mt-1 text-lg font-bold">
+                {currentEmployees === null
+                  ? "—"
+                  : `${currentPlan.currency === "USD" ? "$" : ""}${currentPlan.price * currentEmployees}`}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {currentPlan.currency === "USD" ? "$" : ""}{currentPlan.price} per employee
+              </p>
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground">Storage Used</p>
-              <p className="mt-1 text-lg font-bold">23.4 GB / 50 GB</p>
-              <Progress value={46.8} className="mt-2 h-2" />
+              <p className="mt-1 text-lg font-bold">{storageUsedGb === null ? "—" : `${storageUsedGb} GB`}</p>
+              <p className="mt-1.5 text-xs text-muted-foreground">Not reported yet</p>
             </div>
           </div>
         </CardContent>
