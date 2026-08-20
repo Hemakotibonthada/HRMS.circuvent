@@ -1,5 +1,6 @@
 package com.circuvent.hrms
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -31,7 +32,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.res.stringResource
 import com.circuvent.hrms.core.design.CircuventTheme
+import com.circuvent.hrms.core.i18n.Locales
+import com.circuvent.hrms.data.AppPreferences
 import com.circuvent.hrms.data.ThemeChoice
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppText
@@ -85,6 +89,22 @@ import com.circuvent.hrms.feature.TodayScreen
  * configuration changes while the prompt is up. This is the only reason.
  */
 class MainActivity : FragmentActivity() {
+
+    /**
+     * Applies the chosen language before anything resolves a resource.
+     *
+     * Below API 33 there is no per-app language, so the base context has to be
+     * wrapped here — the only point early enough for the whole activity to
+     * resolve strings in the right language. Doing it in `onCreate` leaves the
+     * first frame in the previous one.
+     *
+     * On API 33 and above [Locales.wrap] is a no-op, because the framework has
+     * already applied the locale before the activity is built.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        val tag = AppPreferences(newBase).languageTag
+        super.attachBaseContext(Locales.wrap(newBase, tag))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Before setContent, so the first composition already knows the window
@@ -237,9 +257,11 @@ private fun SignedInApp(
     val tabRoutes = Destination.entries.map { it.route }.toSet()
     val onTab = route in tabRoutes
 
+    // Tab titles come from the same string resources as the labels under the
+    // icons, so a translated tab and its screen heading cannot disagree.
     val title = when {
         route == null -> ""
-        onTab -> Destination.entries.first { it.route == route }.label
+        onTab -> stringResource(Destination.entries.first { it.route == route }.label)
         else -> Routes.titles[route] ?: ""
     }
 

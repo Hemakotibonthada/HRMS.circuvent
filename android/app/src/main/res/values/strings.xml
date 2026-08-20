@@ -1,4 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  User-facing text.
+
+  Most of the app's text is still written inline in Kotlin. This file is the
+  start of moving it out, not the finished job: `node scripts/find-hardcoded-strings.mjs`
+  reports what is left, so the size of the remaining work is a number somebody
+  can look at rather than a guess.
+
+  Before adding a language, read TRANSLATING.md. The short version: the terms
+  that matter most here are statutory — gratuity, professional tax, perquisite,
+  Chapter VI-A, compensatory off — and a plausible-sounding wrong word tells an
+  employee their legal entitlement incorrectly, in a way neither they nor we can
+  spot. Those must come from somebody who knows both the language and Indian
+  payroll, never from a machine.
+-->
 <resources>
     <string name="app_name">Circuvent HR</string>
+
+    <!-- Bottom navigation. Each doubles as the title of the screen it opens,
+         so they stay short enough to fit under an icon on a small phone. -->
+    <string name="tab_home">Home</string>
+    <string name="tab_leave">Leave</string>
+    <string name="tab_inbox">Inbox</string>
+    <string name="tab_team">Team</string>
+    <string name="tab_me">Me</string>
+
+    <!-- Appearance settings. -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_system">Follow the device</string>
+    <string name="settings_theme_light">Always light</string>
+    <string name="settings_theme_dark">Always dark</string>
+    <string name="settings_dates">Dates</string>
+    <string name="settings_dates_day_first">Day first</string>
+    <string name="settings_dates_year_first">Year first</string>
+    <string name="settings_dates_month_first">Month first</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_system">Follow the device</string>
 </resources>

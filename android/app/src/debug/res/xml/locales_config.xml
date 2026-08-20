@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only. Overrides the production list for debuggable builds.
+
+  `en-XA` is Android's pseudolocale: English rendered with accents and padded
+  out to roughly the length a real translation runs to. It is a test instrument,
+  not a language — nobody speaks it, and it never ships, because this file only
+  exists in the debug source set.
+
+  It is here so the language machinery can be exercised honestly. Without a
+  second locale the picker has one option and proves nothing, and the only other
+  way to get a second one would be to invent a translation — which is exactly
+  what must not happen for an app full of statutory terms.
+
+  It also does the job pseudolocales exist for: longer strings expose layouts
+  that only fit because English happens to be short.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="en-XA" />
+</locale-config>

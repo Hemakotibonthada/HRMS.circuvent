@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The languages this app is actually available in.
+
+  This file is the single declaration of that list. The settings screen reads
+  it at runtime rather than carrying its own copy, so a language cannot appear
+  in the picker before its translation exists — offering one that falls back to
+  English is worse than not offering it, because the person has no way to tell
+  whether the app is broken or the words simply were not translated.
+
+  Adding a language means two things and only two: a `values-xx/strings.xml`
+  translated by somebody who speaks it, and a line here. See TRANSLATING.md —
+  in particular the part about statutory terms, which must not be guessed.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+</locale-config>

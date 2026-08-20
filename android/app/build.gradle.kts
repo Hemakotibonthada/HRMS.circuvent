@@ -123,6 +123,11 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            // Generates the en-XA pseudolocale: accented, padded English used to
+            // exercise the language machinery, and to expose layouts that only
+            // fit because English happens to be short. Debug only, so it can
+            // never reach a store listing.
+            isPseudoLocalesEnabled = true
             // 10.0.2.2 is the emulator's route to the host machine. `localhost`
             // inside an emulator is the emulator.
             buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl("http://10.0.2.2:3002")}\"")

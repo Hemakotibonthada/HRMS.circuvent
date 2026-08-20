@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Person
+import androidx.annotation.StringRes
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,6 +29,8 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.circuvent.hrms.R
 import com.circuvent.hrms.core.design.MinTouchTarget
 import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppText
@@ -49,14 +52,14 @@ import com.circuvent.hrms.core.ui.TextTone
  */
 enum class Destination(
     val route: String,
-    val label: String,
+    @StringRes val label: Int,
     val icon: ImageVector,
 ) {
-    TODAY("today", "Home", Icons.Filled.Home),
-    LEAVE("leave", "Leave", Icons.Filled.CalendarMonth),
-    INBOX("inbox", "Inbox", Icons.Filled.Inbox),
-    TEAM("my-team", "Team", Icons.Filled.Groups),
-    PROFILE("profile", "Me", Icons.Filled.Person),
+    TODAY("today", R.string.tab_home, Icons.Filled.Home),
+    LEAVE("leave", R.string.tab_leave, Icons.Filled.CalendarMonth),
+    INBOX("inbox", R.string.tab_inbox, Icons.Filled.Inbox),
+    TEAM("my-team", R.string.tab_team, Icons.Filled.Groups),
+    PROFILE("profile", R.string.tab_me, Icons.Filled.Person),
 }
 
 /** Height reserved for the bar, so scrolling content can clear it. */
@@ -88,6 +91,7 @@ fun TabBar(
         ) {
             Destination.entries.forEach { destination ->
                 val selected = destination.route == current
+                val label = stringResource(destination.label)
 
                 Column(
                     modifier = Modifier
@@ -99,7 +103,7 @@ fun TabBar(
                             if (!selected) onSelect(destination)
                         }
                         .semantics {
-                            contentDescription = destination.label
+                            contentDescription = label
                             // Spoken as "selected", not merely drawn in the
                             // accent colour.
                             this.selected = selected
@@ -115,7 +119,7 @@ fun TabBar(
                     // The label is always visible, never only on the selected
                     // tab.
                     AppText(
-                        text = destination.label,
+                        text = label,
                         size = Theme.type.caption,
                         lineHeight = Theme.type.captionLine,
                         tone = if (selected) TextTone.PRIMARY else TextTone.MUTED,
