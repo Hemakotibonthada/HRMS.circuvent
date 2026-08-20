@@ -46,6 +46,8 @@ import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppText
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
+import com.circuvent.hrms.core.ui.ClosedDay
+import com.circuvent.hrms.core.ui.LeaveCalendar
 import com.circuvent.hrms.core.ui.ButtonVariant
 import com.circuvent.hrms.core.ui.EmptyState
 import com.circuvent.hrms.core.ui.PillTone
@@ -55,6 +57,7 @@ import com.circuvent.hrms.core.ui.TextTone
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.LeaveRequestDto
 import com.circuvent.hrms.data.queue.OfflineQueue
+import com.circuvent.hrms.domain.LeaveCost
 import com.circuvent.hrms.domain.LeaveRules
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
@@ -81,6 +84,10 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
     var startDate by remember { mutableStateOf(today.toString()) }
     var endDate by remember { mutableStateOf(today.toString()) }
     var isHalfDay by remember { mutableStateOf(false) }
+    // True between the two taps of a range. The form opens with today at both
+    // ends, so without this there is no way to tell a fresh pick from one
+    // already made.
+    var awaitingEnd by remember { mutableStateOf(false) }
     var reason by remember { mutableStateOf("") }
     var errors by remember { mutableStateOf<Map<LeaveRules.Field, String>>(emptyMap()) }
     var banner by remember { mutableStateOf<Triple<BannerTone, String, String?>?>(null) }
@@ -88,8 +95,42 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
 
     val scope = rememberCoroutineScope()
 
+    // Loaded so the calendar can mark the days the office is already closed.
+    // A failure leaves the map empty, which downgrades the calendar to weekends
+    // only rather than blocking the form — somebody still has to be able to
+    // apply for leave when the holiday endpoint is having a bad day.
+    var closedDays by remember { mutableStateOf<List<ClosedDay>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        runCatching { container.repository.holidays() }
+            .onSuccess { response ->
+                closedDays = response.items.mapNotNull { holiday ->
+                    runCatching { LocalDate.parse(holiday.holidayDate.take(10)) }
+                        .getOrNull()
+                        ?.let { ClosedDay(it, holiday.name, holiday.isOptional) }
+                }
+            }
+    }
+
     val draft = LeaveRules.Draft(leaveType, startDate, endDate, isHalfDay, reason)
     val cost = LeaveRules.totalDays(draft)
+
+    val summary = remember(startDate, endDate, isHalfDay, closedDays) {
+        val start = runCatching { LocalDate.parse(startDate) }.getOrNull()
+        val end = runCatching { LocalDate.parse(endDate) }.getOrNull()
+        if (start == null || end == null) {
+            null
+        } else {
+            LeaveCost.summarise(
+                start = start,
+                end = end,
+                isHalfDay = isHalfDay,
+                // Optional holidays are excluded: they are drawn from a pool
+                // and have to be claimed, so a day somebody has not claimed is
+                // an ordinary working day for them.
+                holidays = closedDays.filter { !it.optional }.associate { it.date to it.name },
+            )
+        }
+    }
 
     fun submit() {
         banner = null
@@ -178,39 +219,80 @@ fun LeaveApplyScreen(container: AppContainer, viewModel: AppViewModel, onDone: (
             AppText(it, tone = TextTone.DANGER, size = Theme.type.footnote, lineHeight = Theme.type.footnoteLine)
         }
 
-        OutlinedTextField(
-            value = startDate,
-            onValueChange = {
-                startDate = it
-                // A half day is one day, so the end follows the start rather
-                // than being left behind at a stale value nobody can see.
-                if (isHalfDay) endDate = it
+        // A calendar, not two text fields wanting YYYY-MM-DD on a number
+        // keypad. The typing was the smaller problem: the fields gave no way
+        // to see that a chosen range runs through a weekend or a holiday, and
+        // this employer deducts calendar days — so those days come out of
+        // somebody's entitlement without anything on screen saying so.
+        LeaveCalendar(
+            selectedStart = runCatching { LocalDate.parse(startDate) }.getOrNull(),
+            selectedEnd = runCatching { LocalDate.parse(endDate) }.getOrNull(),
+            closed = closedDays,
+            onSelect = { picked ->
+                // Two taps: the first opens a one-day request, the second
+                // extends it. An earlier version restarted whenever a range
+                // already existed, which sounds reasonable and is unusable —
+                // the form opens with today already chosen at both ends, so
+                // the first tap made a range and every tap after it reset,
+                // and a Friday-to-Monday request could not be selected at all.
+                val start = runCatching { LocalDate.parse(startDate) }.getOrNull()
+
+                when {
+                    // A half day is a single date; a tap just moves it.
+                    isHalfDay -> {
+                        startDate = picked.toString()
+                        endDate = picked.toString()
+                    }
+
+                    !awaitingEnd || start == null -> {
+                        startDate = picked.toString()
+                        endDate = picked.toString()
+                        awaitingEnd = true
+                    }
+
+                    // Tapping before the start extends backwards rather than
+                    // refusing. Somebody who picks the end first meant a range,
+                    // not a mistake.
+                    picked.isBefore(start) -> {
+                        startDate = picked.toString()
+                        awaitingEnd = false
+                    }
+
+                    else -> {
+                        endDate = picked.toString()
+                        awaitingEnd = false
+                    }
+                }
+                errors = emptyMap()
             },
-            label = { Text("Start date") },
-            supportingText = { Text(errors[LeaveRules.Field.START_DATE] ?: "YYYY-MM-DD") },
-            isError = errors.containsKey(LeaveRules.Field.START_DATE),
-            singleLine = true,
-            enabled = !busy,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
-            modifier = Modifier.fillMaxWidth(),
         )
 
-        OutlinedTextField(
-            value = endDate,
-            onValueChange = { endDate = it },
-            label = { Text("End date") },
-            supportingText = {
-                Text(
-                    errors[LeaveRules.Field.END_DATE]
-                        ?: if (isHalfDay) "Same as the start date for a half day" else "YYYY-MM-DD"
+        errors[LeaveRules.Field.START_DATE]?.let {
+            AppText(it, tone = TextTone.DANGER, size = Theme.type.footnote, lineHeight = Theme.type.footnoteLine)
+        }
+        errors[LeaveRules.Field.END_DATE]?.let {
+            AppText(it, tone = TextTone.DANGER, size = Theme.type.footnote, lineHeight = Theme.type.footnoteLine)
+        }
+
+        // What it costs, before they send it. Leads with the number that
+        // leaves their balance, and only warns when there is something they
+        // could actually do about it.
+        summary?.let { s ->
+            if (s.hasNonWorkingDays) {
+                Banner(
+                    tone = BannerTone.WARNING,
+                    title = "This includes days nobody works",
+                    description = LeaveCost.describe(s),
                 )
-            },
-            isError = errors.containsKey(LeaveRules.Field.END_DATE),
-            singleLine = true,
-            enabled = !busy && !isHalfDay,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
-            modifier = Modifier.fillMaxWidth(),
-        )
+            } else {
+                AppText(
+                    LeaveCost.describe(s),
+                    size = Theme.type.footnote,
+                    lineHeight = Theme.type.footnoteLine,
+                    tone = TextTone.MUTED,
+                )
+            }
+        }
 
         Row(
             Modifier.fillMaxWidth(),
