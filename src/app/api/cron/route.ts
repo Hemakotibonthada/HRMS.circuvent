@@ -49,6 +49,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { syncDeviceAttendanceForAllOrgs } from "@/lib/attendance/device-sync";
 import { sweepInternReminders } from "@/lib/intern-reminders";
+import { processDueExits } from "@/lib/offboarding-exit";
 import { sweepOutboxes } from "@/lib/outbox-sweep";
 import { timingSafeEqual } from "@/lib/sso";
 
@@ -133,6 +134,30 @@ export async function GET(req: NextRequest) {
     internReminders = { failed: error instanceof Error ? error.message : String(error) };
   }
 
+  // Processes any leaver whose agreed last working day has arrived and who
+  // is not yet fully processed — the recovery path for this feature's own
+  // version of the bug described in this file's header. Settlement, access
+  // removal and documents all normally happen the moment HR calls
+  // `process-exit`, but nobody is guaranteed to click that on the exact
+  // last working day; without this, a leaver simply not re-opened by HR
+  // that day would stay a member of every mailing list indefinitely, the
+  // same "nobody touches this record again" shape as the original outbox
+  // defect. Caught independently for the same reason as the two sweeps
+  // above: one tenant's misconfigured settlement template must not take
+  // down the paystub/group/device/intern sweeps' own response.
+  let exitSweep: Awaited<ReturnType<typeof processDueExits>> | { failed: string };
+  try {
+    exitSweep = await processDueExits();
+    if (exitSweep.problems.length > 0) {
+      console.warn("[cron] leaver exit sweep completed with problems", {
+        problems: exitSweep.problems,
+      });
+    }
+  } catch (error) {
+    console.error("[cron] leaver exit sweep threw unexpectedly", error);
+    exitSweep = { failed: error instanceof Error ? error.message : String(error) };
+  }
+
   return NextResponse.json({
     ranAt: new Date().toISOString(),
     durationMs,
@@ -141,5 +166,6 @@ export async function GET(req: NextRequest) {
     problems: result.problems,
     deviceSync,
     internReminders,
+    exitSweep,
   });
 }

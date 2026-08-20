@@ -20,11 +20,46 @@
  *
  * ## Composition rather than copies
  *
- * Every letter here is built from one `shell()`, which carries the stylesheet
- * and the letterhead lifted verbatim from the existing Offer Letter. The
- * alternative -- twelve standalone HTML documents -- is twelve places for the
- * company address to be formatted differently, and it is how the first twelve
- * ended up subtly inconsistent.
+ * Every letter here is built from one `shell()`, which now wraps the same
+ * `letterOpen()`/`letterhead()`/`LETTER_CLOSE`/`row()`/`table()` that
+ * `document-templates/catalog.ts` uses for its twelve built-ins, imported
+ * from `document-templates/letter-kit.mjs`. That module's own header explains
+ * why it is plain JavaScript rather than TypeScript: this script runs as a
+ * bare `node scripts/seed-letter-templates.mjs` (the `db:seed:letters` entry
+ * in package.json), with no ts-node or tsx in that path, so a `.mjs` import
+ * is the only kind it can ever satisfy. Before that module existed, this file
+ * carried its own byte-for-byte copy of the stylesheet (`letter-shell.css`,
+ * now deleted) and its own `shell()`/`row()`/`table()` -- which is exactly
+ * the "twelve standalone documents" problem the paragraph below warns about,
+ * just duplicated one level up. A candidate who is emailed an Offer Letter
+ * and later issued a Joining Letter should not be able to tell, from the
+ * letterhead alone, that two different code paths produced them.
+ *
+ * One consequence of sharing `letterhead()` is that every letter below also
+ * carries `COMPANY_LOGO_SLOT` -- the inert HTML-comment marker `letterhead()`
+ * always emits (see that module's header for why a comment and not a token).
+ * This script seeds the marker itself, unresolved, exactly as
+ * `document-templates/catalog.ts` does; `applyCompanyLogo()` only runs later,
+ * server-side, when `generate()` in `documents.neon.ts` turns a stored
+ * template into an actual document.
+ *
+ * ## The duplicate this script used to add back
+ *
+ * This script originally seeded its own "Experience Certificate", separate
+ * from the one `document-templates/catalog.ts` contributes (via
+ * `scripts/seed-document-templates.ts` and the org-registration route). Two
+ * active rows with the same name for the same org is precisely the defect
+ * described above for the original twelve -- and `intern-documents.ts`'s
+ * `resolveTemplate()` (which looks up "Experience Certificate" by name to
+ * auto-generate one at offboarding) breaks the tie with
+ * `ORDER BY updatedAt DESC LIMIT 1`, so which of the two wording variants a
+ * departing employee actually receives depended on which had been re-seeded
+ * or edited more recently -- not on which one anybody had chosen. The
+ * catalog.ts version is the one kept: it is the one `intern-documents.ts`'s
+ * token set was already aligned to, and its letterhead-meta box carries the
+ * employee code that this script's version only mentioned in passing prose.
+ * This script no longer defines "Experience Certificate" at all, so there is
+ * only ever one source of truth for it.
  *
  * Idempotent: an existing template of the same name is left alone unless
  * --force is passed, so running this after somebody has edited a letter in the
@@ -34,6 +69,7 @@ import { Client } from "pg";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { letterOpen, letterhead, LETTER_CLOSE, row, table } from "../src/lib/document-templates/letter-kit.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const FORCE = process.argv.includes("--force");
@@ -51,15 +87,17 @@ function env() {
   return url;
 }
 
-/** The stylesheet every Circuvent letter shares. */
-const CSS = fs.readFileSync(path.join(root, "letter-shell.css"), "utf8");
-
 /**
  * The document around a letter's content.
  *
  * The letterhead, the recipient block, the signature and the footer are the
  * same on every letter the company issues, so they are written once. A letter
- * supplies its title, an optional subtitle, and its sections.
+ * supplies its title, an optional subtitle, and its sections. The letterhead
+ * and shell markup themselves come from `letter-kit.mjs` (see the header
+ * comment above); what stays local to this function is only the shape a
+ * short HR letter needs that the longer catalog.ts documents assemble by
+ * hand each time -- a candidate/recipient block, a list of titled sections,
+ * an optional closing note, and an optional signature.
  */
 function shell({ title, subtitle, sections, closing, signatoryBlock = true }) {
   const body = sections
@@ -72,63 +110,42 @@ function shell({ title, subtitle, sections, closing, signatoryBlock = true }) {
     )
     .join("\n");
 
-  return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>{{company_name}} · ${title}</title>
-    <style>${CSS}</style>
-  </head>
-  <body>
-    <div class="wrapper">
-      <div class="wrapper-inner">
-        <div class="letterhead">
-          <div class="brand">
-            <p class="brand-name">{{company_name}}</p>
-            <p class="brand-info">{{company_address}}</p>
-            <p class="brand-info">{{company_contact}}</p>
-            <p class="brand-info">{{company_registration}}</p>
-          </div>
-          <div class="meta">
-            <p><strong>Date</strong><br />{{issue_date}}</p>
-            <p><strong>Reference</strong><br />{{document_reference}}</p>
-          </div>
-        </div>
+  return `${letterOpen(`{{company_name}} · ${title}`)}
+${letterhead(
+  `          <span class="meta-label">Date</span>
+          <span class="meta-value">{{issue_date}}</span>
+          <span class="meta-label">Reference</span>
+          <span class="meta-value">{{document_reference}}</span>`,
+  true
+)}
 
-        <div class="candidate-block">
-          <p><strong>{{full_name}}</strong></p>
-          <p>{{candidate_email}}</p>
-        </div>
-
-        <h1>${title}</h1>
-        ${subtitle ? `<p class="lead">${subtitle}</p>` : ""}
-        ${body}
-
-        ${closing ? `<div class="note">${closing}</div>` : ""}
-
-        ${
-          signatoryBlock
-            ? `<div class="signature">
-          <div>
-            <p>For and on behalf of {{company_name}}</p>
-            <p><strong>{{signatory_name}}</strong><br />{{signatory_title}}</p>
-          </div>
-        </div>`
-            : ""
-        }
-
-        <div class="footer">
-          <p>{{company_name}} · {{company_address}} · {{company_registration}}</p>
-          <p>Questions about this letter: {{hr_contact_name}}, {{hr_contact_email}}</p>
-        </div>
+      <div class="candidate-block">
+        <p><strong>{{full_name}}</strong></p>
+        <p>{{candidate_email}}</p>
       </div>
-    </div>
-  </body>
-</html>`;
-}
 
-const row = (label, value) => `<tr><th>${label}</th><td>${value}</td></tr>`;
-const table = (rows) => `<table class="data"><tbody>${rows.join("")}</tbody></table>`;
+      <h1>${title}</h1>
+      ${subtitle ? `<p class="lead">${subtitle}</p>` : ""}
+      ${body}
+
+      ${closing ? `<div class="note">${closing}</div>` : ""}
+
+      ${
+        signatoryBlock
+          ? `<div class="signature">
+        <p>For {{company_name}},</p>
+        <strong>{{signatory_name}}</strong>
+        <span>{{signatory_title}}</span>
+      </div>`
+          : ""
+      }
+
+      <div class="footer">
+        <p>{{company_name}} · {{company_address}} · {{company_registration}}</p>
+        <p>Questions about this letter: {{hr_contact_name}}, {{hr_contact_email}}</p>
+      </div>
+${LETTER_CLOSE}`;
+}
 
 /* ───────────────────────────────────────────── the new letters ── */
 
@@ -341,29 +358,10 @@ const TEMPLATES = [
           "We wish you well. A request to verify this employment may be sent to {{hr_contact_email}}.",
       }),
   },
-  {
-    name: "Experience Certificate",
-    category: "letter",
-    requiresSignature: true,
-    signatoryRoles: ["hr"],
-    build: () =>
-      shell({
-        title: "Experience Certificate",
-        subtitle: null,
-        sections: [
-          {
-            title: "This is to certify",
-            html: `<p>that <strong>{{full_name}}</strong> ({{employee_code}}) was employed with {{company_name}} as {{position_title}} in the {{department}} team, from {{join_date}} to {{last_working_day}}.</p>`,
-          },
-          {
-            title: "Conduct",
-            html: `<p>{{conduct_remark}}</p>`,
-          },
-        ],
-        closing:
-          "Issued at the employee's request. This certificate records the period of employment described above and nothing further.",
-      }),
-  },
+  // "Experience Certificate" deliberately does not appear here -- see
+  // "The duplicate this script used to add back" in the header comment.
+  // document-templates/catalog.ts's EXPERIENCE_CERTIFICATE is the one and
+  // only source for that template name now.
   {
     name: "Appreciation Certificate",
     category: "letter",

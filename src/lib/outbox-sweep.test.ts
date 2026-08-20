@@ -185,6 +185,52 @@ describe("sweeping every tenant", () => {
     expect(result.totals.groupsFailed).toBe(0);
   });
 
+  it("counts a stuck group removal separately from a stuck group join", async () => {
+    // This is the totals-level half of the bug the leave outbox exists to
+    // close: a leaver's failed removal must show up as its own number, not
+    // get absorbed into (or hidden by) the join side's count, or a healthy
+    // hiring flow could mask an offboarding one quietly failing every day.
+    const result = await sweepOutboxes(50, {
+      listOrgs: async () => ["org-a"],
+      drainPaystub: async () => paystubResult(),
+      drainGroups: async () => groupResult({ attempted: 3, joined: 3 }),
+      drainGroupLeaves: async () => groupLeaveResult({ attempted: 2, left: 1, failed: 1 }),
+      drainDocumentPdfs: async () => documentPdfResult(),
+    });
+
+    expect(result.totals.groupsJoined).toBe(3);
+    expect(result.totals.groupsFailed).toBe(0);
+    expect(result.totals.groupsLeft).toBe(1);
+    expect(result.totals.groupsLeaveFailed).toBe(1);
+  });
+
+  it("keeps sweeping the other outboxes and organisations when a group removal drain throws", async () => {
+    // The join outbox has an accidental safety net (the next edit to that
+    // employee re-drives it); the leave outbox has only this sweep. If a
+    // throw here ever took the whole sweep down, a leaver's access would wait
+    // not just for the next sweep but for whoever noticed the cron stopped
+    // running entirely — which is a slower, quieter version of the exact bug
+    // this file exists to close.
+    const drainGroupLeaves = vi.fn(async (ctx: { orgId: string }) => {
+      if (ctx.orgId === "org-bad") throw new Error("identity provider unreachable");
+      return groupLeaveResult({ attempted: 1, left: 1 });
+    });
+
+    const result = await sweepOutboxes(50, {
+      listOrgs: async () => ["org-a", "org-bad", "org-b"],
+      drainPaystub: async () => paystubResult({ attempted: 1, synced: 1 }),
+      drainGroups: async () => groupResult(),
+      drainGroupLeaves,
+      drainDocumentPdfs: async () => documentPdfResult(),
+    });
+
+    expect(result.totals.groupsLeft).toBe(2);
+    expect(result.totals.paystubSynced).toBe(2);
+    expect(result.problems).toHaveLength(1);
+    expect(result.problems[0]).toContain("org-bad");
+    expect(result.problems[0]).toContain("identity provider unreachable");
+  });
+
   it("hands the batch limit down to each drain", async () => {
     const drainPaystub = vi.fn(async () => paystubResult());
     const drainDocumentPdfs = vi.fn(async () => documentPdfResult());

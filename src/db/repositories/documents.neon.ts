@@ -12,6 +12,7 @@
 import { asc, desc, eq } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
 import { departments, employees } from "@/db/schema/hrms";
+import { applyCompanyLogo, resolveCompanyLogoUrl } from "@/lib/document-templates/branding";
 import { identityTokens, loadOrgIdentity } from "./org-identity";
 import {
   documentSignatures,
@@ -323,7 +324,16 @@ export class NeonDocumentsRepository {
         );
       }
 
-      const { body } = render(template.body, values);
+      const { body: renderedText } = render(template.body, values);
+      // Resolved here, once, rather than substituted as a `{{token}}` — see
+      // `letter-kit.mjs`'s header comment for why a raw token can't do this
+      // safely (render() has no conditionals, so a tenant with no logo would
+      // get a literal broken `<img>` baked into a signed contract). The
+      // marker `letterhead()`/`emailOpen()` leave behind is an HTML comment,
+      // invisible to `extractTokens()`, so it never shows up as a missing
+      // token either. Resolving before the hash is taken, not on every read,
+      // means a signature attests to the masthead the signatory actually saw.
+      const body = applyCompanyLogo(renderedText, resolveCompanyLogoUrl(identity?.logoUrl));
       const contentHash = await hashContent(body);
 
       const expiresAt = request.expiresInDays

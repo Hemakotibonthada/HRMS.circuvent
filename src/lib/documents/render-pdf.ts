@@ -19,6 +19,8 @@
 // and laying the text out by hand with `pdf-lib` is therefore both sufficient
 // and an order of magnitude simpler than embedding a browser to do it.
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   PDFDocument,
   PDFFont,
@@ -29,6 +31,7 @@ import {
   type Color,
   type PDFImage,
 } from "pdf-lib";
+import { defaultLogoUrl, extractCompanyLogoUrl } from "@/lib/document-templates/branding";
 
 // ─── Public shapes ──────────────────────────────────────────
 
@@ -77,6 +80,15 @@ export async function renderDocumentPdf(params: RenderDocumentPdfParams): Promis
   const pdfDoc = await PDFDocument.create();
   const bodyFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  // Resolved once per document, same as the HTML rendering: `generate()`
+  // already decided whether this document carries the tenant's own logo or
+  // the deployment default (or neither) and baked that decision into
+  // `renderedBody` as a real `<img class="company-logo">` or nothing at all.
+  // Re-deriving that same choice here rather than asking `org-identity`
+  // again keeps the PDF showing exactly what the signatory saw on screen,
+  // not whatever the organisation's logo happens to be by the time someone
+  // downloads the archive.
+  const logo = await loadCompanyLogo(pdfDoc, params.bodyHtmlOrText);
 
   const ops: FlowOp[] = [
     ...blocksToOps(htmlToBlocks(params.bodyHtmlOrText), bodyFont, boldFont),
@@ -88,7 +100,7 @@ export async function renderDocumentPdf(params: RenderDocumentPdfParams): Promis
 
   pages.forEach((pageOps, index) => {
     const page = pdfDoc.addPage(PageSizes.A4);
-    drawHeader(page, params.companyName, params.title, bodyFont, boldFont);
+    drawHeader(page, params.companyName, params.title, bodyFont, boldFont, logo);
     drawFooter(page, params.signingReference, index + 1, totalPages, bodyFont);
     drawOps(page, pageOps);
   });
@@ -99,11 +111,67 @@ export async function renderDocumentPdf(params: RenderDocumentPdfParams): Promis
   // than one with no pages at all).
   if (totalPages === 0) {
     const page = pdfDoc.addPage(PageSizes.A4);
-    drawHeader(page, params.companyName, params.title, bodyFont, boldFont);
+    drawHeader(page, params.companyName, params.title, bodyFont, boldFont, logo);
     drawFooter(page, params.signingReference, 1, 1, bodyFont);
   }
 
   return pdfDoc.save();
+}
+
+// ─── Company logo ───────────────────────────────────────────
+
+// Drawn top-right, bottom-aligned with the rule beneath the two-line header
+// text so it reads as part of the same masthead rather than a stray image.
+const LOGO_SIZE = 26;
+const LOGO_GAP = 12;
+
+/**
+ * Loads and embeds the logo `applyCompanyLogo()` baked into this document's
+ * `renderedBody`, or returns null for a tenant that carries none — the exact
+ * same two outcomes as the HTML rendering, never a broken image. Absent from
+ * the markup entirely (no tenant logo, no deployment default configured, or
+ * a template that predates this feature) is not an error and is not logged;
+ * it is simply nothing to draw.
+ *
+ * A failure to obtain the bytes for a URL that *is* present — a network
+ * error, a 404, a file that is not actually a PNG — is caught here rather
+ * than left to `pdf-lib` or an outer caller, because a signed document that
+ * fails to produce its durable PDF over a masthead image would be a strictly
+ * worse outcome than one whose letterhead falls back to typography, and this
+ * module's whole reason for existing is to keep that PDF generating.
+ */
+async function loadCompanyLogo(pdfDoc: PDFDocument, html: string): Promise<PDFImage | null> {
+  const logoUrl = extractCompanyLogoUrl(html);
+  if (!logoUrl) return null;
+  try {
+    return await pdfDoc.embedPng(await readLogoBytes(logoUrl));
+  } catch (error) {
+    console.warn("[render-pdf] Could not load the company logo; rendering the letterhead without it.", error);
+    return null;
+  }
+}
+
+/**
+ * Circuvent's own out-of-the-box mark — the one every tenant that has not
+ * configured a logo of its own carries — is read straight off this
+ * deployment's disk rather than fetched over HTTPS: it is this server's own
+ * bundled `public/logo-mark-128.png` (the same file `NEXT_PUBLIC_CAREERS_URL`
+ * serves at that path), so a network round trip would only ask this process
+ * to fetch from itself, and every environment that calls this function —
+ * this test suite and `render-sample-letters.mjs` included — must produce a
+ * PDF with the default mark whether or not outbound network access happens
+ * to be available. A tenant's own externally hosted logo, or an operator's
+ * `MAIL_LOGO_URL` override, is not a file this deployment ships, so there is
+ * no local copy to reach for; the only way to get those bytes is to fetch
+ * the URL, and a failure there has no safe local fallback.
+ */
+async function readLogoBytes(logoUrl: string): Promise<Uint8Array> {
+  if (!process.env.MAIL_LOGO_URL?.trim() && logoUrl === defaultLogoUrl()) {
+    return new Uint8Array(await readFile(join(process.cwd(), "public", "logo-mark-128.png")));
+  }
+  const response = await fetch(logoUrl);
+  if (!response.ok) throw new Error(`Logo fetch responded with HTTP ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 // ─── Page geometry ──────────────────────────────────────────
@@ -133,16 +201,20 @@ const GAP_BEFORE_TEXT = 8;
 const GAP_BEFORE_SUBHEADING = 18;
 const GAP_BEFORE_HEADING = 22;
 
-function drawHeader(page: PDFPage, companyName: string, title: string, font: PDFFont, boldFont: PDFFont): void {
+function drawHeader(page: PDFPage, companyName: string, title: string, font: PDFFont, boldFont: PDFFont, logo: PDFImage | null): void {
   const top = PAGE_HEIGHT - 32;
-  page.drawText(truncateToWidth(companyName, boldFont, 12, CONTENT_WIDTH), {
+  // The logo sits to the right, so the company name and title must not run
+  // under it — reserve its width only when there is one to draw; a document
+  // with no logo keeps the exact same layout this file has always produced.
+  const textMaxWidth = logo ? CONTENT_WIDTH - LOGO_SIZE - LOGO_GAP : CONTENT_WIDTH;
+  page.drawText(truncateToWidth(companyName, boldFont, 12, textMaxWidth), {
     x: MARGIN_X,
     y: top,
     size: 12,
     font: boldFont,
     color: INK,
   });
-  page.drawText(truncateToWidth(title, font, 9, CONTENT_WIDTH), {
+  page.drawText(truncateToWidth(title, font, 9, textMaxWidth), {
     x: MARGIN_X,
     y: top - 14,
     size: 9,
@@ -155,6 +227,14 @@ function drawHeader(page: PDFPage, companyName: string, title: string, font: PDF
     thickness: 0.75,
     color: RULE,
   });
+  if (logo) {
+    page.drawImage(logo, {
+      x: PAGE_WIDTH - MARGIN_X - LOGO_SIZE,
+      y: top - 22,
+      width: LOGO_SIZE,
+      height: LOGO_SIZE,
+    });
+  }
 }
 
 function drawFooter(page: PDFPage, signingReference: string, pageNumber: number, totalPages: number, font: PDFFont): void {

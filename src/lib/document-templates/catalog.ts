@@ -46,6 +46,69 @@
 //
 // `extractTokens` derives the token list from the body at read time, so nothing
 // here needs to restate it; `catalog.test.ts` checks the bodies instead.
+//
+// ─── The logo, properly ──────────────────────────────────────
+//
+// Point 2 above is still exactly right about why a raw `{{company_logo_url}}`
+// token is the wrong tool: `render()` has no conditionals, so an org that
+// never set a logo would get a literal, broken `<img>` tag baked into a
+// signed contract. What was missing was not "give up on the logo" — it was a
+// mechanism that resolves the URL *before* the token-substitution stage, so
+// the markup that reaches `render()` either already contains a real `https`
+// URL or contains no `<img>` at all. Never a placeholder, never `cid:`.
+//
+// That mechanism is `letterhead()`/`emailOpen()` below (both now imported
+// from `letter-kit.mjs`), which embed `COMPANY_LOGO_SLOT` — an HTML
+// *comment*, not a `{{token}}`, so `extractTokens()` never sees it and it can
+// never itself become an unresolved placeholder. `generate()` in
+// `documents.neon.ts` calls `applyCompanyLogo()` on the already-rendered
+// HTML, after every `{{token}}` has been substituted: given the tenant's own
+// logo (`organizations.logo_url`) or, failing that, the deployment default
+// (`MAIL_LOGO_URL`, or Circuvent's own mark — see `branding.ts`), it replaces
+// the slot with a real `<img>` pointing at that absolute URL; given nothing
+// usable, it deletes the slot outright. The typographic letterhead — entity
+// name, address, company number — stays regardless, because that is what
+// point 2 correctly identifies as what makes a letterhead legally
+// meaningful; the logo is decoration on top of it, never a substitute.
+//
+// The PDF path (`src/lib/documents/render-pdf.ts`) needs a third step,
+// because `pdf-lib` does not fetch anything an `<img src>` merely points at:
+// it recovers the resolved URL with `extractCompanyLogoUrl()`, fetches it (or,
+// for the packaged deployment default, reads `public/logo-mark-128.png`
+// straight off disk) and embeds it with `embedPng`. If that fetch fails — a
+// transient network error, a tenant's logo URL having gone stale since the
+// document was signed — the PDF still generates without the logo, because a
+// contract that will not generate at all is a worse failure than one with
+// only the typographic letterhead.
+//
+// ─── One letterhead, not two ──────────────────────────────────
+//
+// The stylesheet, the letterhead, the email shell and the row/table helpers
+// below used to be defined here *and*, separately, in
+// `scripts/seed-letter-templates.mjs` as its own `CSS`/`shell()`/`row()`/
+// `table()` — the same "one company, several slightly different letterheads"
+// failure mode point 1 above describes, just moved from hardcoded data into
+// duplicated code instead of being fixed. Both files now import the shared
+// versions from `letter-kit.mjs`, so a change to the masthead or the table
+// styling is one edit, not a coin flip over which of two copies a given
+// letter happens to use.
+
+import {
+  COMPANY_TOKENS,
+  EMAIL_CLOSE,
+  LETTER_CLOSE,
+  emailOpen,
+  ledgerRow,
+  ledgerTable,
+  ledgerTotalRow,
+  letterOpen,
+  letterhead,
+  row,
+  table,
+} from "./letter-kit.mjs";
+import { OFFER_ANNEXURES } from "./offer-annexures";
+
+export { COMPANY_TOKENS };
 
 export interface TemplateSeed {
   /** Stable key, used to upsert without duplicating on a re-run. */
@@ -60,202 +123,62 @@ export interface TemplateSeed {
   signatoryRoles: string[];
 }
 
-// ─── Shared fragments ────────────────────────────────────────
-// Kept as constants so eight templates cannot drift into eight different
-// letterheads — which is what happened to the originals, where the same
-// address appeared in four slightly different forms.
-
-/** Tokens every template resolves, whatever else it needs. */
-export const COMPANY_TOKENS = [
-  "company_name",
-  "company_address",
-  "company_contact",
-] as const;
-
-const LETTER_STYLE = `
-      :root { color-scheme: light; }
-      @page { size: A4; margin: 20mm; }
-      body {
-        margin: 0;
-        font-family: 'Calibri', 'Segoe UI', Arial, sans-serif;
-        background: #ffffff;
-        color: #1f2937;
-        line-height: 1.6;
-      }
-      .wrapper { max-width: 760px; margin: 0 auto; background: #ffffff; }
-      .wrapper-inner { padding: 32px 36px 40px; }
-      .letterhead {
-        display: flex; justify-content: space-between; gap: 32px;
-        border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 28px;
-      }
-      .brand-name {
-        font-size: 18px; letter-spacing: 0.16em; text-transform: uppercase;
-        font-weight: 700; color: #0f172a; margin: 0;
-      }
-      .brand-info { font-size: 13px; color: #475569; margin: 2px 0 0; letter-spacing: 0.04em; }
-      .meta { min-width: 200px; text-align: right; font-size: 13px; color: #475569; }
-      .meta-label {
-        display: block; font-size: 11px; text-transform: uppercase;
-        letter-spacing: 0.22em; color: #1e3a8a; margin-top: 10px;
-      }
-      .meta-value { display: block; font-weight: 600; color: #0f172a; margin-top: 4px; }
-      p { margin: 16px 0; font-size: 16px; orphans: 3; widows: 3; }
-      strong { color: #0f172a; }
-      h1 { margin: 10px 0 22px; font-size: 28px; color: #1d4ed8; letter-spacing: -0.01em; }
-      h1, h2, h3 { page-break-after: avoid; }
-      .section { margin: 36px 0; page-break-inside: avoid; }
-      .section-title {
-        margin: 0 0 14px; font-size: 12px; text-transform: uppercase;
-        letter-spacing: 0.24em; color: #1e3a8a; font-weight: 700; page-break-after: avoid;
-      }
-      .section-body {
-        padding: 24px 28px; border: 1px solid #e2e8f0; border-radius: 18px; background: #ffffff;
-      }
-      .section-body p { margin: 12px 0; }
-      ul.bullet { margin: 12px 0 0 18px; padding: 0; }
-      ul.bullet li { margin: 10px 0; font-size: 15px; orphans: 2; widows: 2; }
-      table.data { width: 100%; border-collapse: collapse; margin-top: 16px; }
-      table.data th, table.data td {
-        text-align: left; padding: 11px 14px; font-size: 15px;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.35);
-      }
-      table.data th {
-        font-size: 12px; text-transform: uppercase; letter-spacing: 0.2em;
-        color: #475569; background: rgba(226, 232, 240, 0.45);
-      }
-      td.amount { text-align: right; font-weight: 600; color: #0f172a; }
-      tr.total td { font-weight: 700; background: rgba(37, 99, 235, 0.08); }
-      .note {
-        margin: 28px 0; padding: 18px 22px; border-left: 4px solid #2563eb;
-        background: rgba(59, 130, 246, 0.1); border-radius: 16px; font-size: 15px;
-        page-break-inside: avoid;
-      }
-      .signature { margin-top: 48px; page-break-inside: avoid; }
-      .signature strong { display: block; margin-bottom: 4px; }
-      .footer {
-        margin-top: 44px; border-top: 1px solid #e2e8f0; padding-top: 18px;
-        font-size: 13px; color: #64748b; page-break-inside: avoid;
-      }
-      a { color: #2563eb; text-decoration: none; }
-`;
-
-/**
- * The letterhead.
- *
- * Typographic rather than an image — see note 2 at the top of this file. The
- * registration line only appears on instruments of employment: a company number
- * belongs on a contract and on a certificate of service, not on a payslip.
- */
-function letterhead(meta: string, withRegistration = false): string {
-  const registration = withRegistration
-    ? '\n          <p class="brand-info">{{company_registration}}</p>'
-    : "";
-
-  return `      <div class="letterhead">
-        <div class="brand">
-          <p class="brand-name">{{company_name}}</p>
-          <p class="brand-info">{{company_address}}</p>
-          <p class="brand-info">{{company_contact}}</p>${registration}
-        </div>
-        <div class="meta">
-${meta}
-        </div>
-      </div>`;
-}
-
-function letterOpen(title: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>${title}</title>
-    <style>${LETTER_STYLE}    </style>
-  </head>
-  <body>
-    <div class="wrapper">
-      <div class="wrapper-inner">`;
-}
-
-const LETTER_CLOSE = `      </div>
-    </div>
-  </body>
-</html>`;
-
-const EMAIL_STYLE = `
-      :root { color-scheme: light; }
-      body {
-        font-family: "Segoe UI", Helvetica, Arial, sans-serif;
-        background: #f1f5f9; color: #0f172a; line-height: 1.7; margin: 0; padding: 0;
-      }
-      .wrapper { padding: 32px 16px; }
-      .card {
-        max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 20px;
-        border: 1px solid rgba(148, 163, 184, 0.3); padding: 36px;
-      }
-      .letterhead-meta { margin-bottom: 20px; }
-      .company-name {
-        margin: 0; font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase;
-        font-weight: 700; color: #0f172a;
-      }
-      .company-info { margin: 2px 0 0; font-size: 12px; letter-spacing: 0.04em; color: #475569; }
-      .rule { height: 1px; background: #e2e8f0; margin: 0 0 24px; }
-      .badge {
-        display: inline-block; padding: 6px 14px; border-radius: 999px;
-        background: rgba(37, 99, 235, 0.12); color: #1d4ed8; text-transform: uppercase;
-        letter-spacing: 0.22em; font-size: 11px; font-weight: 700;
-      }
-      h1 { color: #1d4ed8; margin: 18px 0 14px; font-size: 26px; }
-      p { margin: 14px 0; font-size: 16px; }
-      strong { color: #0f172a; }
-      .details {
-        margin: 24px 0; padding: 20px 24px; border-radius: 18px;
-        background: rgba(37, 99, 235, 0.06); border: 1px solid rgba(37, 99, 235, 0.18);
-      }
-      .details-row { margin: 10px 0; }
-      .details-label {
-        display: block; text-transform: uppercase; letter-spacing: 0.2em;
-        font-size: 11px; color: #1d4ed8; font-weight: 700; margin-bottom: 4px;
-      }
-      .details-value { font-size: 16px; font-weight: 600; }
-      .cta {
-        display: inline-block; margin-top: 20px; background: #1d4ed8; color: #ffffff;
-        padding: 12px 26px; border-radius: 999px; text-decoration: none; font-weight: 600;
-      }
-      .callout {
-        margin: 24px 0; padding: 16px 20px; border-left: 4px solid #2563eb;
-        border-radius: 16px; background: rgba(59, 130, 246, 0.08); font-size: 15px;
-      }
-      ul.bullet { margin: 12px 0 0 18px; padding: 0; }
-      ul.bullet li { margin: 8px 0; }
-      .footer { margin-top: 28px; font-size: 15px; color: #475569; }
-`;
-
-function emailOpen(title: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>${title}</title>
-    <style>${EMAIL_STYLE}    </style>
-  </head>
-  <body>
-    <div class="wrapper">
-      <div class="card">
-        <div class="letterhead-meta">
-          <p class="company-name">{{company_name}}</p>
-          <p class="company-info">{{company_address}}</p>
-          <p class="company-info">{{company_contact}}</p>
-        </div>
-        <div class="rule"></div>`;
-}
-
-const EMAIL_CLOSE = `      </div>
-    </div>
-  </body>
-</html>`;
-
 // ─── 1. Offer letter ─────────────────────────────────────────
 
+// The founder's quality bar for this template is a real TCS offer letter,
+// and a real one runs long: a short main letter carrying only what is
+// specific to this candidate (who, what role, what salary, by when), plus
+// lettered annexures carrying everything that is true of the role or the
+// company regardless of who is reading it — compensation arithmetic,
+// statutory grounding, the numbered terms, the conduct policy, the data
+// notice, the joining checklist. Splitting it this way is not padding for a
+// page count: it is what a document this size looks like once every fact a
+// real Indian employer puts in an offer is present and none of it is
+// repeated to hit a length. A single flat letter that tried to say all of
+// this in one undifferentiated scroll would bury the one page — the
+// candidate block, the salary, the deadline — that this candidate needs to
+// read first and read fastest.
+//
+// Six annexures, each answering one question a signed offer has to answer
+// somewhere:
+//   A — Compensation:        what does each rupee of the CTC become?
+//   B — Statutory benefits:  which Act requires which deduction, and how much?
+//   C — Terms and conditions: what is the candidate agreeing to, clause by clause?
+//   D — Code of conduct:     what standard of behaviour is expected, and against what law?
+//   E — Data protection:     what personal data is processed, and what rights exist over it?
+//   F — Joining checklist:   what must physically arrive on day one?
+// followed by a candidate acceptance page that names every annexure by
+// letter, so "I accept" cannot later be read as accepting only the page it
+// is printed on.
+//
+// Three things worth being explicit about, because they are easy to get
+// wrong in the other direction:
+//
+// 1. Annexure A's cost-to-company total excludes the group insurance
+//    premium on purpose, the same way this template's pre-existing Annexure
+//    1 did. `calculateSalaryStructure()` in `src/lib/payroll-engine.ts`
+//    treats insurance as a benefit disclosed in Annexure B, not a retiral
+//    folded into the headline CTC figure a candidate compares across offers
+//    — see `catalog.test.ts`'s reconciliation tests, which assert the
+//    printed total against the payroll engine's own arithmetic rather than
+//    trusting that a rewrite kept the two in agreement.
+//
+// 2. There is no general non-compete or restraint-of-trade clause anywhere
+//    in Annexure C. Section 27 of the Indian Contract Act, 1872 voids any
+//    agreement that restrains a person from exercising a lawful profession,
+//    trade or business, with narrow judicially-recognised exceptions that
+//    do not include an ordinary employment contract; a clause here
+//    promising what Indian law will not enforce is worse than no clause —
+//    the confidentiality and non-solicitation clauses that survive
+//    termination are the ones actually enforceable in this jurisdiction.
+//
+// 3. Annexure D's anti-bribery clause is written against the company's own
+//    code of conduct, not the Prevention of Corruption Act, 1988 — that Act
+//    governs public servants and those who bribe them, and a private-sector
+//    offer letter that cites it as the source of an employee's obligation
+//    is citing the wrong statute to the one person, the candidate, who is
+//    entitled to read this letter and trust that every citation in it is
+//    the one that actually applies.
 const OFFER_LETTER = `${letterOpen("{{company_name}} · Offer of Employment")}
 ${letterhead(
   `          <span class="meta-label">Offer date</span>
@@ -266,84 +189,83 @@ ${letterhead(
 )}
 
       <div class="candidate-block">
-        <p>{{full_name}}</p>
+        <p><strong>{{full_name}}</strong></p>
+        <p>{{candidate_address}}</p>
         <p>{{candidate_email}}</p>
       </div>
 
-      <h1>Welcome to {{company_name}}</h1>
+      <h1>Offer of Employment</h1>
+
+      <p><strong>Subject:</strong> Offer of employment as {{position_title}}, {{grade_level}}, {{business_unit}}</p>
 
       <p>Dear <strong>{{full_name}}</strong>,</p>
       <p>
-        We are delighted to offer you the position of <strong>{{position_title}}</strong> at
-        {{company_name}}. Your experience stood out throughout the selection process and we are
-        confident you will make an immediate impact.
+        We are delighted to offer you employment as <strong>{{position_title}}</strong> at
+        {{company_name}}, at the level of <strong>{{grade_level}}</strong> within our
+        <strong>{{business_unit}}</strong> business unit. Your experience stood out throughout the
+        selection process and we are confident you will make an immediate impact.
       </p>
       <p>
-        Your first day is planned for <strong>{{start_date}}</strong>. You will report to
-        <strong>{{manager_name}}</strong> and work <strong>{{work_mode}}</strong>, with standard
-        hours of <strong>{{working_hours}}</strong>. Your probation period is
-        <strong>{{probation_period}}</strong>.
+        Your work location is <strong>{{work_location}}</strong> and you will report to
+        <strong>{{manager_name}}</strong>. Your first day is planned for
+        <strong>{{start_date}}</strong>, working <strong>{{work_mode}}</strong> with standard hours
+        of <strong>{{working_hours}}</strong>. You will be on probation for
+        <strong>{{probation_period}}</strong> from your date of joining, as set out in Annexure C.
       </p>
+
+      <div class="section">
+        <p class="section-title">What this offer comprises</p>
+        <div class="section-body">
+          <p>
+            This letter is deliberately short: everything specific to you — your role, your
+            salary, your reporting line, the date by which you need to accept — is on this page.
+            Everything that is true of the role or the company regardless of who is reading it is
+            in the annexures below, which are as much a part of this offer as this page is.
+          </p>
+          <ul class="bullet">
+            <li><strong>Annexure A — Compensation.</strong> Your salary broken into its components, monthly and annual, and how it becomes a cost to the company.</li>
+            <li><strong>Annexure B — Statutory benefits and deductions.</strong> The Act behind every retiral and deduction on Annexure A, and the non-statutory benefits alongside them.</li>
+            <li><strong>Annexure C — Terms and conditions.</strong> The numbered clauses that govern your employment.</li>
+            <li><strong>Annexure D — Code of conduct and workplace policy.</strong> The standards of behaviour expected of you and of the company.</li>
+            <li><strong>Annexure E — Data protection.</strong> What personal data of yours we process, why, and your rights over it.</li>
+            <li><strong>Annexure F — Joining checklist.</strong> What to bring, and what to complete, on your date of joining.</li>
+          </ul>
+          <p>Please read all six before you sign the acceptance page at the end of this offer.</p>
+        </div>
+      </div>
 
       <div class="section">
         <p class="section-title">Compensation</p>
         <div class="section-body">
           <p>
-            Your total fixed compensation is <strong>{{annual_ctc}}</strong> per annum, paid
-            monthly in line with our payroll calendar.
+            Your gross annual salary is <strong>{{gross_salary}}</strong>, and your total cost to
+            the company — including the retirals described in Annexure B — is
+            <strong>{{annual_ctc}}</strong> a year. The full break-up, monthly and annual, is at
+            <strong>Annexure A</strong> to this letter.
           </p>
-          <table class="data">
-            <thead>
-              <tr><th>Component</th><th class="amount">Per annum</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>Basic salary</td><td class="amount">{{basic_salary}}</td></tr>
-              <tr><td>House rent allowance</td><td class="amount">{{hra}}</td></tr>
-              <tr><td>Special allowance</td><td class="amount">{{special_allowance}}</td></tr>
-              <tr><td>Other allowances</td><td class="amount">{{other_allowances}}</td></tr>
-              <tr class="total"><td>Gross salary</td><td class="amount">{{gross_salary}}</td></tr>
-            </tbody>
-          </table>
+        </div>
+      </div>
+
+      <div class="note">
+        This offer is open for your acceptance until <strong>{{offer_valid_until}}</strong>. If we
+        have not received your signed acceptance copy by that date, this offer lapses
+        automatically and the position will be offered to another candidate; no further notice
+        will be given.
+      </div>
+
+      <div class="section">
+        <p class="section-title">Performance pay</p>
+        <div class="section-body">
+          <p>
+            <strong>Monthly performance pay:</strong> {{performance_pay_monthly}} a month, paid
+            with salary and linked to your performance against agreed goals.
+          </p>
           <p>{{variable_pay_summary}}</p>
           <p>
-            Provident fund, employees' state insurance where applicable, professional tax and
-            income tax will be deducted in accordance with the statutes in force.
+            Performance pay and any variable component are reviewed
+            {{performance_review_cycle}}. Neither is part of the fixed compensation in Annexure A,
+            and neither is guaranteed by this letter.
           </p>
-        </div>
-      </div>
-
-      <div class="section">
-        <p class="section-title">Benefits</p>
-        <div class="section-body">
-          <ul class="bullet">
-            <li>Benefits coverage begins on <strong>{{benefit_start_date}}</strong>.</li>
-            <li>{{bonus_plan}}</li>
-            <li>{{additional_benefits}}</li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="section">
-        <p class="section-title">Policies you will acknowledge</p>
-        <div class="section-body">
-          <ul class="bullet">
-            <li><strong>Code of conduct.</strong> Integrity, respect and professionalism in all dealings.</li>
-            <li><strong>Data privacy and security.</strong> Handling of personal and company data under the controls in force.</li>
-            <li><strong>Confidentiality.</strong> Execution of the non-disclosure agreement on or before joining.</li>
-            <li><strong>Acceptable use.</strong> Company-approved devices and secure access practices.</li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="section">
-        <p class="section-title">Documents to bring</p>
-        <div class="section-body">
-          <ul class="bullet">
-            <li>Government-issued photo identification.</li>
-            <li>Cancelled cheque or bank passbook copy for salary credit.</li>
-            <li>Academic certificates and prior employment records.</li>
-            <li>Recent passport-size photographs.</li>
-          </ul>
         </div>
       </div>
 
@@ -355,24 +277,385 @@ ${letterhead(
         </div>
       </div>
 
-      <div class="note">
-        Please confirm your acceptance by <strong>{{signature_deadline}}</strong> so we can begin
-        your onboarding. Do reach out if anything here needs clarifying.
-      </div>
-
       <div class="signature">
-        <p>Warm regards,</p>
+        <p>For {{company_name}},</p>
         <strong>{{signatory_name}}</strong>
         <span>{{signatory_title}}</span>
-        <span>{{company_name}}</span>
       </div>
 
       <div class="footer">
         <p>
           This offer is contingent on the completion of onboarding formalities, background
-          verification and adherence to company policies.
+          verification and adherence to company policies, as set out in Annexures C and F.
         </p>
       </div>
+
+      <h2>Annexure A — Compensation</h2>
+      <div class="section">
+        <p class="section-title">Compensation break-up</p>
+        <div class="section-body">
+          <p>
+            Figures are annualised and rounded to the nearest rupee. Provident fund, professional
+            tax, income tax and any other deduction required by law apply on top of the payments
+            below and are described, with the statute behind each one, in Annexure B.
+          </p>
+          ${ledgerTable(
+            ["Component", "Monthly (INR)", "Annual (INR)"],
+            [
+              ledgerRow("Basic salary", "{{basic_salary_monthly}}", "{{basic_salary}}"),
+              ledgerRow("House rent allowance", "{{hra_monthly}}", "{{hra}}"),
+              ledgerRow("Special allowance", "{{special_allowance_monthly}}", "{{special_allowance}}"),
+              ledgerRow("Conveyance allowance", "{{conveyance_allowance_monthly}}", "{{conveyance_allowance}}"),
+              ledgerRow("Medical allowance", "{{medical_allowance_monthly}}", "{{medical_allowance}}"),
+              ledgerRow("Leave travel allowance", "{{lta_allowance_monthly}}", "{{lta_allowance}}"),
+              ledgerRow("Food card allowance", "{{food_card_allowance_monthly}}", "{{food_card_allowance}}"),
+              ledgerRow("Other / flexible allowances", "{{other_allowances_monthly}}", "{{other_allowances}}"),
+              ledgerTotalRow("Gross salary (A)", "{{gross_salary_monthly}}", "{{gross_salary}}"),
+              ledgerRow(
+                "Employer's provident fund contribution (B)",
+                "{{employer_pf_contribution_monthly}}",
+                "{{employer_pf_contribution}}"
+              ),
+              ledgerRow("Gratuity provision (C)", "—", "{{gratuity_provision}}"),
+              ledgerRow(
+                "Employer's ESI contribution, where applicable (D)",
+                "{{employer_esi_contribution_monthly}}",
+                "{{employer_esi_contribution}}"
+              ),
+              ledgerTotalRow("Total cost to company (A + B + C + D)", "—", "{{annual_ctc}}"),
+            ]
+          )}
+          <p>
+            House rent allowance is fixed at not less than 50% of basic salary, so it stays a
+            genuine housing allowance rather than a label for what is really further basic pay.
+            The food card allowance is disbursed through a pre-paid meal card under the Income Tax
+            Act's meal-voucher exemption and can be used only at the establishments the card's
+            issuer empanels.
+          </p>
+          <p>
+            Employees' State Insurance applies only where gross salary does not exceed the wage
+            ceiling the Act sets; row (D) above reads as a rupee figure where it applies to you
+            and as "Not applicable" where your salary is above that ceiling — either way, the
+            total below it is exact, not an estimate.
+          </p>
+          <p>
+            The total cost to company above is gross salary plus the three retirals in this table
+            and nothing else: it does not include the health-insurance premium the company also
+            pays on your behalf, which Annexure B discloses as a benefit rather than folding it
+            into the one figure you would use to compare this offer against another.
+          </p>
+        </div>
+      </div>
+
+      <h2>Annexure B — Statutory benefits and deductions</h2>
+
+      <div class="section">
+        <p class="section-title">Provident fund</p>
+        <div class="section-body">
+          <p>
+            The company contributes <strong>{{employer_pf_contribution}}</strong> a year — 12% of
+            basic salary, as required by the Employees' Provident Funds and Miscellaneous
+            Provisions Act, 1952 — to your provident fund account, matched by an equal deduction
+            from your own salary. Both contributions are credited to the Universal Account Number
+            you are issued on joining, which stays with you across employers for the rest of your
+            working life, so nothing needs to be transferred by hand if you leave the company —
+            only linked to your next employer's contributions.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Gratuity</p>
+        <div class="section-body">
+          <p>
+            The company provides <strong>{{gratuity_provision}}</strong> a year — 4.81% of basic
+            salary — toward gratuity under the Payment of Gratuity Act, 1972, payable on
+            separation once you complete five years of continuous service, or earlier on your
+            death or disablement, when the five-year requirement does not apply. Gratuity is a
+            provision the company carries against a future payment, not a sum added to your
+            take-home pay now.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Employees' State Insurance</p>
+        <div class="section-body">
+          <p>
+            The Employees' State Insurance Act, 1948 applies only where your gross salary does
+            not exceed the wage ceiling the Act prescribes. Where it applies, the company
+            contributes 3.25% and you contribute 0.75% of gross salary toward medical and cash
+            benefits administered by the Employees' State Insurance Corporation, in place of the
+            group health insurance described below rather than in addition to it. Row (D) of
+            Annexure A states whether this applies to you and, where it does, the exact amount.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Maternity benefit</p>
+        <div class="section-body">
+          <p>{{maternity_leave_summary}}</p>
+          <p>
+            This follows the Maternity Benefit Act, 1961 as amended in 2017: 26 weeks of paid
+            leave for your first two children, 12 weeks for a third, 12 weeks for a commissioning
+            or adopting mother, a crèche benefit where the Act requires one, and the option to
+            agree work-from-home once the paid leave period ends, where the nature of your role
+            allows it.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Bonus</p>
+        <div class="section-body">
+          <p>
+            Where the Payment of Bonus Act, 1965 applies to your role, a statutory bonus of
+            between 8.33% and 20% of eligible salary is paid annually, calculated the way the Act
+            requires; this is separate from, and does not reduce, the performance pay described
+            in the main letter above.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Professional tax and income tax</p>
+        <div class="section-body">
+          <p>
+            Professional tax is deducted at the rate your state of employment sets, subject to
+            the ceiling of INR 2,500 a year that Article 276 of the Constitution places on it.
+            Income tax is deducted at source under section 192 of the Income Tax Act, 1961, at the
+            rate your total income attracts; you may choose, for each financial year, between the
+            old tax regime and the new tax regime under section 115BAC, and the company will
+            deduct tax on the basis you declare. A Form 16 recording the tax deducted is issued to
+            you after the end of each financial year.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Other benefits</p>
+        <div class="section-body">
+          <ul class="bullet">
+            <li><strong>Health insurance:</strong> {{health_insurance_summary}}</li>
+            <li><strong>Loans:</strong> {{loan_policy_summary}}</li>
+            <li><strong>Professional memberships:</strong> {{professional_membership_summary}}</li>
+            <li><strong>Flexible benefits:</strong> {{flexible_benefit_pool}}</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="note">
+        The Code on Wages, 2019, the Industrial Relations Code, 2020, the Code on Social Security,
+        2020 and the Occupational Safety, Health and Working Conditions Code, 2020 consolidate the
+        Acts named above and elsewhere in this offer once they are brought into force; nothing in
+        this Annexure is intended to promise a benefit at a level below what the Act in force at
+        the relevant time actually requires.
+      </div>
+
+      <h2>Annexure C — Terms and conditions</h2>
+      <div class="section">
+        <div class="section-body">
+          <ol class="numbered">
+            <li><strong>Probation.</strong> You will be on probation for {{probation_period}} from your date of joining, during which your performance, conduct and suitability for the role will be assessed.</li>
+            <li><strong>Confirmation.</strong> Your employment is confirmed by a separate written communication once your probation is satisfactorily completed; the company may extend your probation once, by written notice stating the reason, where more time is genuinely needed to assess you.</li>
+            <li><strong>Training.</strong> Any training required for your role, whether before or after confirmation, is treated as time worked, and satisfactory completion of it is itself a condition of confirmation.</li>
+            <li><strong>Working hours and week.</strong> Your standard working hours are {{working_hours}}, exclusive of any additional hours reasonably required by your role from time to time, across the standard working week your location and function follow.</li>
+            <li><strong>Attendance.</strong> You are expected to record your attendance through the company's attendance system for every working day; unrecorded or unexplained absence is treated as leave without pay and, if it continues, as abandonment of employment.</li>
+            <li><strong>Leave.</strong> Your leave entitlement is as set out in the company's leave policy in force from time to time, which the letter of appointment referred to in clause 24 states in full for your grade and location.</li>
+            <li><strong>Notice period during probation.</strong> During probation, either party may end this employment by giving {{probation_notice_period}} written notice, or pay in lieu of that notice.</li>
+            <li><strong>Notice period after confirmation.</strong> After confirmation, either party may end this employment by giving {{notice_period}} written notice, or pay in lieu of that notice.</li>
+            <li><strong>Mobility and transfer.</strong> The company may transfer you to another department, function, location or group company, in India or abroad, as it considers necessary, without changing the substance of this offer; where a transfer requires relocation, the company's relocation policy in force at the time applies.</li>
+            <li><strong>No alternative employment or conflicting engagement.</strong> You will not, during your employment, take up any other employment, business, trade or consultancy, paid or unpaid, or any engagement that conflicts with the company's interests, without the company's prior written consent.</li>
+            <li><strong>Intellectual property.</strong> All work product, inventions, designs, code and other intellectual property you create in the course of your employment, using the company's resources or time, belongs to the company, and you assign all rights in it to the company as they arise; this survives the end of your employment for anything created during it.</li>
+            <li><strong>Confidentiality.</strong> You will keep confidential all information about the company, its clients and its business that comes to you during your employment, and will not disclose or use it for any purpose other than the company's business, both during your employment and after it ends, for as long as the information remains confidential; you will execute the company's confidentiality undertaking on or before joining.</li>
+            <li><strong>Non-solicitation.</strong> For {{notice_period}} after your employment ends, you will not solicit the company's employees to leave the company, or solicit the company's clients with whom you dealt during your employment, for a competing business.</li>
+            <li><strong>Background verification.</strong> This offer is subject to satisfactory verification of the education, employment and other particulars you have provided; a discrepancy discovered before joining is grounds for withdrawing this offer, and one discovered after joining is grounds for terminating your employment without notice.</li>
+            <li><strong>Pre-employment medical.</strong> This offer is subject to your being found medically fit by a physician nominated by the company.</li>
+            <li><strong>Retirement.</strong> The normal age of retirement is {{retirement_age}} years, subject to the company's retirement policy in force at the relevant time.</li>
+            <li><strong>Increments and promotions.</strong> Increments and promotions are at the company's discretion, based on periodic performance reviews and business requirements, and are not guaranteed by this letter.</li>
+            <li><strong>Company property.</strong> Any laptop, access card, SIM, documents or other company property issued to you must be returned in good condition on the date your employment ends, or earlier if the company asks; the company may recover the value of anything not returned from your final settlement.</li>
+            <li><strong>Disciplinary process.</strong> A concern about your conduct is put to you in writing, you are given a fair opportunity to respond, and any action taken follows the company's disciplinary policy in force at the time; nothing in this clause limits the company's right to terminate for cause under clause 21.</li>
+            <li><strong>Grievance redressal.</strong> A concern you wish to raise about your employment is addressed through the company's grievance redressal policy, and, where it concerns harassment, through the Internal Committee described in Annexure D.</li>
+            <li><strong>Termination for cause.</strong> The company may terminate your employment without notice or pay in lieu of notice for misconduct, breach of this offer, or an act that seriously damages the company's interests or reputation.</li>
+            <li><strong>Resignation and handover.</strong> Where you resign, you will serve the notice period in clause 8 (or clause 7, during probation) and complete a handover of your work and any company property to the person the company nominates.</li>
+            <li><strong>Documents on joining.</strong> Please bring the documents listed in Annexure F on your date of joining.</li>
+            <li><strong>Letter of appointment.</strong> A detailed letter of appointment, confirming these terms and adding those specific to your role, will follow on your date of joining.</li>
+            <li><strong>Company rules.</strong> Your employment is governed by the company's rules, policies and codes of conduct in force from time to time, including those in Annexure D, which the company may amend at its discretion.</li>
+            <li><strong>Data privacy.</strong> The company processes your personal data as described in Annexure E, and by accepting this offer you acknowledge that processing.</li>
+            <li><strong>Notices.</strong> A notice under this offer is validly given if sent in writing to the address or email either of us has most recently given the other in writing.</li>
+            <li><strong>Governing law and jurisdiction.</strong> This offer, and your employment under it, is governed by the laws of India, and the courts having jurisdiction over the company's registered office at {{company_address}} have exclusive jurisdiction over any dispute arising from it.</li>
+            <li><strong>Entire agreement.</strong> This offer, its annexures and the letter of appointment that follows it together record the entire agreement between you and the company on the subject; anything said or promised during the selection process that is not written here does not bind the company.</li>
+            <li><strong>Severability and amendment.</strong> If any clause in this offer is found unenforceable, the rest continues to apply, and no amendment to this offer binds either of us unless it is in writing and signed by both.</li>
+          </ol>
+        </div>
+      </div>
+
+      <h2>Annexure D — Code of conduct and workplace policy</h2>
+
+      <div class="section">
+        <p class="section-title">Prevention of sexual harassment</p>
+        <div class="section-body">
+          <p>
+            The company has zero tolerance for sexual harassment at the workplace and maintains
+            an Internal Committee under section 4 of the Sexual Harassment of Women at Workplace
+            (Prevention, Prohibition and Redressal) Act, 2013, to receive and inquire into
+            complaints. A complaint may be made by, or on behalf of, any employee, and the
+            Committee's inquiry is conducted in confidence, as section 16 of the Act requires; the
+            identity of the complainant, the respondent and any witness is not disclosed outside
+            the inquiry.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Anti-bribery and business conduct</p>
+        <div class="section-body">
+          <p>
+            You will not offer, give, solicit or accept a bribe, kickback or improper advantage in
+            connection with the company's business, whether the counterparty is in the private or
+            the public sector, and you will disclose to the company any gift or hospitality beyond
+            the value the company's business conduct policy permits. This obligation is a term of
+            your employment under this offer, independent of, and broader than, whatever criminal
+            liability a public official or the person bribing one carries under the Prevention of
+            Corruption Act, 1988 — a statute that governs public servants, not the private
+            employment relationship this letter creates.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Conflict of interest</p>
+        <div class="section-body">
+          <p>
+            You will disclose to your reporting manager any interest — financial, familial or
+            otherwise — that could reasonably be seen to conflict with your duties, before it
+            becomes relevant to a decision you are involved in, and you will not use your position
+            to benefit yourself, your family or a business connected to either at the company's
+            expense.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Information security and acceptable use</p>
+        <div class="section-body">
+          <p>
+            Company systems, accounts and devices are provided for company business and are to be
+            used in line with the company's information security policy; you will not share your
+            credentials, install unapproved software on company devices, or move company data to
+            a personal account or device. A security incident you cause or discover is to be
+            reported to the company's information security contact without delay.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Public statements</p>
+        <div class="section-body">
+          <p>
+            You will not speak to the press, post on social media, or otherwise make a public
+            statement on the company's behalf, or in a way that identifies you as its employee on
+            a matter concerning the company's business, without the prior approval of the
+            company's communications function.
+          </p>
+        </div>
+      </div>
+
+      <h2>Annexure E — Data protection</h2>
+
+      <div class="section">
+        <p class="section-title">What we process, and why</p>
+        <div class="section-body">
+          <p>
+            To make and administer this offer and, once you join, your employment, the company
+            processes your personal data — your contact and identity details, the education and
+            employment history you gave us, the outcome of the background verification at clause
+            14 of Annexure C, your bank account for salary, and, over the course of your
+            employment, your attendance, performance and payroll records. Some of this we process
+            because you have consented to it under section 6 of the Digital Personal Data
+            Protection Act, 2023 by applying for this role and accepting this offer; the rest —
+            payroll, statutory filings, and anything a court or regulator can compel — we process
+            for the legitimate uses section 7 of that Act permits without asking for separate
+            consent, principally the performance of this employment contract and compliance with
+            the labour and tax law described in Annexure B.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">How long we keep it</p>
+        <div class="section-body">
+          <p>
+            We keep your personal data for as long as your employment continues and for the
+            period after it ends that the applicable labour, tax and limitation law requires
+            records to be kept for, and no longer than that once neither this employment nor a
+            legal requirement needs it.
+          </p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Your rights</p>
+        <div class="section-body">
+          <ul class="bullet">
+            <li><strong>Access.</strong> You may ask, under section 11 of the Act, for a summary of the personal data we hold about you and the processing we do with it.</li>
+            <li><strong>Correction and erasure.</strong> You may ask, under section 12, for data that is inaccurate or no longer necessary to be corrected or erased, subject to what we are separately required by law to retain.</li>
+            <li><strong>Grievance redressal.</strong> You may raise a grievance about how we process your personal data with {{hr_contact_name}} at {{hr_contact_email}} under section 13, and we will respond within the period the Act prescribes.</li>
+            <li><strong>Nomination.</strong> You may nominate another individual, under section 14, to exercise these rights on your behalf in the event of your death or incapacity.</li>
+            <li><strong>Escalation.</strong> If you are not satisfied with our response, you may complain to the Data Protection Board of India under section 18 of the Act.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>Annexure F — Joining checklist</h2>
+
+      <div class="section">
+        <p class="section-title">Documents to bring on your date of joining</p>
+        <div class="section-body">
+          <p>Please bring the original and one self-attested photocopy of each of the following:</p>
+          <ul class="bullet">
+            <li>A government-issued photo identity proof (passport, voter ID, driving licence or Aadhaar).</li>
+            <li>Your PAN card.</li>
+            <li>Your Aadhaar card.</li>
+            <li>Proof of your current residential address.</li>
+            <li>Certificates and mark sheets for every educational qualification listed in your application.</li>
+            <li>Your relieving letter and the last three months' payslips from your most recent employer, where you have one.</li>
+            <li>A cancelled cheque, or a bank passbook page, for the account your salary is to be paid into.</li>
+            <li>Four recent passport-size photographs.</li>
+          </ul>
+          <p>In addition, please bring: {{documents_to_bring}}.</p>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Before you join</p>
+        <div class="section-body">
+          <ul class="bullet">
+            <li>Return your signed acceptance of this offer, as described on the acceptance page below.</li>
+            <li>Complete the background verification consent form the company will send you separately.</li>
+            <li>Complete the pre-employment medical declaration and, where the company's physician requires it, the examination at clause 15 of Annexure C.</li>
+            <li>If you hold an existing provident fund account, be ready to give its Universal Account Number so your new employer's contributions are linked to it from your date of joining.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>Acceptance</h2>
+      <div class="section">
+        <p class="section-title">Candidate's acceptance</p>
+        <div class="section-body">
+          <p>
+            I have read and understood this offer of employment in full, including Annexure A
+            (Compensation), Annexure B (Statutory benefits and deductions), Annexure C (Terms and
+            conditions), Annexure D (Code of conduct and workplace policy), Annexure E (Data
+            protection) and Annexure F (Joining checklist), and I accept the offer on those terms.
+          </p>
+          <p>Signature: ______________________ &nbsp;&nbsp;&nbsp; Date: ______________________</p>
+          <p>Name: {{full_name}}</p>
+          <p>Place: ______________________</p>
+        </div>
+      </div>
+${OFFER_ANNEXURES}
 ${LETTER_CLOSE}`;
 
 // ─── 2. Payslip statement ────────────────────────────────────
@@ -382,7 +665,8 @@ ${letterhead(
   `          <span class="meta-label">Pay period</span>
           <span class="meta-value">{{pay_period}}</span>
           <span class="meta-label">Generated</span>
-          <span class="meta-value">{{issue_date}}</span>`
+          <span class="meta-value">{{issue_date}}</span>`,
+  false
 )}
 
       <h1>Payslip statement</h1>
@@ -478,7 +762,8 @@ ${letterhead(
   `          <span class="meta-label">Pay period</span>
           <span class="meta-value">{{pay_period}}</span>
           <span class="meta-label">Issued</span>
-          <span class="meta-value">{{issue_date}}</span>`
+          <span class="meta-value">{{issue_date}}</span>`,
+  false
 )}
 
       <h1>Your payslip for {{pay_period}}</h1>
@@ -523,7 +808,8 @@ ${letterhead(
   `          <span class="meta-label">Issued</span>
           <span class="meta-value">{{issue_date}}</span>
           <span class="meta-label">Reference</span>
-          <span class="meta-value">{{application_reference}}</span>`
+          <span class="meta-value">{{application_reference}}</span>`,
+  false
 )}
 
       <h1>Invitation to interview</h1>
@@ -587,21 +873,15 @@ ${letterhead(
 
       <p>
         This is to certify that <strong>{{full_name}}</strong> was employed with
-        {{company_name}} as <strong>{{position_title}}</strong> from
-        <strong>{{start_date}}</strong> to <strong>{{end_date}}</strong>.
+        {{company_name}} in the <strong>{{department}}</strong> department as
+        <strong>{{position_title}}</strong> from <strong>{{join_date}}</strong> to
+        <strong>{{last_working_day}}</strong>.
       </p>
-
-      <div class="section">
-        <p class="section-title">Responsibilities</p>
-        <div class="section-body">
-          <p>{{key_responsibilities}}</p>
-        </div>
-      </div>
 
       <div class="section">
         <p class="section-title">Conduct</p>
         <div class="section-body">
-          <p>{{strength_highlights}}</p>
+          <p>{{conduct_remark}}</p>
         </div>
       </div>
 
@@ -753,37 +1033,49 @@ ${letterhead(
 )}
 
       <div class="candidate-block">
-        <p>{{full_name}}</p>
+        <p><strong>{{full_name}}</strong></p>
+        <p>{{candidate_address}}</p>
         <p>{{candidate_email}}</p>
       </div>
 
-      <h1>Your internship at {{company_name}}</h1>
+      <h1>Internship Offer</h1>
+
+      <p><strong>Subject:</strong> Offer of internship as {{position_title}}, {{business_unit}}</p>
 
       <p>Dear <strong>{{full_name}}</strong>,</p>
       <p>
         We are pleased to offer you an internship as <strong>{{position_title}}</strong> at
-        {{company_name}}. This is a training placement, and it is designed so that you finish it
-        having done real work you can point to.
+        {{company_name}}, within our <strong>{{business_unit}}</strong> business unit. This is a
+        training placement, and it is designed so that you finish it having done real work you
+        can point to.
       </p>
       <p>
-        Your internship runs from <strong>{{start_date}}</strong> to
-        <strong>{{engagement_end_date}}</strong>. You will be mentored by
-        <strong>{{mentor_name}}</strong> and work <strong>{{work_mode}}</strong>, with expected
-        hours of <strong>{{working_hours}}</strong>.
+        Your internship is a fixed term running from <strong>{{start_date}}</strong> to
+        <strong>{{engagement_end_date}}</strong> and does not extend beyond that date except by a
+        separate letter signed by both of us. You will be mentored by
+        <strong>{{mentor_name}}</strong> and work <strong>{{work_mode}}</strong> at
+        <strong>{{work_location}}</strong>, with expected hours of
+        <strong>{{working_hours}}</strong>.
       </p>
 
       <div class="section">
-        <p class="section-title">Stipend</p>
+        <p class="section-title">Stipend and term</p>
         <div class="section-body">
           <p>
-            You will receive a stipend of <strong>{{stipend_amount}}</strong> per month, paid in
-            line with our normal payment cycle.
+            You will receive a stipend of <strong>{{stipend_amount}}</strong> a month, paid in
+            line with our normal payment cycle, for the fixed term below.
           </p>
+          ${table([
+            row("Monthly stipend", "{{stipend_amount}}"),
+            row("Internship start", "{{start_date}}"),
+            row("Internship end", "{{engagement_end_date}}"),
+            row("Working hours", "{{working_hours}}"),
+          ])}
           <p>
-            A stipend is paid to support you during training rather than as wages for employment.
-            An internship does not attract provident fund, employees' state insurance or gratuity,
-            and no such deduction or contribution will be made. The stipend remains your income and
-            you should account for it accordingly.
+            A stipend supports you during training rather than paying you as an employee. This
+            internship does not attract provident fund, employees' state insurance or gratuity,
+            and no such deduction or contribution will be made — the stipend remains your income
+            and you should account for it accordingly.
           </p>
         </div>
       </div>
@@ -794,35 +1086,49 @@ ${letterhead(
           <ul class="bullet">
             <li>Work on <strong>{{project_summary}}</strong>, with your mentor reviewing progress.</li>
             <li>{{learning_outcomes}}</li>
-            <li>A certificate on successful completion of the full term.</li>
+            <li>
+              A certificate on successful completion of the full term, recording your role, the
+              dates the internship ran between, and the work you did, signed by
+              {{mentor_name}} and countersigned by people operations — issued once, on the day
+              your internship ends, and not before, since it certifies a term actually completed
+              rather than one merely begun.
+            </li>
           </ul>
         </div>
       </div>
 
       <div class="section">
-        <p class="section-title">What we ask of you</p>
+        <p class="section-title">Conversion to permanent employment</p>
         <div class="section-body">
-          <ul class="bullet">
-            <li><strong>Confidentiality.</strong> Anything you see here stays here, during and after the internship.</li>
-            <li><strong>Intellectual property.</strong> Work produced during the internship belongs to {{company_name}}.</li>
-            <li><strong>Conduct.</strong> The same standards of integrity and respect we hold ourselves to.</li>
-            <li><strong>Data and devices.</strong> Company-approved access, handled securely.</li>
-          </ul>
+          <p>{{conversion_policy_summary}}</p>
+          <p>
+            Any offer of permanent employment following this internship will be made in a
+            separate letter of appointment, on terms agreed at that time — completing this
+            internship creates no entitlement to one and no employment relationship in the
+            meantime.
+          </p>
         </div>
       </div>
 
       <div class="section">
-        <p class="section-title">Ending the internship</p>
+        <p class="section-title">Terms of the internship</p>
         <div class="section-body">
-          <p>
-            Either of us may end the internship early with <strong>{{notice_period}}</strong>
-            written notice. We would much rather talk first if something is not working.
-          </p>
-          <p>
-            This internship does not create an employment relationship and carries no commitment
-            to an offer of employment at the end of it. Where a role is open and you are a fit, we
-            will tell you.
-          </p>
+          <ol class="numbered">
+            <li><strong>Term and extension.</strong> This internship runs for the fixed term stated above, from {{start_date}} to {{engagement_end_date}}, and does not extend beyond that date except by a separate letter signed by both of us; continuing to work past that date without such a letter does not itself extend the term.</li>
+            <li><strong>Stipend and payment cycle.</strong> Your stipend is paid monthly, in line with the company's normal payment cycle, for the term stated above and for no period beyond it.</li>
+            <li><strong>Working hours and attendance.</strong> Your expected hours are {{working_hours}}; you are expected to record your attendance for every working day, and unrecorded or unexplained absence may reduce your stipend for the period missed.</li>
+            <li><strong>Leave.</strong> Leave during the internship is as set out in the company's internship policy communicated to you separately; leave taken beyond that entitlement is unpaid and, if it is extensive, may shorten the practical benefit of the remaining term without shortening the term itself.</li>
+            <li><strong>Mentorship and review.</strong> {{mentor_name}} will review your progress at agreed intervals through the internship and provide the feedback the certificate at the end of this letter's "What you can expect" section records.</li>
+            <li><strong>Statutory position.</strong> A stipend paid for training is not wages paid for work, so provident fund, employees' state insurance and gratuity do not apply to it and no such deduction or contribution will be made; if, despite the intention of this offer, your engagement were ever found in fact to be one of employment rather than training, the ordinary statutory contributions described in a full-time offer letter would apply from the point that finding was made, not retrospectively invented for the whole term.</li>
+            <li><strong>No alternative engagement.</strong> You will not, during this internship, take up any other internship, employment or consultancy, paid or unpaid, without the company's prior written consent.</li>
+            <li><strong>Confidentiality.</strong> Anything you see here stays here, during the internship and after it ends, for as long as the information remains confidential.</li>
+            <li><strong>Intellectual property.</strong> Work you produce during the internship, using the company's resources or time, belongs to {{company_name}}, and you assign all rights in it to the company as they arise.</li>
+            <li><strong>Conduct and workplace policy.</strong> The company's code of conduct, including its policy against workplace harassment under the Sexual Harassment of Women at Workplace (Prevention, Prohibition and Redressal) Act, 2013, applies to you exactly as it applies to every employee for the duration of your internship.</li>
+            <li><strong>Background verification.</strong> This offer is subject to satisfactory verification of your student or graduate status and the other particulars you have provided; a material discrepancy is grounds for withdrawing this offer before it starts or ending the internship without notice after it has.</li>
+            <li><strong>Company property and data.</strong> Any device, access card or account issued to you is for the internship's purposes only, is to be used in line with the company's information security policy, and must be returned, or its access revoked, on the date your internship ends.</li>
+            <li><strong>Data privacy.</strong> The company processes your personal data — the particulars in your application, your attendance, and your mentor's review of your work — to administer this internship, under the Digital Personal Data Protection Act, 2023, and for no longer than the internship and the period after it that record-keeping law requires; by accepting this offer you acknowledge that processing.</li>
+            <li><strong>Termination.</strong> Either of us may end the internship early with <strong>{{notice_period}}</strong> written notice; we would much rather talk first if something is not working. This internship does not create an employment relationship and carries no commitment to an offer of employment at the end of it — where a role is open and you are a fit, we will tell you.</li>
+          </ol>
         </div>
       </div>
 
@@ -835,15 +1141,24 @@ ${letterhead(
       </div>
 
       <div class="note">
-        This offer is open until <strong>{{offer_valid_until}}</strong>. Please confirm by then so
-        we can get your onboarding started.
+        This offer is open for your acceptance until <strong>{{offer_valid_until}}</strong>. If we
+        have not received your signed acceptance copy by that date, this offer lapses
+        automatically and we will offer the placement to another candidate.
       </div>
 
       <div class="signature">
-        <p>Warm regards,</p>
+        <p>For {{company_name}},</p>
         <strong>{{signatory_name}}</strong>
         <span>{{signatory_title}}</span>
-        <span>{{company_name}}</span>
+      </div>
+
+      <div class="section">
+        <p class="section-title">Intern's acceptance</p>
+        <div class="section-body">
+          <p>I have read and understood the terms of this internship offer and I accept them.</p>
+          <p>Signature: ______________________ &nbsp;&nbsp;&nbsp; Date: ______________________</p>
+          <p>Name: {{full_name}}</p>
+        </div>
       </div>
 
       <div class="footer">

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { extractTokens, render, validateTemplate } from "../document-rules";
 import { COMPANY_TOKENS, TEMPLATE_CATALOG, templateByType } from "./catalog";
 import { ENGAGEMENT_TYPES, compensationTokenFor, ruleFor } from "@/lib/offer-rules";
+import { calculateSalaryStructure, formatINR } from "@/lib/payroll-engine";
 
 /**
  * A payload that resolves every token in the catalog.
@@ -282,6 +283,115 @@ describe("the content survived the port", () => {
       "offer_letter_internship",
       "offer_letter_part_time",
     ]);
+  });
+});
+
+// The payroll engine has no concept of a food card as a line item separate
+// from "other allowances" — Annexure A's carve-out is a presentation
+// decision this template makes, not one calculateSalaryStructure makes, so
+// it is subtracted here rather than asked of the engine. Kept small enough
+// that it stays inside otherAllowances at every CTC this suite exercises.
+const FOOD_CARD_ANNUAL = 12_000;
+
+describe.each([
+  ["a salary well above the ESI wage ceiling", 2_400_000],
+  ["a salary at which employer ESI genuinely applies", 240_000],
+] as const)("Annexure A reconciles with the rest of the offer letter (%s)", (_label, ctc) => {
+  // The compensation break-up is the one part of a signed offer letter a
+  // candidate actually checks their payslip against. Annexure A lists eight
+  // additive components under a "Gross salary (A)" total, then adds three
+  // retirals — provident fund, gratuity and employer ESI where it applies —
+  // to reach a "Total cost to company (A + B + C + D)" total: four separate
+  // tokens that nothing but discipline keeps in agreement. Running this at
+  // two CTCs, one comfortably above the ESI wage ceiling and one genuinely
+  // below it, is what actually exercises row (D) instead of leaving it
+  // permanently zero and untested by every case in the suite. This uses
+  // calculateSalaryStructure, the same payroll engine every payslip in this
+  // product is computed from, as a source of realistic numbers that are
+  // additive by construction, then renders the real template and checks the
+  // totals it prints actually agree with the rows above them.
+  const structure = calculateSalaryStructure(ctc);
+
+  const components = {
+    basic_salary: structure.basic,
+    hra: structure.hra,
+    special_allowance: structure.specialAllowance,
+    conveyance_allowance: structure.conveyanceAllowance,
+    medical_allowance: structure.medicalAllowance,
+    lta_allowance: structure.lta,
+    food_card_allowance: FOOD_CARD_ANNUAL,
+    other_allowances: structure.otherAllowances - FOOD_CARD_ANNUAL,
+  };
+
+  // Total cost to company deliberately excludes the group insurance premium.
+  // The premium is already disclosed in prose under "Other benefits" in
+  // Annexure B — folding it back into this total would silently inflate the
+  // one figure Annexure A promises is gross salary plus provident fund,
+  // gratuity and employer ESI, nothing else.
+  const totalCtc =
+    structure.grossSalary + structure.employerPF + structure.gratuity + structure.employerESI;
+
+  it("the payroll engine's own components sum to the gross salary this letter quotes", () => {
+    // A guard on the fixture itself: if calculateSalaryStructure ever stopped
+    // being additive, or the food-card carve-out ever exceeded
+    // otherAllowances, every assertion below would still pass, just against
+    // a broken baseline — this is what would catch that instead.
+    expect(structure.otherAllowances).toBeGreaterThanOrEqual(FOOD_CARD_ANNUAL);
+    const sumOfParts = Object.values(components).reduce((total, value) => total + value, 0);
+    expect(sumOfParts).toBe(structure.grossSalary);
+  });
+
+  it("never lets the total cost-to-company figure quietly absorb the insurance premium", () => {
+    // structure.ctc is the number a naive integration would reach for first,
+    // since it sits right there on the same object — this is what would
+    // catch that temptation before it shipped a CTC a candidate's payslip
+    // will never match.
+    expect(structure.ctc).toBeGreaterThan(totalCtc);
+    expect(structure.ctc - totalCtc).toBe(structure.insurance);
+  });
+
+  it("prints a gross salary and a total CTC in Annexure A that agree with the rows feeding them", () => {
+    const offer = templateByType("offer_letter")!;
+    const values = payloadFor(offer.body);
+
+    values.basic_salary = formatINR(components.basic_salary);
+    values.hra = formatINR(components.hra);
+    values.special_allowance = formatINR(components.special_allowance);
+    values.conveyance_allowance = formatINR(components.conveyance_allowance);
+    values.medical_allowance = formatINR(components.medical_allowance);
+    values.lta_allowance = formatINR(components.lta_allowance);
+    values.food_card_allowance = formatINR(components.food_card_allowance);
+    values.other_allowances = formatINR(components.other_allowances);
+    values.gross_salary = formatINR(structure.grossSalary);
+    values.employer_pf_contribution = formatINR(structure.employerPF);
+    values.gratuity_provision = formatINR(structure.gratuity);
+    values.employer_esi_contribution =
+      structure.employerESI > 0 ? formatINR(structure.employerESI) : "Not applicable";
+    values.annual_ctc = formatINR(totalCtc);
+
+    const result = render(offer.body, values);
+    expect(result.missing).toEqual([]);
+
+    // Every line item Annexure A promises to itemise actually appears in the
+    // rendered document, so a row cannot be dropped from the table without a
+    // test noticing its figure went missing from the page.
+    for (const amount of Object.values(components)) {
+      expect(result.body).toContain(formatINR(amount));
+    }
+    expect(result.body).toContain(formatINR(structure.employerPF));
+    expect(result.body).toContain(formatINR(structure.gratuity));
+
+    // "Gross salary (A)" must be the sum of the rows above it — the previous
+    // test established that identity for these exact numbers, so finding
+    // that same figure here confirms the template renders it, not some
+    // second, independently-supplied gross salary that could disagree.
+    expect(result.body).toContain(formatINR(structure.grossSalary));
+
+    // "Total cost to company (A + B + C + D)" must equal gross salary plus
+    // the three retirals immediately above it in the table, not
+    // structure.ctc, which additionally carries the insurance premium.
+    expect(totalCtc).not.toBe(structure.ctc);
+    expect(result.body).toContain(formatINR(totalCtc));
   });
 });
 

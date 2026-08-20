@@ -28,11 +28,91 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { execFileSync } from "node:child_process";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { applyCompanyLogo, extractCompanyLogoUrl } from "../src/lib/document-templates/letter-kit.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..");
-const OUT = path.join(os.homedir(), "Desktop", "Circuvent-Letters");
+// `os.homedir()/Desktop` is the wrong answer on a OneDrive-managed machine.
+// Known Folder Move redirects the shell's Desktop to
+// "<home>\OneDrive - <Tenant>\Desktop" and leaves the old literal
+// "<home>\Desktop" in place, empty and orphaned. Writing there succeeds, the
+// script reports every file written, and the person is looking at a Desktop
+// that will never contain them - a silent failure that reads as a success.
+//
+// Scanning the home directory for an "OneDrive*" folder is not enough either:
+// the redirected folder is a reparse point, so readdirSync does not report it
+// as a directory and the scan silently misses it. Ask Windows instead - the
+// User Shell Folders registry value is what Explorer itself resolves.
+function resolveDesktop() {
+  const fallback = path.join(os.homedir(), "Desktop");
+  if (process.platform !== "win32") return fallback;
+  try {
+    const out = execFileSync(
+      "reg",
+      [
+        "query",
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders",
+        "/v",
+        "Desktop",
+      ],
+      { encoding: "utf8" },
+    );
+    const match = out.match(/Desktop\s+REG_(?:EXPAND_)?SZ\s+(.+)/);
+    if (!match) return fallback;
+    const expanded = match[1]
+      .trim()
+      .replace(/%([^%]+)%/g, (whole, name) => process.env[name] ?? whole);
+    return fs.existsSync(expanded) ? expanded : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const OUT = path.join(resolveDesktop(), "Circuvent-Letters");
+
+/**
+ * The deployment-wide fallback logo URL a tenant carries when it has not
+ * configured one of its own -- the identical two-environment-variable rule
+ * as `defaultLogoUrl()` in `src/lib/document-templates/branding.ts`,
+ * `referral-invite-email.ts` and `intern-mail.ts`. Duplicated here rather
+ * than imported for the same reason `branding.ts` duplicates it from those
+ * two files rather than the reverse: this script runs under plain `node`,
+ * not `tsx`, so it can only import the plain-JavaScript `letter-kit.mjs`
+ * (which is why `applyCompanyLogo`/`extractCompanyLogoUrl` are imported from
+ * there directly, above) and reaching `branding.ts`'s TypeScript would mean
+ * spawning the same `tsx` subprocess `loadCatalogTemplates()` below uses only
+ * because it has no other way to read `catalog.ts` at all. A sample pack
+ * that resolved a different logo than the one the running application would
+ * resolve for the exact same unconfigured tenant would be reviewing the
+ * wrong picture -- and the one thing this file exists to catch is precisely
+ * that kind of gap between what is sent and what gets reviewed.
+ */
+function defaultLogoUrl() {
+  const configured = process.env.MAIL_LOGO_URL?.trim();
+  if (configured) return configured;
+  const careers = process.env.NEXT_PUBLIC_CAREERS_URL?.trim() || "https://career.circuvent.com";
+  return `${careers.replace(/\/$/, "")}/logo-mark-128.png`;
+}
+
+/**
+ * Mirrors `readLogoBytes()` in `src/lib/documents/render-pdf.ts` exactly, for
+ * the same reason: the unconfigured deployment default is this repository's
+ * own bundled `public/logo-mark-128.png`, read straight off disk, because
+ * fetching it over HTTPS would only ask this same machine to serve itself
+ * the file it already has. Anything else -- a tenant's own hosted logo, or
+ * an operator's `MAIL_LOGO_URL` override -- is not a file this repository
+ * ships, so there is no local copy to reach for and it is fetched instead.
+ */
+async function readLogoBytes(logoUrl) {
+  if (!process.env.MAIL_LOGO_URL?.trim() && logoUrl === defaultLogoUrl()) {
+    return new Uint8Array(fs.readFileSync(path.join(REPO, "public", "logo-mark-128.png")));
+  }
+  const response = await fetch(logoUrl);
+  if (!response.ok) throw new Error(`Logo fetch responded with HTTP ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
 
 /** Fields every letter shares, so the two people below only carry what differs. */
 const COMMON = {
@@ -85,6 +165,20 @@ const COMMON = {
   leave_days: "1",
   lop_days: "0",
   professional_tax: "INR 200",
+  // A flat meal-card benefit, not scaled by grade: INR 50 per meal, two meals
+  // a working day, 22 working days a month is the actual Rule 3(7)(iii)
+  // exemption arithmetic real payroll teams use, and it is the same
+  // arithmetic for an intern as for a senior engineer, so it lives here once
+  // rather than being invented twice at two different amounts.
+  food_card_allowance: "INR 26,400",
+  food_card_allowance_monthly: "INR 2,200",
+  // Both sample people are above the ESI wage ceiling (the employee on
+  // salary, the intern because ESI never applies to a stipend in the first
+  // place), so both read "Not applicable" here — a real tenant whose payroll
+  // engine reports a wage below the ceiling would see the rupee figure
+  // instead, as Annexure A's own text explains.
+  employer_esi_contribution: "Not applicable",
+  employer_esi_contribution_monthly: "Not applicable",
   trade_name: "Software Engineering",
   training_plan: "Structured 12-month programme with a mentor and quarterly assessment.",
   scope_of_work: "Backend engineering services for the payroll platform.",
@@ -95,6 +189,20 @@ const COMMON = {
   day_one_schedule:
     "9:30 induction and paperwork, 11:00 IT setup and accounts, 12:30 lunch with the team, 2:00 meet your reporting manager, 3:30 first walkthrough of the codebase.",
   dress_code: "Smart casual. There is no formal dress code.",
+  performance_review_cycle: "every six months, in April and October",
+  health_insurance_summary:
+    "Family floater cover of INR 5,00,000 for the employee, spouse and up to two dependent children, with the full annual premium paid by the company.",
+  maternity_leave_summary:
+    "26 weeks of paid maternity leave for the primary caregiver, as required by the Maternity Benefit Act, 1961.",
+  loan_policy_summary:
+    "Interest-free salary advances of up to one month's basic pay are available after confirmation, recovered over six months.",
+  professional_membership_summary:
+    "Annual membership of one professional body relevant to your role, reimbursed on production of receipts.",
+  retirement_age: "58",
+  flexible_benefit_pool:
+    "A flexible-benefit pool of INR 50,000 a year, which you may allocate across meal vouchers, fuel reimbursement and telephone reimbursement, subject to policy limits and applicable tax rules.",
+  conversion_policy_summary:
+    "Interns who complete the term with a satisfactory performance review are considered for conversion to a permanent Software Engineer role, subject to business need and a separate written offer at that time.",
 };
 
 /** A real employee and a real intern, so the difference between them is visible. */
@@ -122,10 +230,26 @@ const PEOPLE = {
       employment_type: "Full-time, permanent",
       probation_period: "6 months",
       notice_period: "60 days",
-      annual_ctc: "INR 24,00,000",
-      basic_salary: "INR 12,00,000",
+      grade_level: "M3 — Senior Engineer",
+      business_unit: "Engineering — Payroll Platform Group",
+      candidate_address: "Flat 302, Sri Sai Residency, Kondapur, Hyderabad, Telangana 500084, India",
+      annual_ctc: "INR 23,76,000",
+      basic_salary: "INR 9,60,000",
+      basic_salary_monthly: "INR 80,000",
       hra: "INR 4,80,000",
-      special_allowance: "INR 5,40,000",
+      hra_monthly: "INR 40,000",
+      special_allowance: "INR 3,60,000",
+      special_allowance_monthly: "INR 30,000",
+      conveyance_allowance: "INR 19,200",
+      conveyance_allowance_monthly: "INR 1,600",
+      medical_allowance: "INR 15,000",
+      medical_allowance_monthly: "INR 1,250",
+      lta_allowance: "INR 72,000",
+      lta_allowance_monthly: "INR 6,000",
+      employer_pf_contribution: "INR 21,600",
+      employer_pf_contribution_monthly: "INR 1,800",
+      gratuity_provision: "INR 26,640",
+      performance_pay_monthly: "INR 15,000",
       pf_employer: "INR 1,80,000",
       gross_monthly: "INR 2,00,000",
       net_monthly: "INR 1,74,500",
@@ -173,9 +297,11 @@ const PEOPLE = {
       manager_email: "vema@circuvent.com",
       mentor_name: "Vema Reddy",
       mentor_email: "vema@circuvent.com",
-      gross_salary: "INR 24,00,000 per annum",
+      gross_salary: "INR 23,27,760 per annum",
+      gross_salary_monthly: "INR 1,93,980",
       monthly_salary: "INR 2,00,000",
-      other_allowances: "INR 1,80,000",
+      other_allowances: "INR 3,95,160",
+      other_allowances_monthly: "INR 32,930",
       variable_pay_summary: "Up to 15% of annual fixed pay, against company and individual targets.",
       bonus_plan: "Annual performance bonus, reviewed each April.",
       additional_benefits:
@@ -221,10 +347,26 @@ const PEOPLE = {
       employment_type: "Internship, fixed term",
       probation_period: "Not applicable",
       notice_period: "15 days",
-      annual_ctc: "INR 3,60,000",
-      basic_salary: "INR 2,16,000",
-      hra: "INR 86,400",
-      special_allowance: "INR 57,600",
+      grade_level: "T1 — Graduate Engineer",
+      business_unit: "Engineering — Platform Internship Programme",
+      candidate_address: "12-3-45, Nallakunta, Hyderabad, Telangana 500044, India",
+      annual_ctc: "INR 3,56,400",
+      basic_salary: "INR 1,44,000",
+      basic_salary_monthly: "INR 12,000",
+      hra: "INR 72,000",
+      hra_monthly: "INR 6,000",
+      special_allowance: "INR 54,000",
+      special_allowance_monthly: "INR 4,500",
+      conveyance_allowance: "INR 7,200",
+      conveyance_allowance_monthly: "INR 600",
+      medical_allowance: "INR 3,600",
+      medical_allowance_monthly: "INR 300",
+      lta_allowance: "INR 10,800",
+      lta_allowance_monthly: "INR 900",
+      employer_pf_contribution: "INR 17,280",
+      employer_pf_contribution_monthly: "INR 1,440",
+      gratuity_provision: "INR 3,996",
+      performance_pay_monthly: "INR 2,500",
       pf_employer: "Not applicable",
       gross_monthly: "INR 30,000",
       net_monthly: "INR 30,000",
@@ -273,9 +415,11 @@ const PEOPLE = {
       manager_email: "hema@circuvent.com",
       mentor_name: "Hema Koteswara Rao Bonthada",
       mentor_email: "hema@circuvent.com",
-      gross_salary: "INR 3,60,000 per annum",
+      gross_salary: "INR 3,35,124 per annum",
+      gross_salary_monthly: "INR 27,927",
       monthly_salary: "INR 30,000",
-      other_allowances: "Not applicable",
+      other_allowances: "INR 17,124",
+      other_allowances_monthly: "INR 1,427",
       variable_pay_summary: "Not applicable to an internship.",
       bonus_plan: "Not applicable to an internship.",
       additional_benefits: "Accident cover, a mentor, and a learning allowance for course material.",
@@ -440,6 +584,21 @@ async function toPdf(title, subtitle, html) {
   const body = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
+  // Same two outcomes as the HTML this PDF is built from, and the same
+  // failure handling as `render-pdf.ts`'s `loadCompanyLogo()`: a tenant that
+  // carries no `<img class="company-logo">` (or whose bytes cannot be
+  // fetched) gets no logo drawn, never a broken image placeholder -- this
+  // review pack would otherwise misreport a rendering bug as a design choice.
+  const logoUrl = extractCompanyLogoUrl(html);
+  let logo = null;
+  if (logoUrl) {
+    try {
+      logo = await doc.embedPng(await readLogoBytes(logoUrl));
+    } catch (error) {
+      console.warn("  (could not load the company logo for this sample; rendering without it)", error);
+    }
+  }
+
   let page = doc.addPage(A4);
   let y = A4[1] - MARGIN;
   const width = A4[0] - MARGIN * 2;
@@ -474,6 +633,15 @@ async function toPdf(title, subtitle, html) {
     }
   };
 
+  const logoSize = 26;
+  if (logo) {
+    page.drawImage(logo, {
+      x: A4[0] - MARGIN - logoSize,
+      y: A4[1] - MARGIN - logoSize + 9,
+      width: logoSize,
+      height: logoSize,
+    });
+  }
   page.drawText("CIRCUVENT TECHNOLOGIES", {
     x: MARGIN, y, size: 9, font: bold, color: rgb(0.35, 0.35, 0.4),
   });
@@ -526,7 +694,14 @@ async function main() {
 
     for (const template of all) {
       const { filled, missing } = substitute(template.html, person.tokens);
-      const bytes = await toPdf(template.name, person.label, filled);
+      // Resolved after `substitute()`, not before: `COMPANY_LOGO_SLOT` is an
+      // HTML comment, not a `{{token}}`, so it is invisible to `substitute()`
+      // either way, but doing it in the same order `generate()` does in
+      // `documents.neon.ts` (render tokens, then splice the logo, then treat
+      // the result as final) keeps this sample pack an honest rehearsal of
+      // the real pipeline rather than a shortcut that happens to look right.
+      const withLogo = applyCompanyLogo(filled, defaultLogoUrl());
+      const bytes = await toPdf(template.name, person.label, withLogo);
       const file = path.join(dir, `${safe(template.name)}.pdf`);
       fs.writeFileSync(file, bytes);
       report.push({ person: person.label, template: template.name, missing });
