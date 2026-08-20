@@ -51,6 +51,7 @@ import { syncDeviceAttendanceForAllOrgs } from "@/lib/attendance/device-sync";
 import { sweepInternReminders } from "@/lib/intern-reminders";
 import { processDueExits } from "@/lib/offboarding-exit";
 import { sweepOutboxes } from "@/lib/outbox-sweep";
+import { purgeExpiredPunchPhotos } from "@/lib/attendance/punch-photo-purge";
 import { timingSafeEqual } from "@/lib/sso";
 
 export const runtime = "nodejs";
@@ -158,6 +159,32 @@ export async function GET(req: NextRequest) {
     exitSweep = { failed: error instanceof Error ? error.message : String(error) };
   }
 
+  // Punch photographs past their organisation's retention.
+  //
+  // This is a promise made to the person photographed, and until now it was
+  // kept only by a script somebody had to remember to run — which for a
+  // retention rule is the same as not being kept. Faces would have accumulated
+  // indefinitely while the product worked perfectly, so nothing would have
+  // drawn attention to it.
+  //
+  // Caught independently, like the sweeps above: object storage being
+  // unreachable must not take down the paystub, group, device, intern or
+  // leaver sweeps' own response.
+  let photoPurge:
+    | Awaited<ReturnType<typeof purgeExpiredPunchPhotos>>
+    | { failed: string };
+  try {
+    photoPurge = await purgeExpiredPunchPhotos({ apply: true });
+    if (photoPurge.failures.length > 0) {
+      console.warn("[cron] punch photograph purge completed with problems", {
+        failures: photoPurge.failures,
+      });
+    }
+  } catch (error) {
+    console.error("[cron] punch photograph purge threw unexpectedly", error);
+    photoPurge = { failed: error instanceof Error ? error.message : String(error) };
+  }
+
   return NextResponse.json({
     ranAt: new Date().toISOString(),
     durationMs,
@@ -167,5 +194,6 @@ export async function GET(req: NextRequest) {
     deviceSync,
     internReminders,
     exitSweep,
+    photoPurge,
   });
 }
