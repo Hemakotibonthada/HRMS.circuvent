@@ -48,6 +48,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { syncDeviceAttendanceForAllOrgs } from "@/lib/attendance/device-sync";
+import { sweepInternReminders } from "@/lib/intern-reminders";
 import { sweepOutboxes } from "@/lib/outbox-sweep";
 import { timingSafeEqual } from "@/lib/sso";
 
@@ -111,6 +112,27 @@ export async function GET(req: NextRequest) {
     deviceSync = { failed: error instanceof Error ? error.message : String(error) };
   }
 
+  // Sweeps interns nearing their internship end date for last-working-day
+  // reminders — added here rather than a second `crons` entry for the same
+  // one-invocation-per-path-per-day reason the device sync above is: this
+  // is the only tick this path gets. Caught independently so a mail-provider
+  // outage cannot take down the paystub/group/device sweeps' own response.
+  // Never re-sends: intern-reminders.ts claims each (employee, leadDays) pair
+  // with an ON CONFLICT DO NOTHING insert before mailing anyone, so a retried
+  // or overlapping run reaches the same milestone at most once, ever.
+  let internReminders: Awaited<ReturnType<typeof sweepInternReminders>> | { failed: string };
+  try {
+    internReminders = await sweepInternReminders();
+    if (internReminders.problems.length > 0) {
+      console.warn("[cron] intern reminder sweep completed with problems", {
+        problems: internReminders.problems,
+      });
+    }
+  } catch (error) {
+    console.error("[cron] intern reminder sweep threw unexpectedly", error);
+    internReminders = { failed: error instanceof Error ? error.message : String(error) };
+  }
+
   return NextResponse.json({
     ranAt: new Date().toISOString(),
     durationMs,
@@ -118,5 +140,6 @@ export async function GET(req: NextRequest) {
     ...result.totals,
     problems: result.problems,
     deviceSync,
+    internReminders,
   });
 }

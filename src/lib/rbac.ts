@@ -18,6 +18,13 @@ export type Permission =
   | "training.view" | "training.enroll" | "training.manage"
   | "onboarding.view" | "onboarding.manage"
   | "offboarding.view" | "offboarding.manage"
+  // Separate from offboarding.view/manage even though they end at the same
+  // checklist: offboarding.* is HR running the exit, resignation.* is the
+  // employee-facing act of submitting one and a manager's ability to accept
+  // a direct report's. An employee who can see their own resignation must
+  // not thereby see the whole company's offboarding queue, and the split
+  // mirrors leave.view/leave.apply vs leave.approve/leave.view_all exactly.
+  | "resignation.view" | "resignation.apply" | "resignation.approve" | "resignation.view_all"
   | "documents.view" | "documents.upload" | "documents.manage"
   | "reports.view" | "reports.export"
   | "settings.view" | "settings.manage"
@@ -52,6 +59,13 @@ export type Permission =
   | "succession.view"
   | "workforce.view"
   | "contractors.view" | "contractors.manage"
+  // Separate from employees.* even though interns are rows in the same
+  // table: employees.edit lets a manager fix a typo in someone's
+  // designation, but converting an intern draws a new CV- code, changes
+  // employmentType and fires a completion certificate — an action, not an
+  // edit, so it gets its own permission the way offboarding.manage does
+  // rather than piggybacking on employees.edit.
+  | "interns.view" | "interns.manage"
   | "benefits.view" | "benefits.enroll"
   | "incidents.view" | "incidents.report" | "incidents.manage"
   | "goals.view" | "goals.create"
@@ -90,6 +104,7 @@ const ADMIN_PERMISSIONS: Permission[] = [
   "training.view", "training.enroll", "training.manage",
   "onboarding.view", "onboarding.manage",
   "offboarding.view", "offboarding.manage",
+  "resignation.view", "resignation.apply", "resignation.approve", "resignation.view_all",
   "documents.view", "documents.upload", "documents.manage",
   "reports.view", "reports.export",
   "settings.view", "settings.manage",
@@ -124,6 +139,7 @@ const ADMIN_PERMISSIONS: Permission[] = [
   "succession.view",
   "workforce.view",
   "contractors.view", "contractors.manage",
+  "interns.view", "interns.manage",
   "benefits.view", "benefits.enroll",
   "incidents.view", "incidents.report", "incidents.manage",
   "goals.view", "goals.create",
@@ -155,6 +171,7 @@ const HR_PERMISSIONS: Permission[] = [
   "training.view", "training.enroll", "training.manage",
   "onboarding.view", "onboarding.manage",
   "offboarding.view", "offboarding.manage",
+  "resignation.view", "resignation.apply", "resignation.approve", "resignation.view_all",
   "documents.view", "documents.upload", "documents.manage",
   "reports.view", "reports.export",
   "settings.view",
@@ -187,6 +204,7 @@ const HR_PERMISSIONS: Permission[] = [
   "succession.view",
   "workforce.view",
   "contractors.view",
+  "interns.view", "interns.manage",
   "benefits.view", "benefits.enroll",
   "incidents.view", "incidents.report", "incidents.manage",
   "goals.view", "goals.create",
@@ -207,6 +225,7 @@ const EMPLOYEE_PERMISSIONS: Permission[] = [
   "dashboard.view",
   "attendance.view",
   "leave.view", "leave.apply",
+  "resignation.view", "resignation.apply",
   "payslip.view_own",
   "performance.view_own",
   "training.view", "training.enroll",
@@ -247,6 +266,7 @@ const MANAGER_PERMISSIONS: Permission[] = [
   "employees.view",
   "attendance.view_all",
   "leave.approve", "leave.view_all",
+  "resignation.approve", "resignation.view_all",
   "expenses.approve", "expenses.view_all",
   "performance.view", "performance.manage",
   "overtime.approve",
@@ -287,6 +307,12 @@ export const MODULE_PERMISSION_MAP: Record<string, Permission> = {
   onboarding: "onboarding.view",
   onboardinghub: "onboarding.view",
   offboarding: "offboarding.view",
+  // Gates the employee-facing "submit your resignation" page — distinct
+  // from the `offboarding` entry above, which gates HR's exit-processing
+  // view. Added in the same change that defines resignation.view so the
+  // module/permission pair can never ship half-wired the way bankdetails
+  // and benefits once did (see the comments on those two below).
+  resignation: "resignation.view",
   documents: "documents.view",
   reports: "reports.view",
   analytics: "analytics.view",
@@ -325,6 +351,7 @@ export const MODULE_PERMISSION_MAP: Record<string, Permission> = {
   succession: "succession.view",
   workforce: "workforce.view",
   contractors: "contractors.view",
+  interns: "interns.view",
   benefits: "benefits.view",
   incidents: "incidents.view",
   goals: "goals.view",

@@ -1,0 +1,114 @@
+HRMS DATA MODEL -- COMPLETE TABLE INDEX (123 tables across 15 domains)
+============================================================================
+
+7.1  PEOPLE & ORGANIZATION CORE (5)
+-------------------------------------
+  locations                     departments
+  employees                     resignations
+  employee_documents            
+
+7.2  LEAVE & HOLIDAYS (4)
+---------------------------
+  leave_policies                leave_requests
+  leave_balances                holidays
+
+7.3  ATTENDANCE (6)
+---------------------
+  shifts                        attendance_records
+  attendance_regularisations    attendance_policies
+  attendance_punch_photos       work_arrangement_requests
+
+7.4  ROSTERING & SCHEDULING (8)
+---------------------------------
+  shift_patterns                shift_eligibility
+  availability                  rosters
+  roster_assignments            shift_swap_requests
+  open_shifts                   coverage_requirements
+
+7.5  PAYROLL, COMPENSATION & LOANS (15)
+----------------------------------------
+  it_declarations               it_declaration_items
+  salary_structures             payroll_runs
+  payroll_records               employee_loans
+  loan_repayments               loan_benchmark_rates
+  expense_claims                salary_bands
+  compensation_cycles           budget_pools
+  compensation_recommendations  equity_grants
+  salary_history                
+
+7.6  PERFORMANCE MANAGEMENT (10)
+---------------------------------
+  review_cycles                 performance_goals
+  performance_reviews           competencies
+  competency_ratings            feedback_requests
+  feedback_responses            calibration_sessions
+  calibration_adjustments       check_ins
+
+7.7  RECRUITMENT (ATS OVERLAP) (9)
+------------------------------------
+  job_postings                  candidates
+  applications                  pipeline_stages
+  application_events            interviews
+  interview_scorecards          offers
+  application_sources           
+
+7.8  DOCUMENTS & E-SIGNATURE (6)
+----------------------------------
+  document_templates            document_template_versions
+  generated_documents           document_signatures
+  document_pdf_storage_outbox   doc_store
+
+7.9  LEARNING & REFERRALS (8)
+-------------------------------
+  referrals                     referral_policies
+  referral_events               referral_invites
+  courses                       course_modules
+  course_enrolments             certifications
+
+7.10 BENEFITS (6)
+-------------------
+  benefit_plans                 enrolment_windows
+  benefit_enrolments            dependants
+  enrolment_dependants          benefit_claims
+
+7.11 IDENTITY & FEDERATION (14)
+--------------------------------
+  organizations                 users
+  user_roles                    sessions
+  auth_tokens                   api_keys
+  subscriptions                 audit_log
+  webauthn_credentials          sso_connections
+  sso_auth_states               sso_identities
+  scim_tokens                   scim_sync_log
+
+7.12 GOVERNANCE & COMPLIANCE (6)
+----------------------------------
+  retention_policies            legal_holds
+  data_subject_requests         erasure_log
+  consent_records               processing_activities
+
+7.13 ASSETS (5)
+-----------------
+  asset_categories              assets
+  asset_assignments             asset_maintenance
+  asset_events                  
+
+7.14 HELPDESK (7)
+-------------------
+  sla_policies                  ticket_categories
+  tickets                       ticket_pauses
+  ticket_comments               ticket_events
+  knowledge_articles            
+
+7.15 PLATFORM, WORKFLOW, NOTIFICATIONS & OUTBOXES (14)
+-------------------------------------------------------
+  custom_field_definitions      custom_field_values
+  custom_field_audit            integrations
+  announcements                 notifications
+  workflow_definitions          workflow_instances
+  lifecycle_journeys            lifecycle_tasks
+  intern_reminder_log           paystub_employee_sync_outbox
+  directory_group_join_outbox   directory_group_leave_outbox
+
+============================================================================
+TOTAL: 123 tables (117 audited + 6 found by direct enumeration)

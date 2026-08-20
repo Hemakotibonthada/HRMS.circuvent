@@ -4,7 +4,7 @@ import {
   Building2, UserPlus, ClipboardCheck, Target, Award,
   Megaphone, Receipt, CalendarCheck, Headphones, Package,
   CalendarClock, ScrollText, UsersRound,
-  Network, UserX, Banknote, ClipboardList, Plane, DoorOpen,
+  Network, UserX, Banknote, ClipboardList, Plane, DoorOpen, LogOut,
   Eye, Handshake, Shield, Timer, House, MessageCircle,
   BookOpen, Heart, Cake, Keyboard,
   FolderKanban, Sparkles, GitBranch, MessageSquare, Activity,
@@ -151,6 +151,36 @@ export const MODULES: NavItem[] = [
     icon: ClipboardCheck,
     href: "/onboarding",
     color: "oklch(0.62 0.15 170)",
+    category: "talent",
+  },
+  {
+    // rbac.ts defines resignation.view/apply/approve/view_all in the same
+    // change that adds this entry — a page with a permission and no MODULES
+    // entry has shipped unreachable-by-nav twice already in this repo (see
+    // the benefits and interns comments below), and this is the same pairing
+    // discipline applied a fourth time.
+    id: "resignation",
+    name: "Resignation",
+    shortName: "Resign",
+    description: "Submit and track a resignation",
+    icon: LogOut,
+    href: "/resignation",
+    color: "oklch(0.58 0.17 25)",
+    category: "talent",
+  },
+  {
+    // A third instance of the same gap as `benefits` and `bankdetails`
+    // above: rbac.ts defines interns.view/interns.manage in the same change
+    // that adds this entry, specifically so that pairing never breaks —
+    // without a MODULES entry the page and its conversion action would only
+    // be reachable by typing the URL directly, same as those two.
+    id: "interns",
+    name: "Interns",
+    shortName: "Interns",
+    description: "Internship end dates, conversion & documents",
+    icon: GraduationCap,
+    href: "/interns",
+    color: "oklch(0.63 0.17 190)",
     category: "talent",
   },
   {

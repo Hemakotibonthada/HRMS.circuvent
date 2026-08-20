@@ -129,6 +129,7 @@ export const EMPTY_STATES = {
   badges: { icon: Award, title: "No badges created", description: "Create badges to recognize employee achievements.", actionLabel: "Create Badge" },
   analytics: { icon: Inbox, title: "No data for analytics", description: "Analytics will populate as you add employees, expenses, and leave records." },
   onboarding: { icon: Users, title: "No new joiners", description: "New hire onboarding tasks will appear here when employees are added." },
+  interns: { icon: GraduationCap, title: "No interns yet", description: "Hire an intern from the Employees page (employment type: Intern) to see their end date, conversion status and issued documents here." },
   orgchart: { icon: Users, title: "No org structure", description: "Add employees and departments to build the org chart." },
   generic: { icon: Inbox, title: "No data available", description: "Records will appear here when added." },
 } as const;

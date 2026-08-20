@@ -38,7 +38,10 @@ export type NotificationType =
   | "announcement.published"
   | "document.expiring"
   | "birthday"
-  | "work_anniversary";
+  | "work_anniversary"
+  | "resignation.submitted"
+  | "resignation.accepted"
+  | "resignation.lwd_adjusted";
 
 export interface NotificationTemplate {
   type: NotificationType;
@@ -215,6 +218,39 @@ export const TEMPLATES: Record<NotificationType, NotificationTemplate> = {
     subject: "{{employeeName}} completes {{years}} year(s) today",
     body: "{{employeeName}} joined {{years}} year(s) ago today.",
     actionUrl: "/celebrations",
+  },
+  // The three notifications below go to whoever needs to act or is affected,
+  // not always the same person: submission tells the manager there is a
+  // decision to make, acceptance and an adjusted date tell the employee what
+  // was decided. High priority and bypassBatching for the same reason
+  // leave's decision notifications are: a resignation sitting unread in a
+  // digest is how "submitted three weeks ago, still not accepted" happens.
+  "resignation.submitted": {
+    type: "resignation.submitted",
+    priority: "high",
+    channels: ["in_app", "email"],
+    subject: "{{employeeName}} has submitted their resignation",
+    body: "{{employeeName}} intends to leave on {{intendedLastWorkingDay}}. Reason given: {{reason}}. This needs your acceptance before notice and the last working day are confirmed.",
+    actionUrl: "/resignation",
+    bypassBatching: true,
+  },
+  "resignation.accepted": {
+    type: "resignation.accepted",
+    priority: "high",
+    channels: ["in_app", "email"],
+    subject: "Your resignation has been accepted",
+    body: "Your resignation was accepted by {{approverName}}. Your agreed last working day is {{agreedLastWorkingDay}}.",
+    actionUrl: "/resignation",
+    bypassBatching: true,
+  },
+  "resignation.lwd_adjusted": {
+    type: "resignation.lwd_adjusted",
+    priority: "high",
+    channels: ["in_app", "email"],
+    subject: "Your last working day has been updated",
+    body: "{{adjustedByName}} has changed your agreed last working day to {{newLastWorkingDay}}.",
+    actionUrl: "/resignation",
+    bypassBatching: true,
   },
 };
 

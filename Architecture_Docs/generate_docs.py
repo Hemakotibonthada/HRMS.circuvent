@@ -86,6 +86,12 @@ GLYPHS = {
     "\U0001f310": ("*", ""),         # 🌐
     "\U0001f4e6": ("*", "[pkg]"),    # 📦
     "\ufe0f": ("", ""),              # variation selector
+    "\U0001f535": (".", "[INFO]"),  # 🔵
+    "\u2b50": ("*", "*"),           # ⭐
+    "\u2716": ("x", "x"),           # ✖
+    "\u27e8": ("<", "<"),           # ⟨
+    "\u27e9": (">", ">"),           # ⟩
+    "\u2208": ("in", "in"),         # ∈
 }
 
 # Present in Consolas but absent from Calibri: flattened in prose only.

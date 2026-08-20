@@ -69,8 +69,12 @@ export interface SweepResult {
  * is the same reason `api-v1-context.ts` and `session.ts` use it. Nothing else
  * here runs that way: each drain is given one organisation and stays inside
  * row-level security.
+ *
+ * Exported so the exit-processing cron hook can enumerate tenants the same
+ * way the outbox sweep does, rather than a second copy of the same
+ * superuser-scoped query drifting out of sync with this one.
  */
-async function activeOrganisationIds(): Promise<string[]> {
+export async function activeOrganisationIds(): Promise<string[]> {
   const rows = await withTenant({ orgId: "", superuser: true }, async (tx) =>
     tx.select({ id: organizations.id }).from(organizations).where(isNull(organizations.deletedAt))
   );

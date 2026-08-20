@@ -36,6 +36,12 @@ CREATE TABLE IF NOT EXISTS "hrms"."resignations" (
   "last_working_day_adjusted_at"        timestamptz,
   "last_working_day_adjusted_by_id"     uuid,
   "exit_processed_at"                   timestamptz,
+  -- The computed settlement, frozen the first time exit processing runs.
+  -- Salary structures and leave balances keep changing after somebody
+  -- leaves; recomputing on every read would change an amount a payslip
+  -- already promised. Read back instead of recalculated, so a retry or a
+  -- second cron tick produces the same number rather than a new one.
+  "settlement_snapshot"                 jsonb,
   "relieving_letter_document_id"        uuid,
   "experience_certificate_document_id"  uuid,
   "internship_completion_document_id"   uuid,
@@ -43,11 +49,14 @@ CREATE TABLE IF NOT EXISTS "hrms"."resignations" (
   "updated_at"                          timestamptz DEFAULT now() NOT NULL
 );
 
--- One resignation in flight per employee — a second submission while one is
--- already open would leave two "intended last working days" for the same
--- person with no way to say which one HR actually accepted.
+-- One resignation *in flight* per employee — partial rather than absolute,
+-- because an absolute unique constraint on employee_id would mean nobody
+-- who ever resigned could be rehired and resign again. Once exit processing
+-- has run the row is history, not an open request, so it drops out of the
+-- constraint.
 CREATE UNIQUE INDEX IF NOT EXISTS "resignations_employee_key"
-  ON "hrms"."resignations" ("employee_id");
+  ON "hrms"."resignations" ("employee_id")
+  WHERE "exit_processed_at" IS NULL;
 
 CREATE INDEX IF NOT EXISTS "resignations_org_status_idx"
   ON "hrms"."resignations" ("org_id", "status");

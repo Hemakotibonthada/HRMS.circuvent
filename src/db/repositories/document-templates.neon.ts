@@ -26,6 +26,7 @@ import { desc, eq } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
 import { documentTemplates, documentTemplateVersions } from "@/db/schema/talent";
 import { extractTokens } from "@/lib/document-rules";
+import { validateTemplateEdit } from "@/lib/document-templates/validation";
 import { NotFoundError, RepositoryError } from "./types";
 
 export type TemplateOrigin = "seed" | "custom";
@@ -383,6 +384,13 @@ export class NeonDocumentTemplatesRepository {
    * what it said before" liability this table exists to prevent. Everything
    * this method writes comes from `planTemplateEdit`; this method's own job
    * is only to gather what the planner needs and persist what it decides.
+   *
+   * Re-validates with `validateTemplateEdit` here, not only at the API route:
+   * `generate()` in documents.neon.ts checks `validateTemplate` inside the
+   * repository too, rather than trusting the route to have done it, and an
+   * unknown token reaching a saved template is the exact failure this whole
+   * feature exists to prevent — it must not depend on every future caller of
+   * this method remembering to check first.
    */
   async update(input: {
     id: string;
@@ -401,6 +409,23 @@ export class NeonDocumentTemplatesRepository {
       if (!current) throw new NotFoundError("Template", input.id);
       if (!current.isActive) {
         throw new RepositoryError("This template has been retired", 409);
+      }
+
+      // Checked against the body this transaction just locked and read, not
+      // a caller-supplied "previous body" — the same TOCTOU concern
+      // `.for("update")` above closes for concurrent writers applies here to
+      // spoofed input: only the database's own last-saved text can be
+      // trusted as the self-referential "already known" set.
+      const check = validateTemplateEdit({
+        name: current.name,
+        category: current.category,
+        previousBody: current.body,
+        newBody: input.newBody,
+        requiresSignature: current.requiresSignature,
+        signatoryRoles: (current.signatoryRoles as string[]) ?? [],
+      });
+      if (!check.valid) {
+        throw new RepositoryError(check.message ?? "This draft could not be validated", 422);
       }
 
       const [latest] = await tx

@@ -4,6 +4,9 @@
 // probation management, role transitions, and offboarding
 // ═══════════════════════════════════════════════════════════════
 
+import { computeSettlement, type DayBasis, type ExitReason } from "./settlement";
+import type { Minor } from "./statutory-india";
+
 // ─── Lifecycle Stages ────────────────────────────────────────
 
 export type LifecycleStage =
@@ -57,21 +60,36 @@ export interface OffboardingTask {
   notes?: string;
 }
 
+/** One line of a settlement — an earning or a deduction, always labelled. */
+export interface SettlementLineItem {
+  code: string;
+  label: string;
+  amount: number;
+  note?: string;
+}
+
 export interface SettlementComponents {
-  basicPay: number;
-  earnedLeaveEncashment: number;
-  gratuity: number;
-  noticePay: number;
-  bonus: number;
-  deductions: {
-    noticeRecovery: number;
-    loanOutstanding: number;
-    assetRecovery: number;
-    otherDeductions: number;
-  };
+  /** Calendar days in the month the exit date falls in, and how many of them were worked. */
+  daysInFinalMonth: number;
+  daysWorkedInFinalMonth: number;
+  /** The final month's salary line, pulled out for convenience — it is also in `earnings`. */
+  proratedFinalSalary: number;
+  earnings: SettlementLineItem[];
+  deductions: SettlementLineItem[];
   totalEarnings: number;
   totalDeductions: number;
+  /**
+   * Positive when the company owes the employee, negative when the employee
+   * owes the company. Deliberately not clamped to zero — see `settlement.ts`
+   * for why writing off what's owed by silently flooring it is worse than
+   * showing an uncomfortable negative number.
+   */
   netSettlement: number;
+  employeeOwes: boolean;
+  gratuityYearsOfService: number;
+  gratuityEligible: boolean;
+  /** Everything a reviewer should read before this settlement is paid. */
+  notes: string[];
 }
 
 // ─── Onboarding Templates ────────────────────────────────────
@@ -217,60 +235,229 @@ export const OFFBOARDING_TEMPLATE: OffboardingChecklist[] = [
 ];
 
 // ─── Settlement Calculator ───────────────────────────────────
+//
+// This used to be a self-contained calculator: no proration (a full month
+// was paid out no matter which day of the month someone left on — leaving on
+// the 2nd and leaving on the 28th earned the same basic pay), notice pay and
+// notice recovery computed from the same shortfall and so always cancelling
+// out (nobody was ever actually recovered from, nor actually paid in lieu),
+// and a final `Math.max(0, netSettlement)` that wrote off any debt an
+// employee owed the company by quietly floor-ing it to zero. None of that
+// was exercised by anything — `calculateSettlement` had no callers anywhere
+// in this codebase — so it went unnoticed.
+//
+// `settlement.ts` already solves all three problems correctly (proration,
+// independent notice recovery, an unclamped signed net) and is unit-tested
+// on its own. Rather than re-solve them here a second time with a second
+// chance to get them wrong, this function is now a thin rupee-facing
+// wrapper: it works out the final month's proration, converts rupees to the
+// paise (`Minor`) that `computeSettlement` deals in, and converts the result
+// back. The only genuine logic left in this file is proration itself.
 
-export function calculateSettlement(params: {
-  basicPay: number;
-  earnedLeaveBalance: number;
-  yearsOfService: number;
+/**
+ * Number of calendar days in a given month.
+ *
+ * `new Date(year, month, 0).getDate()` would do this in one line, but every
+ * other date computation touching payroll in this codebase (see
+ * `monthsBetween` in statutory-india.ts) deliberately avoids round-tripping
+ * through `Date` — a runtime timezone or a DST boundary can shift a
+ * constructed `Date` by a day, and a day shifted here changes what somebody
+ * is paid. An explicit table with an explicit leap-year rule cannot do that.
+ */
+export function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    return isLeap ? 29 : 28;
+  }
+  return [1, 3, 5, 7, 8, 10, 12].includes(month) ? 31 : 30;
+}
+
+/**
+ * Whole calendar days from `from` up to `to`.
+ *
+ * Written as a bounded day-by-day walk rather than a closed-form
+ * (Julian-day / civil-from-days) formula, for the same reason
+ * `monthsBetween` in statutory-india.ts is a loop over months rather than an
+ * epoch subtraction: HR date ranges span at most a few years, so the loop
+ * costs nothing, and every step of it can be checked by a human against a
+ * calendar. A closed-form formula that is off by one is off by one silently
+ * forever; a loop that is wrong is wrong in a way a single printed month
+ * will show.
+ *
+ * Signed and not clamped to zero: a `to` before `from` returns a negative
+ * number rather than reading as zero, so a resignation whose agreed last
+ * working day is somehow before it was submitted — a data-entry mistake, not
+ * a valid state — surfaces as a visibly wrong number instead of silently
+ * being treated as "notice fully served".
+ */
+export function daysBetween(from: string, to: string): number {
+  const parse = (value: string): [number, number, number] => {
+    const parts = value.split("-").map(Number);
+    if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) {
+      throw new Error("Dates must be YYYY-MM-DD");
+    }
+    return [parts[0], parts[1], parts[2]];
+  };
+
+  parse(from);
+  parse(to);
+  const reversed = to < from;
+  let [y, m, d] = parse(reversed ? to : from);
+  const stop = reversed ? from : to;
+
+  const iso = (yy: number, mm: number, dd: number) =>
+    `${String(yy).padStart(4, "0")}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+
+  let count = 0;
+  while (iso(y, m, d) < stop) {
+    d += 1;
+    if (d > daysInMonth(y, m)) {
+      d = 1;
+      m += 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+    }
+    count += 1;
+  }
+  return reversed ? -count : count;
+}
+
+export interface FinalMonthProration {
+  year: number;
+  month: number;
+  daysInMonth: number;
+  /** The first payable day of the final month — day 1, unless join and exit fall in the same month. */
+  startDay: number;
+  daysWorked: number;
+}
+
+/**
+ * How many of the final month's calendar days are payable.
+ *
+ * The default assumption is that whoever is leaving was on the payroll for
+ * the whole month up to the exit date, so counting starts at day 1 — this is
+ * the actual proration risk the rest of the settlement depends on: someone
+ * who leaves on the 12th is owed 12 days, someone who leaves on the 30th is
+ * owed the whole month, and someone whose "last working day" was itself a
+ * non-working day (a Sunday, a holiday) is still owed pay up to and
+ * including it, because the settlement counts calendar days elapsed, not
+ * days actually worked at a desk.
+ *
+ * The one case that breaks the "counting starts at day 1" assumption is
+ * somebody who joins and leaves inside the same calendar month — counting
+ * from day 1 would pay them for days before they were ever employed here.
+ * That is the only reason `joinDate` is a parameter at all.
+ */
+export function finalMonthProration(joinDate: string, exitDate: string): FinalMonthProration {
+  const exitParts = exitDate.split("-").map(Number);
+  const joinParts = joinDate.split("-").map(Number);
+  if (exitParts.length !== 3 || joinParts.length !== 3 || [...exitParts, ...joinParts].some((n) => Number.isNaN(n))) {
+    throw new Error("Dates must be YYYY-MM-DD");
+  }
+  const [exitYear, exitMonth, exitDay] = exitParts;
+  const [joinYear, joinMonth, joinDay] = joinParts;
+
+  const totalDays = daysInMonth(exitYear, exitMonth);
+  const sameMonthJoin = joinYear === exitYear && joinMonth === exitMonth;
+  const startDay = sameMonthJoin ? joinDay : 1;
+  const daysWorked = Math.max(0, Math.min(exitDay, totalDays) - startDay + 1);
+
+  return { year: exitYear, month: exitMonth, daysInMonth: totalDays, startDay, daysWorked };
+}
+
+const toMinor = (rupees: number): Minor => BigInt(Math.round(rupees * 100));
+const fromMinor = (minor: Minor): number => Number(minor) / 100;
+const toMinorOrUndefined = (rupees: number | undefined): Minor | undefined =>
+  rupees === undefined ? undefined : toMinor(rupees);
+
+export interface SettlementCalculationInput {
+  joinDate: string;
+  /** Last day of employment — the agreed last working day, once one exists. */
+  exitDate: string;
+  reason: ExitReason;
+
+  /** Last drawn monthly figures, in rupees. */
+  monthlyBasicPay: number;
+  monthlyGrossPay: number;
+
+  /** Notice, in days, from policy — see offboarding-resignation.ts for how this is worked out. */
   noticePeriodDays: number;
-  noticePeriodServed: number;
-  pendingLoans: number;
-  assetRecovery: number;
-  otherDeductions: number;
-  bonusPending: number;
-}): SettlementComponents {
-  const {
-    basicPay, earnedLeaveBalance, yearsOfService,
-    noticePeriodDays, noticePeriodServed, pendingLoans,
-    assetRecovery, otherDeductions, bonusPending,
-  } = params;
+  noticeServedDays: number;
+  /** The shortfall was forgiven rather than recovered — this codebase's stand-in for "paid in lieu"; see the module note in offboarding-exit.ts. */
+  noticeWaived?: boolean;
 
-  const dailyRate = basicPay / 30;
-  
-  // Earned leave encashment
-  const earnedLeaveEncashment = Math.round(earnedLeaveBalance * dailyRate);
-  
-  // Gratuity (basic * 15 * years / 26) — eligible after 5 years
-  const gratuity = yearsOfService >= 5 
-    ? Math.round((basicPay * 15 * yearsOfService) / 26)
-    : 0;
-  
-  // Notice pay (if shortfall in serving notice)
-  const noticeShortfall = Math.max(0, noticePeriodDays - noticePeriodServed);
-  const noticePay = Math.round(noticeShortfall * dailyRate);
-  
-  // Notice recovery (if employee didn't serve full notice, company can deduct)
-  const noticeRecovery = noticeShortfall > 0 ? Math.round(noticeShortfall * dailyRate) : 0;
-  
-  const totalEarnings = basicPay + earnedLeaveEncashment + gratuity + noticePay + bonusPending;
-  const totalDeductions = noticeRecovery + pendingLoans + assetRecovery + otherDeductions;
-  const netSettlement = totalEarnings - totalDeductions;
+  encashableLeaveDays: number;
+  leaveEncashmentBasis: DayBasis;
+  noticeRecoveryOnGross?: boolean;
+
+  /** Everything below is optional and defaults to nothing owed either way. */
+  outstandingLoan?: number;
+  unreturnedAsset?: number;
+  otherRecovery?: number;
+  pendingReimbursement?: number;
+  bonusPayable?: number;
+  professionalTax?: number;
+  tds?: number;
+  gratuityCeiling?: number;
+}
+
+/**
+ * Full and final settlement, in rupees.
+ *
+ * Delegates every rupee of arithmetic to `computeSettlement` in
+ * settlement.ts, which is the tested, signed-net, no-magic-clamping engine —
+ * this function's only job is proration (working out how many of the final
+ * month's days are payable, which `computeSettlement` needs but does not
+ * compute itself) and the rupee ⇄ paise conversion at the boundary.
+ */
+export function calculateSettlement(input: SettlementCalculationInput): SettlementComponents {
+  const proration = finalMonthProration(input.joinDate, input.exitDate);
+
+  const settlement = computeSettlement({
+    joinDate: input.joinDate,
+    exitDate: input.exitDate,
+    reason: input.reason,
+    monthlyBasicPlusDaMinor: toMinor(input.monthlyBasicPay),
+    monthlyGrossMinor: toMinor(input.monthlyGrossPay),
+    daysWorkedInFinalMonth: proration.daysWorked,
+    daysInFinalMonth: proration.daysInMonth,
+    noticePeriodDays: input.noticePeriodDays,
+    noticeServedDays: input.noticeServedDays,
+    noticeWaived: input.noticeWaived,
+    encashableLeaveDays: input.encashableLeaveDays,
+    leaveEncashmentBasis: input.leaveEncashmentBasis,
+    noticeRecoveryOnGross: input.noticeRecoveryOnGross,
+    outstandingLoanMinor: toMinorOrUndefined(input.outstandingLoan),
+    unreturnedAssetMinor: toMinorOrUndefined(input.unreturnedAsset),
+    otherRecoveryMinor: toMinorOrUndefined(input.otherRecovery),
+    pendingReimbursementMinor: toMinorOrUndefined(input.pendingReimbursement),
+    bonusPayableMinor: toMinorOrUndefined(input.bonusPayable),
+    professionalTaxMinor: toMinorOrUndefined(input.professionalTax),
+    tdsMinor: toMinorOrUndefined(input.tds),
+    gratuityCeilingMinor: toMinorOrUndefined(input.gratuityCeiling),
+  });
+
+  const finalSalaryLine = settlement.earnings.find((line) => line.code === "final_salary");
 
   return {
-    basicPay,
-    earnedLeaveEncashment,
-    gratuity,
-    noticePay,
-    bonus: bonusPending,
-    deductions: {
-      noticeRecovery,
-      loanOutstanding: pendingLoans,
-      assetRecovery,
-      otherDeductions,
-    },
-    totalEarnings,
-    totalDeductions,
-    netSettlement: Math.max(0, netSettlement),
+    daysInFinalMonth: proration.daysInMonth,
+    daysWorkedInFinalMonth: proration.daysWorked,
+    proratedFinalSalary: finalSalaryLine ? fromMinor(finalSalaryLine.amountMinor) : 0,
+    earnings: settlement.earnings.map((line) => ({
+      code: line.code, label: line.label, amount: fromMinor(line.amountMinor), note: line.note,
+    })),
+    deductions: settlement.deductions.map((line) => ({
+      code: line.code, label: line.label, amount: fromMinor(line.amountMinor), note: line.note,
+    })),
+    totalEarnings: fromMinor(settlement.totalEarningsMinor),
+    totalDeductions: fromMinor(settlement.totalDeductionsMinor),
+    netSettlement: fromMinor(settlement.netPayableMinor),
+    employeeOwes: settlement.employeeOwes,
+    gratuityYearsOfService: settlement.gratuity.yearsOfService,
+    gratuityEligible: settlement.gratuity.isEligible,
+    notes: settlement.notes,
   };
 }
 

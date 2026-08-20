@@ -136,6 +136,20 @@ class AppRepository(private val api: ApiClient) {
         explicitNulls = false
     }
 
+    /**
+     * For request bodies where a null means "clear this".
+     *
+     * The reader above drops nulls, which is right for responses: a server that
+     * omits a field and one that sends it as null both mean "absent". Sending
+     * is the opposite — omitting a field means "leave it alone" and sending
+     * null means "empty it", and a single encoder cannot express both.
+     */
+    private val explicitNulls = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = true
+        encodeDefaults = false
+    }
+
     suspend fun me(): SessionUser =
         json.decodeFromString<MeResponse>(api.get("/api/auth/me")).user
 
@@ -475,6 +489,33 @@ class AppRepository(private val api: ApiClient) {
      */
     suspend fun teamPulse(): TeamPulseResponse =
         json.decodeFromString(api.get("/api/team/pulse"))
+
+    // ─── Your own record ─────────────────────────────────────
+
+    /**
+     * The details this employee owns about themselves.
+     *
+     * Separate from `/api/auth/me`, which reads the token and makes no
+     * database call — it has an id, an email and a role, and none of the
+     * things a person would want to correct.
+     */
+    suspend fun myDetails(): MyDetailsDto =
+        json.decodeFromString(api.get("/api/employees/me"))
+
+    /**
+     * Saves the personal fields.
+     *
+     * Encoded with explicit nulls, because clearing a field is a real edit and
+     * omitting it would mean "leave it alone" — the two must not be the same
+     * request.
+     */
+    suspend fun saveMyDetails(save: MyDetailsSave): MyDetailsDto =
+        json.decodeFromString(
+            api.patch(
+                "/api/employees/me",
+                explicitNulls.encodeToString(MyDetailsSave.serializer(), save),
+            )
+        )
 
     // ─── Punch photographs ───────────────────────────────────
 

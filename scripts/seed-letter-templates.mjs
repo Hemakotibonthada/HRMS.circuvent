@@ -342,6 +342,29 @@ const TEMPLATES = [
       }),
   },
   {
+    name: "Experience Certificate",
+    category: "letter",
+    requiresSignature: true,
+    signatoryRoles: ["hr"],
+    build: () =>
+      shell({
+        title: "Experience Certificate",
+        subtitle: null,
+        sections: [
+          {
+            title: "This is to certify",
+            html: `<p>that <strong>{{full_name}}</strong> ({{employee_code}}) was employed with {{company_name}} as {{position_title}} in the {{department}} team, from {{join_date}} to {{last_working_day}}.</p>`,
+          },
+          {
+            title: "Conduct",
+            html: `<p>{{conduct_remark}}</p>`,
+          },
+        ],
+        closing:
+          "Issued at the employee's request. This certificate records the period of employment described above and nothing further.",
+      }),
+  },
+  {
     name: "Appreciation Certificate",
     category: "letter",
     requiresSignature: true,

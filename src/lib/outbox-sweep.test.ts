@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { sweepOutboxes } from "@/lib/outbox-sweep";
-import type { DrainResult } from "@/lib/directory-group-outbox";
+import type { DrainResult, LeaveDrainResult } from "@/lib/directory-group-outbox";
 import type { PaystubDrainResult } from "@/lib/paystub-sync-outbox";
 import {
   actionForOutboxRow,
@@ -17,6 +17,10 @@ function paystubResult(over: Partial<PaystubDrainResult> = {}): PaystubDrainResu
 
 function groupResult(over: Partial<DrainResult> = {}): DrainResult {
   return { attempted: 0, joined: 0, failed: 0, ...over };
+}
+
+function groupLeaveResult(over: Partial<LeaveDrainResult> = {}): LeaveDrainResult {
+  return { attempted: 0, left: 0, failed: 0, ...over };
 }
 
 function documentPdfResult(over: Partial<DocumentPdfDrainResult> = {}): DocumentPdfDrainResult {
@@ -85,6 +89,7 @@ describe("sweeping every tenant", () => {
       listOrgs: async () => ["org-a", "org-b"],
       drainPaystub,
       drainGroups,
+      drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs,
     });
 
@@ -107,6 +112,7 @@ describe("sweeping every tenant", () => {
         return paystubResult();
       },
       drainGroups: async () => groupResult(),
+      drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs: async () => documentPdfResult(),
     });
 
@@ -125,6 +131,7 @@ describe("sweeping every tenant", () => {
       listOrgs: async () => ["org-a", "org-bad", "org-b"],
       drainPaystub,
       drainGroups: async () => groupResult({ joined: 1 }),
+      drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs: async () => documentPdfResult(),
     });
 
@@ -153,6 +160,7 @@ describe("sweeping every tenant", () => {
       listOrgs: async () => ["org-a"],
       drainPaystub: async () => paystubResult({ attempted: 1, failed: 1, retired: 3 }),
       drainGroups: async () => groupResult(),
+      drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs: async () => documentPdfResult(),
     });
 
@@ -167,6 +175,7 @@ describe("sweeping every tenant", () => {
       listOrgs: async () => ["org-a"],
       drainPaystub: async () => paystubResult(),
       drainGroups: async () => groupResult(),
+      drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs: async () => documentPdfResult({ attempted: 2, succeeded: 1, failed: 1 }),
     });
 
@@ -183,6 +192,7 @@ describe("sweeping every tenant", () => {
       listOrgs: async () => ["org-a"],
       drainPaystub,
       drainGroups: async () => groupResult(),
+      drainGroupLeaves: async () => groupLeaveResult(),
       drainDocumentPdfs,
     });
 

@@ -21,7 +21,9 @@ import {
 import { auditLog } from "@/db/schema/identity";
 import {
   drainDueGroupJoins,
+  drainDueGroupLeaves,
   queueGroupJoins,
+  queueGroupLeaves,
 } from "@/lib/directory-group-outbox";
 import {
   autoJoinAddresses,
@@ -37,7 +39,11 @@ import {
   queueAndAttemptPaystubEmployeeSync,
   queuePaystubEmployeeSync,
 } from "@/lib/paystub-sync-outbox";
-import { employeeCodePrefixFor } from "@/lib/employee-code";
+import { employeeCodePrefixFor, PERMANENT_EMPLOYEE_CODE_PREFIX } from "@/lib/employee-code";
+import {
+  dispatchLifecycleDocuments,
+  type LifecycleDocumentKind,
+} from "@/lib/intern-documents";
 import { decryptNullable, encryptNullable } from "@/lib/crypto/field-encryption";
 import {
   canWriteBankDetails,
@@ -63,6 +69,7 @@ const SORTABLE = {
   email: employees.workEmail,
   designation: employees.designation,
   joinDate: employees.joinDate,
+  internshipEndDate: employees.internshipEndDate,
   status: employees.status,
   employeeCode: employees.employeeCode,
   createdAt: employees.createdAt,
@@ -96,6 +103,14 @@ function toRecord(row: Row): EmployeeRecord {
   return {
     id: row.id,
     employeeCode: row.employeeCode,
+    // Undefined, not null, for both: EmployeeRecord's optional fields are
+    // absent for anyone who has never converted, and JSON.stringify drops an
+    // `undefined` property but keeps an explicit `null` — the interns UI
+    // treats "previousEmployeeCode present" as its "converted" signal, so a
+    // stray null here would make every never-converted employee look like
+    // one.
+    previousEmployeeCode: row.previousEmployeeCode ?? undefined,
+    codeChangedAt: row.codeChangedAt ? row.codeChangedAt.toISOString() : undefined,
     firstName: row.firstName,
     lastName: row.lastName,
     fullName: `${row.firstName} ${row.lastName}`.trim(),
@@ -109,6 +124,7 @@ function toRecord(row: Row): EmployeeRecord {
     employmentType: row.employmentType,
     status: row.status,
     joinDate: row.joinDate,
+    internshipEndDate: row.internshipEndDate ?? undefined,
     exitDate: row.exitDate ?? undefined,
     exitReason: row.exitReason ?? undefined,
     salary: toMajor(row.ctcMinor),
@@ -321,6 +337,27 @@ export class NeonEmployeeRepository implements EmployeeRepository {
       });
     });
 
+    // Every hire gets a joining letter — interns and permanent staff alike —
+    // fired after commit for the same reason the group join above is: PDF
+    // rendering and the signing-outbox insert this triggers are I/O the hire
+    // itself must not wait on or be undone by if either is slow or down.
+    void dispatchLifecycleDocuments(
+      this.ctx,
+      row.id,
+      ["joining_letter"],
+      this.ctx.userId,
+    ).then((outcomes) => {
+      for (const outcome of outcomes) {
+        if (!outcome.ok) {
+          console.warn("[lifecycle-documents] Could not issue the joining letter.", {
+            orgId: this.ctx.orgId,
+            employeeId: row.id,
+            error: outcome.error,
+          });
+        }
+      }
+    });
+
     return toRecord(row);
   }
 
@@ -525,17 +562,102 @@ export class NeonEmployeeRepository implements EmployeeRepository {
    * Soft delete. Payroll records, attendance and audit entries reference the
    * employee; a hard delete would either cascade them away or fail on the
    * foreign key.
+   *
+   * This is also the one place in the product that ends someone's
+   * employment — the employees page has no separate "offboard" action, the
+   * delete button is it — so it is where exit paperwork fires: an
+   * experience certificate and relieving letter for everyone, plus an
+   * internship completion certificate for anyone still `employmentType ===
+   * "intern"` at the moment they leave without having converted first (a
+   * conversion issues that certificate itself — see convertToPermanent —
+   * so an intern who already converted is "full_time" by the time this
+   * runs and gets the permanent-staff set, not a duplicate).
    */
   async remove(id: string): Promise<void> {
-    await withTenant(this.ctx, async (tx) => {
+    const row = await withTenant(this.ctx, async (tx) => {
       const [row] = await tx
         .update(employees)
-        .set({ deletedAt: new Date(), status: "inactive" })
+        .set({
+          deletedAt: new Date(),
+          status: "inactive",
+          // A relieving letter and an experience certificate both need a
+          // real last working day. COALESCE, not an unconditional
+          // overwrite: HR sometimes records the exit date days before
+          // actually deactivating the record via `update()`, and that
+          // deliberately-chosen date must survive rather than be silently
+          // replaced by today just because today is when the row was
+          // removed.
+          exitDate: sql`coalesce(${employees.exitDate}, current_date)`,
+        })
         .where(and(eq(employees.id, id), isNull(employees.deletedAt)))
-        .returning({ id: employees.id });
+        .returning();
 
       if (!row) throw new NotFoundError("Employee", id);
+      return row;
     });
+
+    // This delete button is a second, older way somebody's employment ends —
+    // the resignation path's own exit processing is the other — and it
+    // queued no group removal at all until this line: an employee removed
+    // here kept every group membership onboarding ever granted them,
+    // indefinitely, since nothing about a soft-deleted row ever gets edited
+    // again for a re-drive to piggyback on. Same outbox, same sweep, same
+    // "all@<domain>" scope as the auto-join side grants — this can only
+    // reliably revoke what onboarding reliably tracked granting; a manual
+    // addition to people@ or managers@ leaves no record here to reverse.
+    if (row.workEmail) {
+      try {
+        const domain = resolveGroupDomain(row.workEmail);
+        await withTenant(this.ctx, async (tx) => {
+          await queueGroupLeaves(tx, {
+            orgId: this.ctx.orgId,
+            employeeId: row.id,
+            memberEmail: row.workEmail,
+            groupAddresses: autoJoinAddresses(domain),
+          });
+        });
+      } catch (error) {
+        console.warn(
+          "[groups] Could not queue group removal on delete; the removal itself is unaffected.",
+          {
+            orgId: this.ctx.orgId,
+            employeeId: row.id,
+            errorName: error instanceof Error ? error.name : "UnknownError",
+          },
+        );
+      }
+    }
+
+    // The common case, attempted immediately so a deletion made at 9am is out
+    // of the group by 9am — mirrors the join side's immediate attempt below
+    // `create()`. Failure here is not an error: the outbox row survives with
+    // a backoff and the scheduled sweep re-drives it.
+    void drainDueGroupLeaves(this.ctx).catch((error: unknown) => {
+      console.warn("[groups] Could not run the immediate group leave attempt.", {
+        orgId: this.ctx.orgId,
+        employeeId: row.id,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
+    });
+
+    const kinds: LifecycleDocumentKind[] =
+      row.employmentType === "intern"
+        ? ["internship_completion_certificate", "experience_certificate", "relieving_letter"]
+        : ["experience_certificate", "relieving_letter"];
+
+    void dispatchLifecycleDocuments(this.ctx, row.id, kinds, this.ctx.userId).then(
+      (outcomes) => {
+        for (const outcome of outcomes) {
+          if (!outcome.ok) {
+            console.warn(`[lifecycle-documents] Could not issue ${outcome.kind} on exit.`, {
+              orgId: this.ctx.orgId,
+              employeeId: row.id,
+              error: outcome.error,
+            });
+          }
+        }
+      },
+    );
   }
 
   /**
@@ -773,5 +895,146 @@ export class NeonEmployeeRepository implements EmployeeRepository {
     );
 
     return after;
+  }
+
+  /**
+   * Sets or clears the expected end date the interns page counts down and
+   * the reminder sweep watches.
+   *
+   * Its own method rather than a case inside `update()`: `EmployeeUpdate`
+   * (types.ts) deliberately does not carry `internshipEndDate`, so an
+   * ordinary profile-edit PATCH — fixing a phone number — can never move or
+   * clear an internship's end date as a side effect of a request that was
+   * about something else entirely.
+   */
+  async setInternshipEndDate(
+    id: string,
+    internshipEndDate: string | null,
+  ): Promise<EmployeeRecord> {
+    const row = await withTenant(this.ctx, async (tx) => {
+      const [row] = await tx
+        .update(employees)
+        .set({ internshipEndDate, updatedAt: new Date() })
+        .where(and(eq(employees.id, id), isNull(employees.deletedAt)))
+        .returning();
+
+      if (!row) throw new NotFoundError("Employee", id);
+      return row;
+    });
+
+    return toRecord(row);
+  }
+
+  /**
+   * Converts an intern to permanent staff at the end of their internship.
+   *
+   * Draws a brand-new CV- code from the independent permanent sequence —
+   * the retired CVI- code is never reused, see `hrms.next_employee_code` —
+   * and keeps the old code on the record instead of overwriting it: payslips,
+   * signed documents and attendance already reference the CVI- code, and
+   * rewriting it in place would make every one of those unverifiable against
+   * whoever holds that code number today. `previousEmployeeCode` and
+   * `codeChangedAt` are what let a later payslip lookup still resolve it.
+   *
+   * Only `employeeCode`, `previousEmployeeCode`, `codeChangedAt` and
+   * `employmentType` change here — leave balances, group membership and the
+   * reporting line are simply never touched, which is what "survives
+   * conversion" means at the SQL level.
+   *
+   * Idempotent: retried after a timeout, or triggered twice from a
+   * double-click, this must not draw a second CV- code and clobber the
+   * `previousEmployeeCode` the first attempt already recorded. `FOR UPDATE`
+   * serialises two concurrent calls for the same employee, and checking
+   * `employmentType` inside that lock is what turns the second call into a
+   * no-op that returns the already-converted record instead of converting
+   * it again.
+   */
+  async convertToPermanent(id: string): Promise<EmployeeRecord> {
+    const { row, justConverted } = await withTenant(this.ctx, async (tx) => {
+      const [current] = await tx
+        .select()
+        .from(employees)
+        .where(and(eq(employees.id, id), isNull(employees.deletedAt)))
+        .for("update")
+        .limit(1);
+
+      if (!current) throw new NotFoundError("Employee", id);
+
+      // Already converted, or never was an intern: return the record as-is
+      // rather than drawing a second code. This check, made inside the row
+      // lock above, is the entire idempotency guarantee — a retried request
+      // observes "not an intern any more" and stops here.
+      if (current.employmentType !== "intern") {
+        return { row: current, justConverted: false };
+      }
+
+      const result = await tx.execute(
+        sql`SELECT hrms.next_employee_code(${this.ctx.orgId}::uuid, ${PERMANENT_EMPLOYEE_CODE_PREFIX}) AS code`,
+      );
+      const newCode = (result.rows[0] as { code?: string } | undefined)?.code;
+      if (!newCode) {
+        throw new Error(
+          "hrms.next_employee_code returned nothing; migration 0040 may not be applied",
+        );
+      }
+
+      const [updated] = await tx
+        .update(employees)
+        .set({
+          employeeCode: newCode,
+          previousEmployeeCode: current.employeeCode,
+          codeChangedAt: new Date(),
+          // The same default a hire with no explicit employmentType already
+          // gets in create() above — a converted intern lands exactly where
+          // a permanent hire who never specified a type would.
+          employmentType: "full_time" as never,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(employees.id, id), isNull(employees.deletedAt)))
+        .returning();
+
+      if (!updated) throw new NotFoundError("Employee", id);
+
+      await queuePaystubEmployeeSync(tx, this.ctx.orgId, id);
+      return { row: updated, justConverted: true };
+    });
+
+    // Both side effects are scoped to justConverted: the idempotent no-op
+    // branch above already had its Paystub sync queued and its completion
+    // certificate dispatched by the call that actually converted the
+    // record, and doing either again here would send a second certificate
+    // for a retried request that changed nothing.
+    if (justConverted) {
+      void queueAndAttemptPaystubEmployeeSync(this.ctx, row.id).catch(
+        (error: unknown) => {
+          console.warn(
+            "[paystub-sync] Could not run the immediate employee push attempt.",
+            {
+              orgId: this.ctx.orgId,
+              employeeId: row.id,
+              errorName: error instanceof Error ? error.name : "UnknownError",
+            },
+          );
+        },
+      );
+
+      void dispatchLifecycleDocuments(
+        this.ctx,
+        row.id,
+        ["internship_completion_certificate"],
+        this.ctx.userId,
+      ).then((outcomes) => {
+        for (const outcome of outcomes) {
+          if (!outcome.ok) {
+            console.warn(
+              "[lifecycle-documents] Could not issue the internship completion certificate on conversion.",
+              { orgId: this.ctx.orgId, employeeId: row.id, error: outcome.error },
+            );
+          }
+        }
+      });
+    }
+
+    return toRecord(row);
   }
 }

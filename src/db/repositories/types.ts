@@ -118,6 +118,24 @@ export interface EmployeeRecord {
    * synced exit arrived at Paystub with no reason at all.
    */
   exitReason?: string;
+  /**
+   * Expected last day of an internship. Undefined for permanent staff, and
+   * for an intern whose end date has not been set yet. `joinDate` already
+   * covers "internship start" for every employment type, so this is the
+   * only date an intern record needs that a permanent one does not — it is
+   * what the interns page counts down and the reminder sweep watches.
+   */
+  internshipEndDate?: string;
+  /**
+   * The employee code this record was hired under, kept once
+   * `convertToPermanent()` has replaced it with a new CV- code. Undefined
+   * for anyone who has never converted. Without this, a payslip or signed
+   * letter issued under the old CVI- code would reference a number that no
+   * longer resolves to anyone once the conversion overwrote it.
+   */
+  previousEmployeeCode?: string;
+  /** When `employeeCode` last changed because of a conversion. Undefined for anyone who has never converted. */
+  codeChangedAt?: string;
   location?: string;
   /** Major currency units for display. Stored as minor units in Postgres. */
   salary?: number;

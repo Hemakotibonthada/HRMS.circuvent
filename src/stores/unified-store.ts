@@ -66,6 +66,15 @@ export interface EmployeeDoc extends BaseRecord {
   panNumber?: string; aadharNumber?: string;
   probationEndDate?: string; noticePeriod?: number;
   lastPromotionDate?: string; previousDesignation?: string;
+  /**
+   * Set once an exit is actually processed (inactivation), not when a
+   * resignation is merely accepted — see `resignation.neon.ts`'s
+   * `ensureOffboardingJourney`. A leaver in notice period has this as
+   * `undefined`; only `resignations.agreedLastWorkingDay` (fetched
+   * separately by the offboarding/resignation pages) knows their agreed
+   * last day before that.
+   */
+  exitDate?: string; exitReason?: string;
 }
 export const useEmployeeStore = createDataStore<EmployeeDoc>();
 
@@ -396,6 +405,8 @@ function toEmployeeDoc(record: EmployeeRecord): EmployeeDoc {
     reportingManager: record.reportingToName ?? record.reportingToId ?? "",
     location: record.location ?? "",
     salary: record.salary,
+    exitDate: record.exitDate,
+    exitReason: record.exitReason,
   };
 }
 

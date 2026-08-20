@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.School
@@ -423,6 +424,12 @@ private fun itemsFor(section: MeSection, go: (String) -> Unit): List<FeatureGrid
             Glyph.Vector(Icons.Filled.Campaign),
             AccentTone.Amber,
         ) { go("announcements") },
+        FeatureGridItem(
+            "My details",
+            "Your phone, address and date of birth",
+            Glyph.Vector(Icons.Filled.ManageAccounts),
+            AccentTone.Green,
+        ) { go("my-details") },
         FeatureGridItem(
             "Identity card",
             "Your details, without a connection",

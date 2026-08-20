@@ -433,15 +433,31 @@ export const resignations = hrms.table(
     lastWorkingDayAdjustedAt: timestamp("last_working_day_adjusted_at", { withTimezone: true }),
     lastWorkingDayAdjustedById: uuid("last_working_day_adjusted_by_id"),
     /**
-     * Set exactly once, by whichever of the two triggers in
-     * `offboarding-exit.ts` gets there first: HR confirming exit, or the
-     * cron sweep noticing the last working day has already passed.
-     * Everything that must not run twice for the same leaver — group
-     * removal, Paystub inactivation, document issuance — is gated on this
-     * being null, so it is the one column every exit-processing write locks
-     * the row on before checking.
+     * Set once — not at the start of a run, but at the end of one that fully
+     * succeeded: settlement priced, group removal queued, and every document
+     * this leaver is owed actually issued. Whichever trigger in
+     * `offboarding-exit.ts` gets there first sets it, HR confirming exit or
+     * the cron sweep noticing the last working day has passed; every
+     * exit-processing write locks the row and checks this column before
+     * doing anything, so a second trigger arriving after a completed run is
+     * a no-op rather than a re-send. A run that only partly succeeds
+     * deliberately leaves this null — each piece it did finish is recorded on
+     * its own column instead (see below), so the parts already done are not
+     * redone, but the row stays due for the next sweep until every part is.
      */
     exitProcessedAt: timestamp("exit_processed_at", { withTimezone: true }),
+    /**
+     * The computed settlement, frozen the first time exit processing runs.
+     * Salary structures and leave balances are live rows that keep changing
+     * after somebody leaves — a correction to last month's attendance, a
+     * policy edit — and a settlement that recomputed from them on every read
+     * would quietly change the amount a payslip already promised. Reading
+     * this back instead of recalculating is what makes running exit
+     * processing twice (a retry, a second cron tick, a manual "process now"
+     * click after a partial failure) produce the same number rather than a
+     * new one.
+     */
+    settlementSnapshot: jsonb("settlement_snapshot"),
     /** Set once a document is actually generated — not attempted, generated — so a failed render can be retried without ever producing a second copy. */
     relievingLetterDocumentId: uuid("relieving_letter_document_id"),
     experienceCertificateDocumentId: uuid("experience_certificate_document_id"),
@@ -450,10 +466,14 @@ export const resignations = hrms.table(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    // One resignation in flight per employee. A second submission while one
-    // is already open would leave two "intended last working days" for the
-    // same person with no way to say which one HR actually accepted.
-    uniqueIndex("resignations_employee_key").on(t.employeeId),
+    // One resignation *in flight* per employee — partial rather than
+    // absolute, because an absolute unique constraint on employeeId would
+    // mean nobody who ever resigned could be rehired and resign again. Once
+    // exit processing has run the row is history, not an open request, so it
+    // drops out of the constraint.
+    uniqueIndex("resignations_employee_key")
+      .on(t.employeeId)
+      .where(sql`${t.exitProcessedAt} IS NULL`),
     index("resignations_org_status_idx").on(t.orgId, t.status),
     // The cron sweep's whole query is "agreed dates that have passed and
     // have not been processed yet". Without this index that is a

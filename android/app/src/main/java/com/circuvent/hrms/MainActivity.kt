@@ -43,6 +43,7 @@ import com.circuvent.hrms.core.ui.ProvideDateFormat
 import com.circuvent.hrms.feature.ApprovalsScreen
 import com.circuvent.hrms.feature.GoalsScreen
 import com.circuvent.hrms.feature.InboxScreen
+import com.circuvent.hrms.feature.MyDetailsScreen
 import com.circuvent.hrms.feature.WallScreen
 import com.circuvent.hrms.feature.AssetsScreen
 import com.circuvent.hrms.feature.BenefitsScreen
@@ -179,6 +180,7 @@ private object Routes {
     // Former tabs. "inbox" and "my-team" are now tab routes and are registered
     // from Destination instead, so they are deliberately absent here — a route
     // registered twice in one NavHost throws at construction.
+    const val MY_DETAILS = "my-details"
     const val GOALS = "goals"
     const val WALL = "wall"
     const val SHIFTS = "shifts"
@@ -213,6 +215,7 @@ private object Routes {
         EXPENSES to "Expenses",
         ID_CARD to "Identity card",
         WORK_AWAY to "Work from home or on duty",
+        MY_DETAILS to "My details",
         GOALS to "My goals",
         WALL to "Company wall",
         SHIFTS to "Shifts",
@@ -306,6 +309,7 @@ private fun SignedInApp(
                     // Both lost their tabs to Inbox and Team. They stay
                     // reachable as pushed screens — from the home shortcuts and
                     // from Me — so existing links and deep links still resolve.
+                    composable(Routes.MY_DETAILS) { MyDetailsScreen(container) }
                     composable(Routes.GOALS) { GoalsScreen(container) }
                     composable(Routes.WALL) { WallScreen(container, state.user) }
                     composable(Routes.SHIFTS) { ShiftsScreen(container) }

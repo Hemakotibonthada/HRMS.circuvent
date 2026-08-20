@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { BrandMark } from "@/components/brand-mark";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, LogOut, Settings, User, CreditCard } from "lucide-react";
+import { ChevronDown, LogOut, Settings, User, CreditCard, Landmark } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
@@ -136,6 +136,14 @@ export function AppSidebar() {
               <DropdownMenuContent side="top" align="start" className="w-56">
                 <DropdownMenuItem onClick={() => router.push("/myprofile")}>
                   <User className="mr-2 h-4 w-4" /> Profile
+                </DropdownMenuItem>
+                {/* Lives in the account menu, not the module sidebar list, because
+                    it is a personal-payment-detail screen like Profile/Settings
+                    rather than a work module. It was built with no entry point
+                    anywhere in the app; that gap is exactly how a finished,
+                    permissioned page ends up unreachable. */}
+                <DropdownMenuItem onClick={() => router.push("/bankdetails")}>
+                  <Landmark className="mr-2 h-4 w-4" /> Bank Details
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push("/settings")}>
                   <Settings className="mr-2 h-4 w-4" /> Settings
