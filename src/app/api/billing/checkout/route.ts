@@ -19,9 +19,8 @@ import { PLANS, monthlyTotalMinor, type PlanId } from "@/lib/billing/plans";
 import {
   RazorpayError,
   createOrder,
-  paymentsConfigured,
-  razorpayCredentials,
 } from "@/lib/billing/razorpay";
+import { loadRazorpaySettings } from "@/db/repositories/platform-settings";
 
 const schema = z.object({
   plan: z.enum(["starter", "professional", "enterprise"]),
@@ -49,15 +48,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Too many attempts. Please try again later." }, { status: 429 });
   }
 
-  if (!paymentsConfigured()) {
+  const settings = await loadRazorpaySettings();
+  if (!settings || !settings.enabled) {
     // Said plainly rather than failing obscurely. This is the normal state of
     // a deployment until a merchant account exists, and whoever reads it
     // needs to know it is configuration and not a fault.
     return NextResponse.json(
       {
-        error:
-          "Payments are not set up on this deployment. Add RAZORPAY_KEY_ID and " +
-          "RAZORPAY_KEY_SECRET to take payments.",
+        error: settings
+          ? "Payments are switched off for this deployment. Turn them on in Settings → Billing."
+          : "Payments are not set up on this deployment. Add the Razorpay keys in Settings → Billing.",
       },
       { status: 503 }
     );
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
   const amountMinor = monthlyTotalMinor(plan, employees);
 
   try {
-    const order = await createOrder({
+    const order = await createOrder(settings, {
       amountMinor,
       currency: plan.currency,
       // Ties the payment back to the tenant and the moment, so somebody
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
       order: { id: order.id, amount: order.amount, currency: order.currency },
       // The publishable half of the key pair. The secret never leaves the
       // server; this one is designed to sit in a browser.
-      keyId: razorpayCredentials()?.keyId,
+      keyId: settings.keyId,
       plan: { id: plan.id, name: plan.name },
       employees,
       amountMinor,

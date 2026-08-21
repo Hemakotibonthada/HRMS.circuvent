@@ -21,18 +21,21 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { subscriptions } from "@/db/schema/identity";
 import { statusForEvent, verifyWebhookSignature } from "@/lib/billing/razorpay";
+import { loadRazorpaySettings } from "@/db/repositories/platform-settings";
+import { PLANS, type PlanId } from "@/lib/billing/plans";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
+  const settings = await loadRazorpaySettings();
+  const secret = settings?.webhookSecret?.trim();
   if (!secret) {
     // Refused rather than accepted unverified. An endpoint that writes
     // subscription status and cannot check who is calling it is worse than
     // one that is switched off.
     return NextResponse.json(
-      { error: "RAZORPAY_WEBHOOK_SECRET is not configured; webhooks are refused." },
+      { error: "No Razorpay webhook secret is configured; webhooks are refused." },
       { status: 503 }
     );
   }
@@ -89,7 +92,38 @@ export async function POST(request: NextRequest) {
       // signed payload, which is the only reason that is safe.
       await tx.execute(`SET LOCAL app.superuser = 'on'`);
 
+      /*
+       * Idempotent on the payment id.
+       *
+       * This event and `POST /api/billing/verify` describe the same payment —
+       * the browser reports it when the widget closes, Razorpay reports it
+       * over the wire — and Razorpay itself retries anything it does not get a
+       * 2xx for. Without this check a single payment could extend the period
+       * two or three times.
+       */
+      if (externalPaymentId) {
+        const [current] = await tx
+          .select({ external: subscriptions.externalSubscriptionId })
+          .from(subscriptions)
+          .where(eq(subscriptions.orgId, orgId))
+          .limit(1);
+        if (current?.external === externalPaymentId) return;
+      }
+
+      /*
+       * The plan that was paid for, from the signed notes.
+       *
+       * Without this the webhook recorded "active" against whatever plan the
+       * tenant was already on, so paying to upgrade produced an active
+       * subscription on the old plan and its old seat limit — money taken, and
+       * the thing bought not delivered.
+       */
+      const paidPlan = notes.plan && notes.plan in PLANS ? PLANS[notes.plan as PlanId] : null;
+
       const now = new Date();
+      const periodEnd = new Date(now);
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+
       await tx
         .update(subscriptions)
         .set({
@@ -99,8 +133,16 @@ export async function POST(request: NextRequest) {
                 // A paid period starts now and runs a month. Written only on
                 // success, so a failed payment never extends anybody's access.
                 currentPeriodStart: now,
-                currentPeriodEnd: new Date(now.getTime() + 30 * 86_400_000),
+                currentPeriodEnd: periodEnd,
                 cancelledAt: null,
+                ...(paidPlan
+                  ? {
+                      plan: paidPlan.id,
+                      maxEmployees: paidPlan.maxEmployees ?? undefined,
+                      pricePerEmployee: paidPlan.pricePerEmployeeMinor,
+                      currency: paidPlan.currency,
+                    }
+                  : {}),
               }
             : {}),
           ...(status === "cancelled" ? { cancelledAt: now } : {}),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,8 @@ import { CreditCard, Check, ArrowRight, Star, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { clickable } from "@/lib/a11y/clickable";
+import { openCheckout } from "./_components/razorpay-checkout";
+import { PaymentSettingsCard } from "./_components/payment-settings";
 
 /**
  * Billing history.
@@ -78,6 +80,17 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
 
+  /** Re-reads the plan from the server. Used on load, and after a payment. */
+  const refreshSubscription = useCallback(async () => {
+    try {
+      const res = await fetch("/api/billing/subscription", { credentials: "include" });
+      if (!res.ok) return;
+      setSubscription((await res.json()) as SubscriptionResponse);
+    } catch {
+      // Left as-is: an unreachable billing service must not invent a plan.
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -114,18 +127,47 @@ export default function BillingPage() {
         credentials: "include",
         body: JSON.stringify({ plan: planId }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string; order?: { id: string } };
-      if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        order?: { id: string; amount: number; currency: string };
+        keyId?: string;
+        plan?: { id: string; name: string };
+      };
+      if (!res.ok || !body.order || !body.keyId || !body.plan) {
         toast.error(body.error || "Could not start checkout.");
         return;
       }
-      // The order exists; the Razorpay widget is what carries it from here.
-      // Until that script is embedded, say so rather than pretending the
-      // payment completed.
-      toast.success(`Order ${body.order?.id ?? ""} created. Complete payment to activate.`);
+
       setIsUpgradeOpen(false);
-    } catch {
-      toast.error("Could not reach the billing service.");
+
+      const outcome = await openCheckout(
+        { order: body.order, keyId: body.keyId, plan: body.plan },
+        {}
+      );
+
+      if (outcome.status === "paid") {
+        toast.success("Payment received. Your plan is active.");
+        // Re-read rather than patching local state: the server decides what
+        // the plan is now, and it is the only thing that knows whether the
+        // webhook has also landed.
+        await refreshSubscription();
+        return;
+      }
+      if (outcome.status === "pending") {
+        // Paid, but not yet settled. Reported as information, not failure —
+        // the webhook applies it, and telling them it failed would be false.
+        toast.info(outcome.message ?? "Payment received. It will be applied shortly.");
+        await refreshSubscription();
+        return;
+      }
+      if (outcome.status === "failed") {
+        toast.error(outcome.message ?? "The payment did not go through.");
+        return;
+      }
+      // Dismissed. Closing a payment window is not a failure and gets no
+      // error toast — the order simply goes unpaid.
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not reach the billing service.");
     } finally {
       setCheckoutBusy(false);
     }
@@ -239,8 +281,11 @@ export default function BillingPage() {
         </CardContent>
       </Card>
 
+      {/* Payment gateway — hidden for anyone who cannot change it. */}
+      <PaymentSettingsCard />
+
       {/* Billing History */}
-      <Card className="animate-slide-up" style={{ animationDelay: "240ms" }}>
+      <Card className="animate-slide-up" style={{ animationDelay: "280ms" }}>
         <CardHeader className="flex-row items-center justify-between">
           <div>
             <CardTitle className="text-base">Billing History</CardTitle>

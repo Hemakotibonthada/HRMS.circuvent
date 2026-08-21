@@ -30,16 +30,21 @@ export interface RazorpayCredentials {
   keySecret: string;
 }
 
-/** The keys, or null when this deployment cannot take payments. */
-export function razorpayCredentials(): RazorpayCredentials | null {
+/**
+ * The keys from the environment, or null.
+ *
+ * Kept because a deployment configured before the settings table existed must
+ * keep working, but it is no longer the only source — see
+ * `loadRazorpaySettings` in `db/repositories/platform-settings.ts`, which reads
+ * the database first and falls back to this. Anything that needs credentials
+ * should take them as an argument rather than reaching for the environment, so
+ * one lookup decides for the whole request.
+ */
+export function razorpayCredentialsFromEnv(): RazorpayCredentials | null {
   const keyId = process.env.RAZORPAY_KEY_ID?.trim();
   const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
   if (!keyId || !keySecret) return null;
   return { keyId, keySecret };
-}
-
-export function paymentsConfigured(): boolean {
-  return razorpayCredentials() !== null;
 }
 
 export class RazorpayError extends Error {
@@ -53,14 +58,10 @@ export class RazorpayError extends Error {
 }
 
 async function call<T>(
+  creds: RazorpayCredentials,
   path: string,
   init: { method: "GET" | "POST"; body?: unknown }
 ): Promise<T> {
-  const creds = razorpayCredentials();
-  if (!creds) {
-    throw new RazorpayError("Razorpay is not configured on this deployment.", 503);
-  }
-
   const auth = Buffer.from(`${creds.keyId}:${creds.keySecret}`).toString("base64");
   const response = await fetch(`${API}${path}`, {
     method: init.method,
@@ -94,6 +95,28 @@ export interface RazorpayOrder {
   currency: string;
   status: string;
   receipt?: string;
+  notes?: Record<string, string>;
+}
+
+/**
+ * Re-reads an order from Razorpay.
+ *
+ * This is how the server learns what was actually bought. The browser reports
+ * a payment and is believed only as far as the signature goes — and the
+ * signature covers `order_id|payment_id`, nothing else. It says a real payment
+ * happened against a real order; it says nothing about which plan.
+ *
+ * Taking the plan from the request body instead would let somebody check out
+ * for Starter, pay Starter's price legitimately, and post back "enterprise"
+ * with a perfectly valid signature. The notes were written by this server when
+ * the order was created, so reading them back is the only account of the
+ * purchase the customer never had a chance to edit.
+ */
+export async function fetchOrder(
+  creds: RazorpayCredentials,
+  orderId: string
+): Promise<RazorpayOrder> {
+  return call<RazorpayOrder>(creds, `/orders/${encodeURIComponent(orderId)}`, { method: "GET" });
 }
 
 /**
@@ -108,17 +131,20 @@ export interface RazorpayOrder {
  *
  * `amountMinor` is paise, matching every other amount in this codebase.
  */
-export async function createOrder(input: {
-  amountMinor: number;
-  currency: string;
-  receipt: string;
-  notes?: Record<string, string>;
-}): Promise<RazorpayOrder> {
+export async function createOrder(
+  creds: RazorpayCredentials,
+  input: {
+    amountMinor: number;
+    currency: string;
+    receipt: string;
+    notes?: Record<string, string>;
+  }
+): Promise<RazorpayOrder> {
   if (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0) {
     throw new RazorpayError("An order must be for a positive whole number of paise.", 400);
   }
 
-  return call<RazorpayOrder>("/orders", {
+  return call<RazorpayOrder>(creds, "/orders", {
     method: "POST",
     body: {
       amount: input.amountMinor,
@@ -130,6 +156,32 @@ export async function createOrder(input: {
       payment_capture: 1,
     },
   });
+}
+
+/**
+ * Confirms the credentials actually work, by asking Razorpay something.
+ *
+ * A settings screen that stores a key and says "saved" has proved nothing —
+ * the first anybody would learn of a typo is a customer failing to check out.
+ * This fetches the payments list with a limit of one: the lightest authenticated
+ * call Razorpay offers, and a 401 from it is unambiguous.
+ */
+export async function verifyCredentials(
+  creds: RazorpayCredentials
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await call<unknown>(creds, "/payments?count=1", { method: "GET" });
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof RazorpayError) {
+      const hint =
+        error.status === 401
+          ? "Razorpay rejected these credentials. Check the Key ID and Key Secret."
+          : error.message;
+      return { ok: false, error: hint };
+    }
+    return { ok: false, error: "Could not reach Razorpay. Check network access from this deployment." };
+  }
 }
 
 /**

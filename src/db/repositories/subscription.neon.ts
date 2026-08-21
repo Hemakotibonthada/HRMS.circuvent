@@ -172,3 +172,82 @@ export async function startTrialIfMissing(ctx: TenantContext): Promise<boolean> 
     return true;
   });
 }
+
+/**
+ * Puts a tenant on a paid plan after a verified payment.
+ *
+ * Idempotent on the payment id, and that is the whole point: the browser
+ * reports the payment as soon as the widget closes, and Razorpay's webhook
+ * reports the same payment moments later. Whichever arrives first activates
+ * the subscription; the second finds the id already recorded and changes
+ * nothing, rather than extending the period twice for one payment.
+ *
+ * The period runs from now rather than from the end of the trial. A company
+ * that pays on day three of a fourteen-day trial has chosen to start paying,
+ * and quietly holding their money for eleven days before the period begins is
+ * not a defensible reading of that.
+ */
+export async function activateSubscription(
+  ctx: TenantContext,
+  input: { plan: PlanId; externalPaymentId: string; externalOrderId?: string }
+): Promise<{ activated: boolean }> {
+  return withTenant(ctx, async (tx) => {
+    const [existing] = await tx
+      .select({
+        id: subscriptions.id,
+        externalSubscriptionId: subscriptions.externalSubscriptionId,
+      })
+      .from(subscriptions)
+      .where(eq(subscriptions.orgId, ctx.orgId))
+      .limit(1);
+
+    // Already applied. Seen twice for every payment, by design.
+    if (existing?.externalSubscriptionId === input.externalPaymentId) {
+      return { activated: false };
+    }
+
+    const plan = PLANS[input.plan];
+    const periodStart = new Date();
+    const periodEnd = new Date(periodStart);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+    if (!existing) {
+      await tx.insert(subscriptions).values({
+        orgId: ctx.orgId,
+        plan: plan.id,
+        status: "active",
+        maxEmployees: plan.maxEmployees ?? undefined,
+        pricePerEmployee: plan.pricePerEmployeeMinor,
+        currency: plan.currency,
+        billingCycle: "monthly",
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        externalSubscriptionId: input.externalPaymentId,
+        externalCustomerId: input.externalOrderId ?? null,
+      });
+      return { activated: true };
+    }
+
+    await tx
+      .update(subscriptions)
+      .set({
+        plan: plan.id,
+        status: "active",
+        // The column is NOT NULL, so an unlimited plan omits it rather than
+        // writing null — `undefined` leaves the existing value, which for a
+        // plan with no cap is what "no limit" already means here.
+        maxEmployees: plan.maxEmployees ?? undefined,
+        pricePerEmployee: plan.pricePerEmployeeMinor,
+        currency: plan.currency,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        externalSubscriptionId: input.externalPaymentId,
+        externalCustomerId: input.externalOrderId ?? null,
+        cancelledAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(subscriptions.orgId, ctx.orgId));
+
+    return { activated: true };
+  });
+}
