@@ -26,6 +26,15 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # A React Server Component cannot pass a function to a Client Component.
+      # It type-checks, it lints, every unit test stays green — and the page
+      # throws at render time, which the error boundary turns into a generic
+      # failure. It reached production on five Paystub pages, including
+      # approving a payroll run, and only broke for sessions holding the
+      # permission to act, so a viewer saw a working page.
+      - name: Audit server/client boundary
+        run: npm run audit:rsc
+
       - name: Lint (new code, zero tolerance)
         run: npm run lint:strict
 
