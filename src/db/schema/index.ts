@@ -11,3 +11,4 @@ export * from "./assets";
 export * from "./performance";
 export * from "./ats";
 export * from "./integrations";
+export * from "./job-history";

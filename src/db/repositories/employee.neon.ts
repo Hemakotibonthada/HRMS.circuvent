@@ -20,6 +20,7 @@ import {
 } from "@/db/schema/hrms";
 import { auditLog, organizations, users } from "@/db/schema/identity";
 import { queueMailboxChange } from "@/lib/mailbox-outbox";
+import { recordJobChanges, type JobChange } from "@/lib/job-history";
 import { defaultTeamId } from "@/lib/default-team";
 import {
   drainDueGroupJoins,
@@ -616,6 +617,21 @@ export class NeonEmployeeRepository implements EmployeeRepository {
 
   async update(id: string, data: EmployeeUpdate): Promise<EmployeeRecord> {
     const row = await withTenant(this.ctx, async (tx) => {
+      // Read before writing, so the change can be recorded as a transition
+      // rather than only a destination. In the same transaction as the update:
+      // a history row that survives a rolled-back edit describes a promotion
+      // that did not happen.
+      const [before] = await tx
+        .select({
+          designation: employees.designation,
+          departmentId: employees.departmentId,
+          reportingToId: employees.reportingToId,
+          employmentType: employees.employmentType,
+        })
+        .from(employees)
+        .where(and(eq(employees.id, id), isNull(employees.deletedAt)))
+        .limit(1);
+
       const [row] = await tx
         .update(employees)
         .set({
@@ -654,6 +670,79 @@ export class NeonEmployeeRepository implements EmployeeRepository {
         .returning();
 
       if (!row) throw new NotFoundError("Employee", id);
+
+      // Names alongside ids, so "moved to Engineering" keeps saying that after
+      // Engineering is renamed. Looked up only when the id actually changed.
+      const nameOfDepartment = async (departmentId: string | null) => {
+        if (!departmentId) return null;
+        const [d] = await tx
+          .select({ name: departments.name })
+          .from(departments)
+          .where(eq(departments.id, departmentId))
+          .limit(1);
+        return d?.name ?? null;
+      };
+
+      const nameOfEmployee = async (employeeId: string | null) => {
+        if (!employeeId) return null;
+        const [e] = await tx
+          .select({ firstName: employees.firstName, lastName: employees.lastName })
+          .from(employees)
+          .where(eq(employees.id, employeeId))
+          .limit(1);
+        return e ? `${e.firstName} ${e.lastName}`.trim() : null;
+      };
+
+      if (before) {
+        const changes: JobChange[] = [];
+
+        if (before.designation !== row.designation) {
+          changes.push({
+            field: "designation",
+            fromValue: before.designation ?? null,
+            toValue: row.designation ?? null,
+          });
+        }
+
+        if (before.departmentId !== row.departmentId) {
+          changes.push({
+            field: "department",
+            fromValue: await nameOfDepartment(before.departmentId),
+            toValue: await nameOfDepartment(row.departmentId),
+            fromId: before.departmentId,
+            toId: row.departmentId,
+          });
+        }
+
+        if (before.reportingToId !== row.reportingToId) {
+          changes.push({
+            field: "manager",
+            fromValue: await nameOfEmployee(before.reportingToId),
+            toValue: await nameOfEmployee(row.reportingToId),
+            fromId: before.reportingToId,
+            toId: row.reportingToId,
+          });
+        }
+
+        if (before.employmentType !== row.employmentType) {
+          changes.push({
+            field: "employment_type",
+            fromValue: before.employmentType ?? null,
+            toValue: row.employmentType ?? null,
+          });
+        }
+
+        await recordJobChanges(
+          tx,
+          {
+            orgId: this.ctx.orgId,
+            employeeId: row.id,
+            changedById: this.ctx.userId,
+          },
+          changes
+        );
+      }
+
       await queuePaystubEmployeeSync(tx, this.ctx.orgId, row.id);
       return row;
     });

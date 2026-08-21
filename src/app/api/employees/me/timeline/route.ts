@@ -9,10 +9,14 @@
 //
 // So this timeline is built only from things that were actually recorded with a
 // date: the day somebody joined, the day they were confirmed, each salary
-// revision and the reason given for it, and their exit. Inventing a "Promoted
-// to Senior Engineer" entry by diffing something would produce a plausible
-// history that no record supports, on the screen a person is most likely to
-// quote back at HR.
+// revision and the reason given for it, their exit, and — from the day
+// `hrms.job_history` was added — role, team, manager and employment changes as
+// they happen. Inventing a "Promoted to Senior Engineer" entry by diffing
+// something would produce a plausible history that no record supports, on the
+// screen a person is most likely to quote back at HR.
+//
+// Nothing is backfilled. Changes made before that table existed were never
+// recorded anywhere, and the note this returns keeps saying so.
 //
 // ─── On amounts ───
 //
@@ -28,11 +32,12 @@ import { employees, salaryStructures } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
 import { currentEmployeeId } from "@/lib/current-employee";
+import { describeChange, readJobHistory } from "@/lib/job-history";
 
 export interface TimelineEntry {
   /** ISO date the event happened on. */
   date: string;
-  kind: "joined" | "confirmed" | "pay_revised" | "left";
+  kind: "joined" | "confirmed" | "pay_revised" | "job_changed" | "left";
   title: string;
   detail: string | null;
 }
@@ -55,7 +60,7 @@ export async function GET(request: NextRequest) {
       const employeeId = await currentEmployeeId(ctx, tx);
       // An account with no employment record has no employment history, which
       // is an empty answer rather than an error.
-      if (!employeeId) return { me: null, revisions: [] };
+      if (!employeeId) return { me: null, revisions: [], jobChanges: [] };
 
       const [me] = await tx
         .select({
@@ -78,7 +83,11 @@ export async function GET(request: NextRequest) {
         .orderBy(asc(salaryStructures.effectiveFrom))
         .limit(100);
 
-      return { me: me ?? null, revisions };
+      // Returns [] when the migration has not been applied yet, so this screen
+      // keeps working rather than 500ing on a table that is not there.
+      const jobChanges = await readJobHistory(tx, ctx.orgId, employeeId);
+
+      return { me: me ?? null, revisions, jobChanges };
     });
 
     const entries: TimelineEntry[] = [];
@@ -113,6 +122,16 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    for (const change of payload.jobChanges) {
+      const { title, detail } = describeChange(change);
+      entries.push({
+        date: change.effectiveOn.slice(0, 10),
+        kind: "job_changed",
+        title,
+        detail,
+      });
+    }
+
     if (payload.me?.exitDate) {
       entries.push({
         date: String(payload.me.exitDate).slice(0, 10),
@@ -131,8 +150,9 @@ export async function GET(request: NextRequest) {
       // Stated so a client can say it rather than implying the list is
       // everything that ever happened.
       note:
-        "Built from dated records: joining, confirmation, pay revisions and exit. " +
-        "Role and team changes are not kept as history in this system.",
+        "Built from dated records: joining, confirmation, pay revisions, " +
+        "recorded role, team and manager changes, and exit. " +
+        "Changes made before this system started keeping job history are not shown.",
     });
   } catch (error) {
     console.error("Employee timeline failed:", error);
