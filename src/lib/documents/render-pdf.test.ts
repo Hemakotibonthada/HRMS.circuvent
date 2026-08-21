@@ -178,6 +178,34 @@ describe("renderDocumentPdf", () => {
     expect(loaded.getPageCount()).toBeGreaterThanOrEqual(1);
   });
 
+  it("renders a rupee sign instead of failing to encode it", async () => {
+    // The standard-14 fonts this used are WinAnsi and have no ₹, so pdf-lib
+    // threw `WinAnsi cannot encode "₹" (0x20b9)` on every document carrying a
+    // salary — every offer letter and every compensation revision. The
+    // failure surfaced only in the PDF storage outbox as a retry that could
+    // never succeed, so the documents existed with no archived PDF and nobody
+    // could download one.
+    const bytes = await renderDocumentPdf({
+      ...baseParams,
+      bodyHtmlOrText: "<p>Revised annual cost to company: ₹13,20,000</p>",
+      signatories: [],
+    });
+    expect(Buffer.from(bytes.slice(0, 5)).toString("ascii")).toBe("%PDF-");
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders the other characters an Indian HR document actually contains", async () => {
+    // An em dash and curly quotes come from the letter templates themselves;
+    // the Devanagari is here because a legal name can carry it and a name
+    // that cannot be printed is a document that cannot be issued.
+    const bytes = await renderDocumentPdf({
+      ...baseParams,
+      bodyHtmlOrText: "<p>“Employee” — ₹1,00,000 — हेमा · ✓</p>",
+      signatories: [],
+    });
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThanOrEqual(1);
+  });
+
   it("still yields one real page for an empty body and no signatories, never zero pages", async () => {
     const bytes = await renderDocumentPdf({ ...baseParams, bodyHtmlOrText: "", signatories: [] });
     const loaded = await PDFDocument.load(bytes);

@@ -25,13 +25,20 @@ import {
   PDFDocument,
   PDFFont,
   PDFPage,
-  StandardFonts,
   PageSizes,
   rgb,
   type Color,
   type PDFImage,
 } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import { defaultLogoUrl, extractCompanyLogoUrl } from "@/lib/document-templates/branding";
+import { NOTO_SANS_REGULAR_BASE64 } from "./fonts/noto-sans-regular";
+import { NOTO_SANS_BOLD_BASE64 } from "./fonts/noto-sans-bold";
+
+// Decoded once per process rather than per document: these are a few hundred
+// kilobytes each, and a letter run renders one per employee.
+const NOTO_SANS_REGULAR_BYTES = Buffer.from(NOTO_SANS_REGULAR_BASE64, "base64");
+const NOTO_SANS_BOLD_BYTES = Buffer.from(NOTO_SANS_BOLD_BASE64, "base64");
 
 // ─── Public shapes ──────────────────────────────────────────
 
@@ -78,8 +85,23 @@ export interface RenderDocumentPdfParams {
  */
 export async function renderDocumentPdf(params: RenderDocumentPdfParams): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
-  const bodyFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  // Noto Sans, embedded, rather than the standard-14 Helvetica this used.
+  //
+  // The standard fonts are WinAnsi-encoded and have no rupee sign, so
+  // `pdf-lib` threw `WinAnsi cannot encode "₹" (0x20b9)` on any document
+  // carrying a salary — which is every offer letter and every compensation
+  // revision. The failure landed in the PDF storage outbox as a retry that
+  // could never succeed, so those documents simply had no archived PDF and
+  // nobody could download one. Paystub hit the identical wall on payslips and
+  // is fixed the same way; the font files are the same vendored SIL OFL
+  // subset, copied rather than shared because the two apps deploy separately.
+  //
+  // `subset: true` keeps only the glyphs actually used, which matters when the
+  // alternative is carrying a full Unicode font in every rendered document.
+  pdfDoc.registerFontkit(fontkit);
+  const bodyFont = await pdfDoc.embedFont(NOTO_SANS_REGULAR_BYTES, { subset: true });
+  const boldFont = await pdfDoc.embedFont(NOTO_SANS_BOLD_BYTES, { subset: true });
   // Resolved once per document, same as the HTML rendering: `generate()`
   // already decided whether this document carries the tenant's own logo or
   // the deployment default (or neither) and baked that decision into
