@@ -106,6 +106,7 @@ fun HomeScreen(state: AppState) {
     var pulse by remember { mutableStateOf<Load<TeamPulse>>(Load.Loading) }
     var holidays by remember { mutableStateOf<Load<List<Holiday>>>(Load.Loading) }
     var mine by remember { mutableStateOf<Load<List<LeaveRequest>>>(Load.Loading) }
+    var recent by remember { mutableStateOf<Load<List<AttendanceRecord>>>(Load.Loading) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -117,6 +118,13 @@ fun HomeScreen(state: AppState) {
         team = state.api.teamAttendance().toLoad()
         pulse = state.api.teamPulse().toLoad()
         holidays = state.api.holidays().toLoad()
+        recent = state.api.attendance().toLoad().let {
+            when (it) {
+                is Load.Ready -> Load.Ready(it.value.items)
+                is Load.Failed -> it
+                Load.Loading -> Load.Loading
+            }
+        }
         mine = state.api.leaveRequests().toLoad().let {
             when (it) {
                 is Load.Ready -> Load.Ready(it.value.items)
@@ -227,6 +235,49 @@ fun HomeScreen(state: AppState) {
         }
 
         // ─── Two short lists ───
+        Row(horizontalArrangement = Arrangement.spacedBy(Desk.spacing.md)) {
+            Column(Modifier.weight(1.4f)) {
+                DeskCard {
+                    SectionTitle("Hours you worked")
+                    Muted("The last two weeks you clocked in for.")
+                    Spacer(Modifier.height(Desk.spacing.md))
+                    Loaded(recent) { records ->
+                        // Only days with a recorded duration. A day with no
+                        // punch is not a zero-hour day, it is a day with no
+                        // measurement, and plotting it as zero invents a dip.
+                        val points = records
+                            .filter { it.workedMinutes != null && it.date.isNotBlank() }
+                            .sortedBy { it.date }
+                            .takeLast(14)
+                            .map { Point(it.date.takeLast(5), (it.workedMinutes ?: 0) / 60f) }
+
+                        LineChart(points, valueSuffix = "h")
+                    }
+                }
+            }
+
+            Column(Modifier.weight(1f)) {
+                DeskCard {
+                    SectionTitle("Leave")
+                    Spacer(Modifier.height(Desk.spacing.md))
+                    Loaded(balances) { list ->
+                        val entitled = list.sumOf {
+                            it.openingDays + it.accruedDays + it.carryForwardDays
+                        }.toFloat()
+                        val taken = list.sumOf { it.usedDays }.toFloat()
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            RingChart(
+                                used = taken,
+                                total = entitled,
+                                label = if (entitled <= 0f) "Nothing recorded yet"
+                                else "${trim(taken)} of ${trim(entitled)} days",
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(Desk.spacing.md)) {
             Column(Modifier.weight(1f)) {
                 DeskCard {
@@ -399,6 +450,22 @@ fun LeaveScreen(state: AppState) {
                 EmptyState("No leave types yet", "HR has not set up leave balances for you.")
             } else {
                 DeskCard {
+                    SectionTitle("What is left")
+                    Muted("Days remaining after what you have taken and what is pending.")
+                    Spacer(Modifier.height(Desk.spacing.md))
+                    BarChart(
+                        points = shown.map { b ->
+                            val entitled = b.openingDays + b.accruedDays + b.carryForwardDays
+                            Point(
+                                titleCase(b.leaveType),
+                                (entitled - b.usedDays - b.pendingDays).toFloat().coerceAtLeast(0f),
+                            )
+                        },
+                        valueSuffix = "d",
+                    )
+                }
+
+                DeskCard {
                     TableHeader(
                         "Type" to 2f, "Entitled" to 1f, "Taken" to 1f,
                         "Pending" to 1f, "Left" to 1f,
@@ -541,6 +608,31 @@ fun AttendanceScreen(state: AppState) {
             if (list.isEmpty()) {
                 EmptyState("No attendance yet", "Days you clock in for appear here.")
             } else {
+                val worked = list
+                    .filter { it.workedMinutes != null && it.date.isNotBlank() }
+                    .sortedBy { it.date }
+
+                DeskCard {
+                    SectionTitle("Hours a day")
+                    Muted("Only days with a recorded duration. A day with no punch is a gap, not a zero.")
+                    Spacer(Modifier.height(Desk.spacing.md))
+                    LineChart(
+                        points = worked.takeLast(30).map {
+                            Point(it.date.takeLast(5), (it.workedMinutes ?: 0) / 60f)
+                        },
+                        height = 160.dp,
+                        valueSuffix = "h",
+                    )
+
+                    if (worked.size >= MIN_LINE_POINTS) {
+                        val average = worked.sumOf { it.workedMinutes ?: 0 } / worked.size
+                        Muted(
+                            "Average ${average / 60}h ${average % 60}m across ${worked.size} recorded days.",
+                            Modifier.padding(top = Desk.spacing.md),
+                        )
+                    }
+                }
+
                 DeskCard {
                     TableHeader("Date" to 1.2f, "In" to 1f, "Out" to 1f, "Worked" to 1f, "Status" to 1f)
                     list.forEach { r ->
