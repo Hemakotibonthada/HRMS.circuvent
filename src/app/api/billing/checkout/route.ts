@@ -21,9 +21,17 @@ import {
   createOrder,
 } from "@/lib/billing/razorpay";
 import { loadRazorpaySettings } from "@/db/repositories/platform-settings";
+import { startRecurring } from "@/lib/billing/recurring";
 
 const schema = z.object({
   plan: z.enum(["starter", "professional", "enterprise"]),
+  /**
+   * How they want to pay.
+   *
+   * Defaults to the one-off order this endpoint has always created, so an
+   * older client that sends only a plan keeps working exactly as before.
+   */
+  mode: z.enum(["one_off", "recurring"]).optional().default("one_off"),
 });
 
 export async function POST(request: NextRequest) {
@@ -84,6 +92,42 @@ export async function POST(request: NextRequest) {
   const employees = Math.max(1, view?.employeesUsed ?? 1);
   const amountMinor = monthlyTotalMinor(plan, employees);
 
+  // ── Recurring ────────────────────────────────────────────────
+  // The tenant authorises a mandate once and Razorpay collects every month.
+  // The plan is priced per seat and the subscription carries the headcount as
+  // its quantity, so the amount tracks hiring without cancelling anything.
+  if (parsed.data.mode === "recurring") {
+    try {
+      const { subscriptionId, planId } = await startRecurring({
+        creds: settings,
+        orgId: ctx.orgId,
+        plan,
+        employees,
+      });
+
+      return NextResponse.json({
+        mode: "recurring",
+        // The widget opens on a subscription id rather than an order id; the
+        // customer is authorising future collection, not paying once.
+        subscription: { id: subscriptionId },
+        keyId: settings.keyId,
+        plan: { id: plan.id, name: plan.name },
+        employees,
+        amountMinor,
+      });
+    } catch (error) {
+      if (error instanceof RazorpayError) {
+        console.error("Razorpay subscription failed:", error.message);
+        return NextResponse.json(
+          { error: error.message },
+          { status: error.status >= 500 ? 502 : 400 }
+        );
+      }
+      console.error("Recurring checkout failed:", error);
+      return NextResponse.json({ error: "Could not start the subscription." }, { status: 500 });
+    }
+  }
+
   try {
     const order = await createOrder(settings, {
       amountMinor,
@@ -96,6 +140,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
+      mode: "one_off",
       order: { id: order.id, amount: order.amount, currency: order.currency },
       // The publishable half of the key pair. The secret never leaves the
       // server; this one is designed to sit in a browser.

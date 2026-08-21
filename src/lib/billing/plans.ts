@@ -118,11 +118,53 @@ export interface SubscriptionSnapshot {
  * too: a failed card should start a conversation, not lock a company out of
  * its own attendance records on the morning the payment bounced. `cancelled`
  * and `expired` do not count.
+ *
+ * ── Why a paid period is checked against the clock ──
+ * This used to return true for `active` unconditionally, and nothing anywhere
+ * writes `expired` — the status exists in the enum, is handled here, and has
+ * never been set by any code path. So a tenant who paid once was entitled
+ * forever: their `current_period_end` passed, no renewal was taken, and the
+ * product went on working indefinitely.
+ *
+ * The lapse is decided here, from the date, rather than by a nightly job that
+ * flips a column. A job that has not run yet, or that failed last night, would
+ * otherwise mean the answer to "may this tenant use the product" depends on
+ * whether a sweep succeeded — which is a much worse thing to be uncertain
+ * about than a date comparison.
+ *
+ * ── The grace period ──
+ * A renewal is confirmed by a webhook, and a webhook can be slow, retried, or
+ * delivered after a brief outage. Cutting a paying customer off at the instant
+ * their period ends would turn a few minutes of Razorpay latency into a
+ * company unable to run payroll. Two days is long enough to absorb that and a
+ * weekend, and short enough that it is not a free month.
  */
+export const RENEWAL_GRACE_DAYS = 2;
+
 export function isEntitled(sub: SubscriptionSnapshot, now: Date = new Date()): boolean {
   if (sub.status === "cancelled" || sub.status === "expired") return false;
   if (sub.status === "trial") return trialDaysRemaining(sub, now) > 0;
-  return true;
+
+  // A paid subscription with no period recorded is treated as entitled: it is
+  // a bespoke or manually managed account, not a lapsed one, and refusing
+  // those would lock out exactly the customers somebody negotiated with.
+  if (!sub.currentPeriodEnd) return true;
+
+  return now.getTime() <= sub.currentPeriodEnd.getTime() + RENEWAL_GRACE_DAYS * 86_400_000;
+}
+
+/**
+ * Whether a paid period has run out, grace included.
+ *
+ * Separate from `isEntitled` so the billing screen can say "your subscription
+ * lapsed on the 3rd" rather than only refusing to work, and so a sweep can
+ * find these rows to write `expired` on them without re-deriving the rule.
+ */
+export function hasLapsed(sub: SubscriptionSnapshot, now: Date = new Date()): boolean {
+  if (sub.status === "cancelled" || sub.status === "expired") return false;
+  if (sub.status === "trial") return false;
+  if (!sub.currentPeriodEnd) return false;
+  return now.getTime() > sub.currentPeriodEnd.getTime() + RENEWAL_GRACE_DAYS * 86_400_000;
 }
 
 /**

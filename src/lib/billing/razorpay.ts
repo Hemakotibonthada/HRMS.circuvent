@@ -60,7 +60,7 @@ export class RazorpayError extends Error {
 async function call<T>(
   creds: RazorpayCredentials,
   path: string,
-  init: { method: "GET" | "POST"; body?: unknown }
+  init: { method: "GET" | "POST" | "PATCH"; body?: unknown }
 ): Promise<T> {
   const auth = Buffer.from(`${creds.keyId}:${creds.keySecret}`).toString("base64");
   const response = await fetch(`${API}${path}`, {
@@ -156,6 +156,183 @@ export async function createOrder(
       payment_capture: 1,
     },
   });
+}
+
+// ─── Recurring subscriptions ─────────────────────────────────
+//
+// The one-off order above charges for a period that has already been counted,
+// and its comment explains why: seat pricing changes as a company hires, and a
+// fixed mandate would either undercharge a growing customer or need cancelling
+// and recreating at every headcount change.
+//
+// Razorpay's Subscriptions API answers that objection directly, and this is
+// why recurring is offered alongside rather than instead. A Plan is priced per
+// employee per month; the Subscription carries a `quantity`, and Razorpay
+// charges `plan amount × quantity` each cycle. Headcount changes are a
+// quantity update on the existing subscription — no cancel, no recreate, no
+// mandate re-authorisation.
+//
+// What a tenant gets is therefore a choice, and both are legitimate:
+//
+//   one-off      pay for the month just counted; nothing is stored; the
+//                customer returns each month. Exact to the seat, needs a human.
+//   recurring    a mandate is authorised once and Razorpay collects monthly.
+//                No one has to remember; the quantity is kept in step with
+//                headcount by this application.
+//
+// The quantity is deliberately *not* updated silently on every hire. See
+// `syncSubscriptionQuantity` below.
+
+export interface RazorpayPlan {
+  id: string;
+  period: string;
+  interval: number;
+  item: { name: string; amount: number; currency: string };
+  notes?: Record<string, string>;
+}
+
+/**
+ * A plan priced for one employee for one month.
+ *
+ * One plan per tenant plan tier, not per customer: Razorpay plans are
+ * immutable once created, and creating one per customer would leave a
+ * merchant account carrying a plan for every organisation that ever signed
+ * up. The per-seat amount is what makes that possible — the customer-specific
+ * part is the subscription's `quantity`, not the plan.
+ */
+export async function createPlan(
+  creds: RazorpayCredentials,
+  input: {
+    perSeatAmountMinor: number;
+    currency: string;
+    name: string;
+    notes?: Record<string, string>;
+  }
+): Promise<RazorpayPlan> {
+  if (!Number.isInteger(input.perSeatAmountMinor) || input.perSeatAmountMinor <= 0) {
+    throw new RazorpayError("A plan must price a seat in positive whole paise.", 400);
+  }
+
+  return call<RazorpayPlan>(creds, "/plans", {
+    method: "POST",
+    body: {
+      period: "monthly",
+      interval: 1,
+      item: {
+        name: input.name,
+        amount: input.perSeatAmountMinor,
+        currency: input.currency,
+      },
+      notes: input.notes,
+    },
+  });
+}
+
+export interface RazorpaySubscription {
+  id: string;
+  plan_id: string;
+  status: string;
+  quantity: number;
+  current_start: number | null;
+  current_end: number | null;
+  charge_at: number | null;
+  short_url?: string;
+  notes?: Record<string, string>;
+}
+
+/**
+ * Starts a recurring subscription for `quantity` seats.
+ *
+ * `total_count` is required by Razorpay and is a ceiling on how many cycles
+ * will ever be charged, not a commitment the customer makes — it is set long
+ * (ten years) because a subscription that silently stops collecting after a
+ * year is indistinguishable, from the inside, from one nobody is paying.
+ *
+ * `customer_notify` is off: this application already emails about billing, and
+ * two sets of messages about the same charge from two senders is how a
+ * customer stops reading either.
+ */
+export async function createSubscription(
+  creds: RazorpayCredentials,
+  input: {
+    planId: string;
+    quantity: number;
+    notes?: Record<string, string>;
+    totalCount?: number;
+  }
+): Promise<RazorpaySubscription> {
+  if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
+    throw new RazorpayError("A subscription must be for at least one seat.", 400);
+  }
+
+  return call<RazorpaySubscription>(creds, "/subscriptions", {
+    method: "POST",
+    body: {
+      plan_id: input.planId,
+      quantity: input.quantity,
+      total_count: input.totalCount ?? 120,
+      customer_notify: 0,
+      notes: input.notes,
+    },
+  });
+}
+
+/** Re-reads a subscription, which is how the server learns what was authorised. */
+export async function fetchSubscription(
+  creds: RazorpayCredentials,
+  subscriptionId: string
+): Promise<RazorpaySubscription> {
+  return call<RazorpaySubscription>(
+    creds,
+    `/subscriptions/${encodeURIComponent(subscriptionId)}`,
+    { method: "GET" }
+  );
+}
+
+/**
+ * Changes how many seats a subscription is billed for.
+ *
+ * `schedule_change_at: "cycle_end"` is the whole point. Applying a seat change
+ * immediately would charge a prorated amount the moment somebody is hired —
+ * so a company onboarding twenty people in a week would receive twenty
+ * separate charges, and a company that let someone go mid-month would be owed
+ * a refund the API cannot cleanly express. Taking the new count at the next
+ * cycle bills exactly one predictable amount per month, which is what an
+ * invoice is supposed to be.
+ */
+export async function updateSubscriptionQuantity(
+  creds: RazorpayCredentials,
+  subscriptionId: string,
+  quantity: number
+): Promise<RazorpaySubscription> {
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new RazorpayError("A subscription must be for at least one seat.", 400);
+  }
+
+  return call<RazorpaySubscription>(
+    creds,
+    `/subscriptions/${encodeURIComponent(subscriptionId)}`,
+    { method: "PATCH", body: { quantity, schedule_change_at: "cycle_end" } }
+  );
+}
+
+/**
+ * Stops a recurring subscription.
+ *
+ * `cancel_at_cycle_end` by default: the customer has paid for the period they
+ * are in, and cutting them off mid-month for cancelling is taking money for
+ * nothing. Immediate cancellation exists for the cases where somebody asks.
+ */
+export async function cancelSubscription(
+  creds: RazorpayCredentials,
+  subscriptionId: string,
+  options: { immediately?: boolean } = {}
+): Promise<RazorpaySubscription> {
+  return call<RazorpaySubscription>(
+    creds,
+    `/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
+    { method: "POST", body: { cancel_at_cycle_end: options.immediately ? 0 : 1 } }
+  );
 }
 
 /**

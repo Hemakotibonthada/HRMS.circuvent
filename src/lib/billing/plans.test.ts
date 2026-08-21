@@ -3,6 +3,7 @@ import {
   PLANS,
   TRIAL_DAYS,
   checkSeats,
+  hasLapsed,
   isEntitled,
   monthlyTotalMinor,
   planFor,
@@ -72,6 +73,69 @@ describe("isEntitled", () => {
   it("stops a cancelled or expired subscription", () => {
     expect(isEntitled(sub({ status: "cancelled" }))).toBe(false);
     expect(isEntitled(sub({ status: "expired" }))).toBe(false);
+  });
+
+  it("stops an active subscription whose paid period ran out", () => {
+    /*
+     * This is the bug these tests exist for. `isEntitled` returned true for
+     * `active` unconditionally, and nothing anywhere writes `expired` — the
+     * status is in the enum, is handled here, and no code path has ever set
+     * it. So a tenant who paid once was entitled forever: their period ended,
+     * no renewal was taken, and the product kept working indefinitely.
+     */
+    expect(isEntitled(sub({ status: "active", currentPeriodEnd: inDays(-30) }))).toBe(false);
+    expect(isEntitled(sub({ status: "past_due", currentPeriodEnd: inDays(-30) }))).toBe(false);
+  });
+
+  it("allows a grace period, so a slow webhook is not an outage", () => {
+    /*
+     * A renewal is confirmed by a webhook, and a webhook can be retried or
+     * arrive after a brief outage. Cutting a paying customer off at the
+     * instant their period ends turns a few minutes of Razorpay latency into
+     * a company that cannot run payroll.
+     */
+    expect(isEntitled(sub({ status: "active", currentPeriodEnd: inDays(-1) }))).toBe(true);
+    expect(isEntitled(sub({ status: "active", currentPeriodEnd: inDays(-3) }))).toBe(false);
+  });
+
+  it("keeps a paid subscription with no period recorded", () => {
+    /*
+     * A bespoke or manually managed account, not a lapsed one. Refusing these
+     * would lock out precisely the customers somebody negotiated with.
+     */
+    expect(isEntitled(sub({ status: "active", currentPeriodEnd: null }))).toBe(true);
+  });
+
+  it("does not lapse a trial through the paid-period rule", () => {
+    // A trial has its own clock; the two must not both apply and disagree.
+    expect(isEntitled(sub({ status: "trial", trialEndsAt: inDays(3), currentPeriodEnd: inDays(-9) })))
+      .toBe(true);
+  });
+});
+
+describe("hasLapsed", () => {
+  it("reports a run-out paid period, grace included", () => {
+    expect(hasLapsed(sub({ status: "active", currentPeriodEnd: inDays(-30) }))).toBe(true);
+    expect(hasLapsed(sub({ status: "active", currentPeriodEnd: inDays(-1) }))).toBe(false);
+    expect(hasLapsed(sub({ status: "active", currentPeriodEnd: inDays(30) }))).toBe(false);
+  });
+
+  it("does not call a trial, a cancellation or an already-expired row a lapse", () => {
+    // Each of those is a state somebody already decided; a lapse is the one
+    // nobody decided, which is why it is worth naming separately.
+    expect(hasLapsed(sub({ status: "trial", trialEndsAt: inDays(-5) }))).toBe(false);
+    expect(hasLapsed(sub({ status: "cancelled", currentPeriodEnd: inDays(-5) }))).toBe(false);
+    expect(hasLapsed(sub({ status: "expired", currentPeriodEnd: inDays(-5) }))).toBe(false);
+  });
+
+  it("agrees with isEntitled at every point around the boundary", () => {
+    // The two are read in different places — one gates the product, the other
+    // writes the status — and a disagreement would mean a tenant marked
+    // expired who can still use it, or the reverse.
+    for (const days of [-10, -3, -2.5, -2, -1, 0, 1, 10]) {
+      const s = sub({ status: "active", currentPeriodEnd: inDays(days) });
+      expect(hasLapsed(s)).toBe(!isEntitled(s));
+    }
   });
 });
 

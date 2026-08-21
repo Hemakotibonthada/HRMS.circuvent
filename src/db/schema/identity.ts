@@ -320,6 +320,17 @@ export const subscriptions = identity.table(
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     externalCustomerId: text("external_customer_id"),
     externalSubscriptionId: text("external_subscription_id"),
+    /**
+     * Recurring billing, when the tenant chose it over the one-off flow.
+     *
+     * Deliberately not `externalSubscriptionId`, which despite its name holds
+     * the last payment id and is the webhook's idempotency key — see
+     * migration 0046.
+     */
+    razorpaySubscriptionId: text("razorpay_subscription_id"),
+    razorpayPlanId: text("razorpay_plan_id"),
+    /** Seats Razorpay is currently billing for, so a change can be detected. */
+    billedQuantity: integer("billed_quantity"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

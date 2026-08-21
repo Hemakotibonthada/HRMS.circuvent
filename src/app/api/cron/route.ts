@@ -54,6 +54,8 @@ import { sweepOutboxes } from "@/lib/outbox-sweep";
 import { activeOrganisationIds } from "@/lib/outbox-sweep";
 import { backfillTemplatesForOrg } from "@/lib/template-backfill";
 import { syncEmployeesFromRegistration } from "@/db/repositories/registration-sync.neon";
+import { markLapsedSubscription, syncSubscriptionQuantity } from "@/lib/billing/recurring";
+import { loadRazorpaySettings } from "@/db/repositories/platform-settings";
 import { purgeExpiredPunchPhotos } from "@/lib/attendance/punch-photo-purge";
 import { timingSafeEqual } from "@/lib/sso";
 
@@ -104,6 +106,35 @@ export async function GET(req: NextRequest) {
   // Fills only what is empty, so running nightly cannot revert a correction
   // somebody typed. Each update queues a Paystub sync, because Paystub reads
   // those columns to print the payslip.
+  // Keeps Razorpay's billed seat count in step with headcount, and marks a
+  // subscription whose paid period ran out.
+  //
+  // Both matter for the same reason: money moves without anybody watching.
+  // A recurring subscription charges the quantity it was created with until
+  // told otherwise, so a company that has hired ten people since signing is
+  // undercharged every month; and `isEntitled` decides a lapse from the date,
+  // so this only writes down what is already true rather than being the thing
+  // that makes it true — a night this does not run costs nobody their access
+  // and grants nobody a free month.
+  const billing: Array<{ orgId: string; seats?: string; lapsed?: boolean }> = [];
+  try {
+    const creds = await loadRazorpaySettings();
+    for (const orgId of await activeOrganisationIds()) {
+      const seats = await syncSubscriptionQuantity(orgId, { creds });
+      const lapsed = await markLapsedSubscription(orgId);
+      if (seats.changed || lapsed) {
+        billing.push({
+          orgId,
+          seats: seats.changed ? `${seats.from ?? "?"} → ${seats.to}` : undefined,
+          lapsed: lapsed || undefined,
+        });
+      }
+    }
+    if (billing.length > 0) console.info("[cron] billing adjusted", { organisations: billing });
+  } catch (error) {
+    console.warn("[cron] billing sweep failed", { error: String(error) });
+  }
+
   const registrationSync: Array<{ orgId: string; updated: number }> = [];
   try {
     for (const orgId of await activeOrganisationIds()) {
