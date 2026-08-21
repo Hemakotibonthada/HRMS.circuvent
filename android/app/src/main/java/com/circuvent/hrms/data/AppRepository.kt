@@ -524,6 +524,24 @@ class AppRepository(private val api: ApiClient) {
         api.post("/api/wall/comments", json.encodeToString(WallCommentCreate.serializer(), body))
     }
 
+    // ─── Polls ───────────────────────────────────────────────
+
+    suspend fun polls(): PollResponse = json.decodeFromString(api.get("/api/wall/polls"))
+
+    suspend fun createPoll(body: PollCreate) {
+        api.post("/api/wall/polls", json.encodeToString(PollCreate.serializer(), body))
+    }
+
+    /**
+     * Votes, or changes a vote.
+     *
+     * Changing your mind is another vote rather than an edit: only the latest
+     * one per person counts, so the call is the same either way.
+     */
+    suspend fun votePoll(body: PollVote) {
+        api.post("/api/wall/polls/vote", json.encodeToString(PollVote.serializer(), body))
+    }
+
     /**
      * Colleagues by name, for anyone signed in.
      *
@@ -632,7 +650,7 @@ class AppRepository(private val api: ApiClient) {
      * dashboard's wall had never once loaded a post.
      */
     suspend fun wallPosts(): List<WallPostDto> =
-        json.decodeFromString<WallResponse>(api.get("/api/collections/socialPosts")).items
+        json.decodeFromString<WallResponse>(api.get("/api/wall/posts")).items
 
     /**
      * Publishes a post.

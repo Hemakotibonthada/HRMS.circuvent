@@ -63,6 +63,7 @@ import com.circuvent.hrms.core.ui.TextTone
 import com.circuvent.hrms.core.ui.rememberFormattedDate
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.SessionUser
+import com.circuvent.hrms.data.PollDto
 import com.circuvent.hrms.data.WallCommentCreate
 import com.circuvent.hrms.data.WallCommentDto
 import com.circuvent.hrms.data.WallPostDto
@@ -94,6 +95,8 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
     var draftError by remember { mutableStateOf<String?>(null) }
     var publishing by remember { mutableStateOf(false) }
     var busyId by remember { mutableStateOf<String?>(null) }
+    var polls by remember { mutableStateOf<List<PollDto>>(emptyList()) }
+    var composingPoll by remember { mutableStateOf(false) }
     // Which post has its replies open. One at a time: the wall is a scrolling
     // list and several expanded threads turn it into a wall of somebody else's
     // conversations.
@@ -117,6 +120,10 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
         } finally {
             loading = false
         }
+        // Polls fail quietly rather than taking the whole wall down with them.
+        // A feed that shows nothing because one section is unavailable is worse
+        // than a feed missing that section.
+        polls = runCatching { container.repository.polls().items }.getOrDefault(emptyList())
     }
 
     LaunchedEffect(Unit) { load() }
@@ -238,6 +245,35 @@ fun WallScreen(container: AppContainer, user: SessionUser?) {
                 posts.isEmpty() && error == null -> EmptyState(
                     title = stringResource(R.string.wall_empty_title),
                     description = stringResource(R.string.wall_empty_description),
+                )
+            }
+        }
+
+        item {
+            if (composingPoll) {
+                PollComposer(
+                    container = container,
+                    onCancel = { composingPoll = false },
+                    onPosted = {
+                        composingPoll = false
+                        scope.launch { load() }
+                    },
+                )
+            } else {
+                AppButton(
+                    label = stringResource(R.string.poll_new_action),
+                    variant = ButtonVariant.SECONDARY,
+                    onClick = { composingPoll = true },
+                )
+            }
+        }
+
+        if (polls.isNotEmpty()) {
+            item {
+                PollList(
+                    container = container,
+                    polls = polls,
+                    onChanged = { scope.launch { load() } },
                 )
             }
         }

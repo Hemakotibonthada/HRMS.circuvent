@@ -692,6 +692,23 @@
     <string name="leave_balance_chart_title">What is left</string>
     <string name="leave_balance_chart_subtitle">Days remaining after what you have taken and what is pending.</string>
 
+    <!-- Polls -->
+    <string name="poll_question_field_label">What do you want to ask?</string>
+    <string name="poll_option_required_template">Option %1$d</string>
+    <string name="poll_option_optional_template">Option %1$d (optional)</string>
+    <string name="poll_post_action">Post poll</string>
+    <string name="poll_posting_label">Posting…</string>
+    <string name="poll_new_action">Ask a question</string>
+    <!-- Said before anybody answers, because whether it matters depends on the question. -->
+    <string name="poll_not_anonymous">Your name is recorded with your answer. This poll is not anonymous.</string>
+    <!-- %1$d is the number of people who have answered -->
+    <string name="poll_change_hint">%1$d answered. Tap another option to change your answer.</string>
+    <string name="poll_asked_by_template">Asked by %1$s</string>
+    <!-- %1$d is the count for the option this person chose -->
+    <string name="poll_your_choice_template">%1$d · yours</string>
+    <string name="poll_empty_title">No polls yet</string>
+    <string name="poll_empty_description">Ask the company something. Everyone can answer, and everyone sees the result.</string>
+
     <!-- Praise: recognising a colleague -->
     <string name="praise_give_action">Praise a colleague</string>
     <string name="praise_recent_section_label">Recent praise</string>

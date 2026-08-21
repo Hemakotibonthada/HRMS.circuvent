@@ -265,3 +265,37 @@ data class WallCommentResponse(val items: List<WallCommentDto> = emptyList())
 
 @Serializable
 data class WallCommentCreate(val postId: String, val body: String)
+
+// ─── Polls ───────────────────────────────────────────────────
+
+/**
+ * A question put to the company.
+ *
+ * `anonymous` is sent by the server on every response and is currently always
+ * false. The screen says so before anybody votes: a vote row carries the
+ * voter's employee id, which is what makes one-person-one-vote possible, and a
+ * poll that feels anonymous while being attributable is worse than one that is
+ * honest about it.
+ */
+@Serializable
+data class PollDto(
+    val id: String = "",
+    val question: String = "",
+    val options: List<String> = emptyList(),
+    val votes: List<Int> = emptyList(),
+    val totalVotes: Int = 0,
+    /** The option this person chose, or null. */
+    val myVote: Int? = null,
+    val authorName: String? = null,
+    val createdAt: String? = null,
+    val anonymous: Boolean = false,
+)
+
+@Serializable
+data class PollResponse(val items: List<PollDto> = emptyList())
+
+@Serializable
+data class PollCreate(val question: String, val options: List<String>)
+
+@Serializable
+data class PollVote(val pollId: String, val optionIndex: Int)

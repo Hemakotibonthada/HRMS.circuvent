@@ -260,7 +260,7 @@ class HrmsApi(
 
     // ─── The wall ────────────────────────────────────────────
 
-    suspend fun wallPosts(): Result<List<WallPost>> = getList("/api/collections/socialPosts")
+    suspend fun wallPosts(): Result<List<WallPost>> = getList("/api/wall/posts")
 
     suspend fun publishWallPost(content: String): Result<Unit> =
         request("/api/collections/socialPosts", method = "POST", body = buildJson {
