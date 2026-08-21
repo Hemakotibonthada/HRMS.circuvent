@@ -17,7 +17,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { and, eq, isNull } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { employees } from "@/db/schema/hrms";
+import { departments, employees } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
 
@@ -97,6 +97,14 @@ const RETURNED = {
   country: employees.country,
   designation: employees.designation,
   joinDate: employees.joinDate,
+  // Facts about your own job. Not editable here — HR owns all of them — but a
+  // person is entitled to see the terms they are employed on without asking,
+  // and a "Job" tab that could not name your department or your manager would
+  // be a heading over nothing.
+  confirmationDate: employees.confirmationDate,
+  employmentType: employees.employmentType,
+  departmentId: employees.departmentId,
+  reportingToId: employees.reportingToId,
 } as const;
 
 async function loadSelf(ctx: Awaited<ReturnType<typeof requireApiContext>>) {
@@ -112,7 +120,36 @@ async function loadSelf(ctx: Awaited<ReturnType<typeof requireApiContext>>) {
         )
       )
       .limit(1);
-    return rows[0] ?? null;
+
+    const self = rows[0] ?? null;
+    if (!self) return null;
+
+    // Resolved to names here rather than shipping uuids a client cannot read.
+    // Two small lookups on a screen somebody opens occasionally, against one
+    // join that would complicate every other use of RETURNED.
+    const [department] = self.departmentId
+      ? await tx
+          .select({ name: departments.name })
+          .from(departments)
+          .where(eq(departments.id, self.departmentId))
+          .limit(1)
+      : [];
+
+    const [manager] = self.reportingToId
+      ? await tx
+          .select({ firstName: employees.firstName, lastName: employees.lastName })
+          .from(employees)
+          .where(eq(employees.id, self.reportingToId))
+          .limit(1)
+      : [];
+
+    const { departmentId: _d, reportingToId: _r, ...rest } = self;
+
+    return {
+      ...rest,
+      departmentName: department?.name ?? null,
+      managerName: manager ? `${manager.firstName} ${manager.lastName}`.trim() : null,
+    };
   });
 }
 

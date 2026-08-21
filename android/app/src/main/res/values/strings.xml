@@ -709,6 +709,30 @@
     <string name="poll_empty_title">No polls yet</string>
     <string name="poll_empty_description">Ask the company something. Everyone can answer, and everyone sees the result.</string>
 
+    <!-- Profile -->
+    <string name="profile_tab_summary">Summary</string>
+    <string name="profile_tab_timeline">Timeline</string>
+    <string name="profile_tab_personal">Personal</string>
+    <string name="profile_tab_job">Job</string>
+    <string name="profile_field_work_email">Work email</string>
+    <string name="profile_field_personal_email">Personal email</string>
+    <string name="profile_field_phone">Phone</string>
+    <string name="profile_field_department">Team</string>
+    <string name="profile_field_manager">Reports to</string>
+    <string name="profile_field_joined">Joined</string>
+    <string name="profile_field_confirmed">Confirmed</string>
+    <string name="profile_field_designation">Role</string>
+    <string name="profile_field_employment_type">Employment</string>
+    <string name="profile_field_employee_code">Employee code</string>
+    <string name="profile_field_date_of_birth">Date of birth</string>
+    <string name="profile_field_blood_group">Blood group</string>
+    <string name="profile_field_marital_status">Marital status</string>
+    <string name="profile_field_address">Address</string>
+    <string name="profile_personal_editable_hint">You can change these in My details.</string>
+    <string name="profile_job_readonly_hint">HR keeps these. Ask them if any of it is wrong.</string>
+    <string name="profile_timeline_empty_title">Nothing recorded yet</string>
+    <string name="profile_timeline_empty_description">Your joining date, confirmation and pay revisions appear here once HR records them.</string>
+
     <!-- Praise: recognising a colleague -->
     <string name="praise_give_action">Praise a colleague</string>
     <string name="praise_recent_section_label">Recent praise</string>

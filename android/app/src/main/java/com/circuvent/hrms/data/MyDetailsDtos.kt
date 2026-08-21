@@ -29,6 +29,11 @@ data class MyDetailsDto(
     /** Read-only here; changing it is not self-service. */
     val designation: String? = null,
     val joinDate: String? = null,
+    /** Also HR's to set. Shown because a person is entitled to know their own terms. */
+    val confirmationDate: String? = null,
+    val employmentType: String? = null,
+    val departmentName: String? = null,
+    val managerName: String? = null,
     /**
      * True once a date of birth exists.
      *
@@ -57,4 +62,27 @@ data class MyDetailsSave(
     val city: String? = null,
     val state: String? = null,
     val postalCode: String? = null,
+)
+
+/**
+ * One dated fact in somebody's employment history.
+ *
+ * There is no promotions or transfers table in this system and `designation` is
+ * a single overwritten column, so a role change leaves no record behind. The
+ * timeline is therefore only what was genuinely recorded with a date.
+ */
+@Serializable
+data class TimelineEntryDto(
+    val date: String = "",
+    /** joined | confirmed | pay_revised | left */
+    val kind: String = "",
+    val title: String = "",
+    val detail: String? = null,
+)
+
+@Serializable
+data class TimelineResponse(
+    val items: List<TimelineEntryDto> = emptyList(),
+    /** What the list is built from, so the screen can say it rather than imply completeness. */
+    val note: String = "",
 )

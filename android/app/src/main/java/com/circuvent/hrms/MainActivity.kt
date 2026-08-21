@@ -60,6 +60,7 @@ import com.circuvent.hrms.feature.IdCardScreen
 import com.circuvent.hrms.feature.LoansScreen
 import com.circuvent.hrms.feature.MyTeamScreen
 import com.circuvent.hrms.feature.PraiseScreen
+import com.circuvent.hrms.feature.ProfileDetailScreen
 import com.circuvent.hrms.feature.WorkArrangementScreen
 import com.circuvent.hrms.feature.ReferScreen
 import com.circuvent.hrms.feature.ReferralsScreen
@@ -179,6 +180,7 @@ private object Routes {
     const val ID_CARD = "id-card"
     const val WORK_AWAY = "work-away"
     const val PRAISE = "praise"
+    const val PROFILE_DETAIL = "profile/detail"
 
     // Former tabs. "inbox" and "my-team" are now tab routes and are registered
     // from Destination instead, so they are deliberately absent here — a route
@@ -219,6 +221,7 @@ private object Routes {
         ID_CARD to "Identity card",
         WORK_AWAY to "Work from home or on duty",
         PRAISE to "Praise",
+        PROFILE_DETAIL to "Your profile",
         MY_DETAILS to "My details",
         GOALS to "My goals",
         WALL to "Company wall",
@@ -353,6 +356,7 @@ private fun SignedInApp(
                     composable(Routes.ID_CARD) { IdCardScreen(state.user) }
                     composable(Routes.WORK_AWAY) { WorkArrangementScreen(container) }
                     composable(Routes.PRAISE) { PraiseScreen(container) }
+                    composable(Routes.PROFILE_DETAIL) { ProfileDetailScreen(container) }
                     composable(Routes.APPROVALS) { ApprovalsScreen(container, state.user) }
                     composable(Routes.SETTINGS) { SettingsScreen(container, viewModel, state.user) }
                     composable(Routes.HELPDESK) {

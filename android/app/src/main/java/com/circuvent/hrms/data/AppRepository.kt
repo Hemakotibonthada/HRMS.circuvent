@@ -527,7 +527,6 @@ class AppRepository(private val api: ApiClient) {
     // ─── Polls ───────────────────────────────────────────────
 
     suspend fun polls(): PollResponse = json.decodeFromString(api.get("/api/wall/polls"))
-
     suspend fun createPoll(body: PollCreate) {
         api.post("/api/wall/polls", json.encodeToString(PollCreate.serializer(), body))
     }
@@ -577,6 +576,15 @@ class AppRepository(private val api: ApiClient) {
      */
     suspend fun myDetails(): MyDetailsDto =
         json.decodeFromString(api.get("/api/employees/me"))
+
+    /**
+     * The dated facts of somebody's employment.
+     *
+     * Separate from [myDetails] because it is a different question asked far
+     * less often, and because the endpoint behind it reads a second table.
+     */
+    suspend fun myTimeline(): TimelineResponse =
+        json.decodeFromString(api.get("/api/employees/me/timeline"))
 
     /**
      * Saves the personal fields.

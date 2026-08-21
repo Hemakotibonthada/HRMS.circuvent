@@ -135,7 +135,7 @@ fun ProfileScreen(
         contentPadding = screenPadding(bottomExtra = TabBarHeight),
         verticalArrangement = Arrangement.spacedBy(Theme.spacing.md),
     ) {
-        item { IdentityHeader(user = user, onOpenIdCard = { onNavigate("id-card") }) }
+        item { IdentityHeader(user = user, onOpenIdCard = { onNavigate("profile/detail") }) }
 
         if (pending > 0) {
             item {
