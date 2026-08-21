@@ -125,12 +125,23 @@ flowchart TB
 ```ts
 // api-context.ts — 128 routes
 export type ApiRole = "owner" | "admin" | "hr" | "manager" | "employee";
-export interface ApiContext { orgId: string; userId: string; email?: string; role: ApiRole }
-export async function requireApiContext(request: NextRequest, allowedRoles?: ApiRole[]): Promise<ApiContext>
+
+export interface ApiContext {
+  orgId: string; userId: string; email?: string; role: ApiRole;
+}
+
+export async function requireApiContext(
+  request: NextRequest, allowedRoles?: ApiRole[],
+): Promise<ApiContext>
 
 // api-v1-context.ts — 3 routes
-export interface ApiKeyContext { orgId: string; keyId: string; scopes: ApiKeyScope[]; superuser?: false }
-export async function requireApiKey(request: NextRequest, requiredScopes?: ApiKeyScope[]): Promise<ApiKeyContext>
+export interface ApiKeyContext {
+  orgId: string; keyId: string; scopes: ApiKeyScope[]; superuser?: false;
+}
+
+export async function requireApiKey(
+  request: NextRequest, requiredScopes?: ApiKeyScope[],
+): Promise<ApiKeyContext>
 ```
 
 Both throw typed errors, and both share the same in-memory `checkRateLimit`.

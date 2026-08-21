@@ -1088,8 +1088,10 @@ All five were executed live against the real Neon instance during this audit.
 The counterfactual in `verify-query-plans.ts` is worth quoting, because it is the difference between asserting and proving:
 
 ```ts
-check("the newest-first list uses an index", /Index (Scan|Only Scan)/.test(listPlan));
-check("and no longer sorts the whole tenant to return fifty rows", !/\bSort\b/.test(listPlan));
+check("the newest-first list uses an index",
+      /Index (Scan|Only Scan)/.test(listPlan));
+check("and no longer sorts the whole tenant to return fifty rows",
+      !/\bSort\b/.test(listPlan));
 await db.exec(`DROP INDEX hrms.expense_claims_org_created_idx`);
 check("dropping the index brings the sort back, so the index is what removed it",
       /\bSort\b/.test(withoutIndex) || /Seq Scan/.test(withoutIndex));
@@ -1265,12 +1267,23 @@ flowchart TB
 ```ts
 // api-context.ts — 128 routes
 export type ApiRole = "owner" | "admin" | "hr" | "manager" | "employee";
-export interface ApiContext { orgId: string; userId: string; email?: string; role: ApiRole }
-export async function requireApiContext(request: NextRequest, allowedRoles?: ApiRole[]): Promise<ApiContext>
+
+export interface ApiContext {
+  orgId: string; userId: string; email?: string; role: ApiRole;
+}
+
+export async function requireApiContext(
+  request: NextRequest, allowedRoles?: ApiRole[],
+): Promise<ApiContext>
 
 // api-v1-context.ts — 3 routes
-export interface ApiKeyContext { orgId: string; keyId: string; scopes: ApiKeyScope[]; superuser?: false }
-export async function requireApiKey(request: NextRequest, requiredScopes?: ApiKeyScope[]): Promise<ApiKeyContext>
+export interface ApiKeyContext {
+  orgId: string; keyId: string; scopes: ApiKeyScope[]; superuser?: false;
+}
+
+export async function requireApiKey(
+  request: NextRequest, requiredScopes?: ApiKeyScope[],
+): Promise<ApiKeyContext>
 ```
 
 Both throw typed errors, and both share the same in-memory `checkRateLimit`.

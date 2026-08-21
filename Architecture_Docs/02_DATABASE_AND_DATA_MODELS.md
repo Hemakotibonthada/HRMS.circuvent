@@ -612,8 +612,10 @@ All five were executed live against the real Neon instance during this audit.
 The counterfactual in `verify-query-plans.ts` is worth quoting, because it is the difference between asserting and proving:
 
 ```ts
-check("the newest-first list uses an index", /Index (Scan|Only Scan)/.test(listPlan));
-check("and no longer sorts the whole tenant to return fifty rows", !/\bSort\b/.test(listPlan));
+check("the newest-first list uses an index",
+      /Index (Scan|Only Scan)/.test(listPlan));
+check("and no longer sorts the whole tenant to return fifty rows",
+      !/\bSort\b/.test(listPlan));
 await db.exec(`DROP INDEX hrms.expense_claims_org_created_idx`);
 check("dropping the index brings the sort back, so the index is what removed it",
       /\bSort\b/.test(withoutIndex) || /Seq Scan/.test(withoutIndex));
