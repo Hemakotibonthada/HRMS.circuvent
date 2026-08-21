@@ -36,6 +36,32 @@ kotlin {
     jvmToolchain(21)
 }
 
+/**
+ * The JDK jpackage bundles into the installer.
+ *
+ * `jvmToolchain(21)` above only governs *compilation*. The runtime image is
+ * built by jlink from whichever JDK Gradle itself is running on, and on this
+ * machine JAVA_HOME is 17 — so the installer shipped Java 17 wrapped around
+ * classes compiled to Java 21 and died on launch with
+ *
+ *     UnsupportedClassVersionError: class file version 65.0,
+ *     this JRE only recognizes up to 61.0
+ *
+ * before a window ever appeared. It went unnoticed until now because this
+ * machine used to have only JDK 21 installed, so the two happened to agree.
+ *
+ * Resolved through the toolchain service rather than written as a path, so it
+ * follows whatever JDK 21 the build machine actually has.
+ */
+val java21Home: String =
+    javaToolchains
+        .launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+        .get()
+        .metadata
+        .installationPath
+        .asFile
+        .absolutePath
+
 dependencies {
     implementation(project(":shared"))
 
@@ -57,6 +83,10 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "com.circuvent.hrms.desktop.MainKt"
+
+        // The runtime that goes inside the installer. Must match the bytecode
+        // level the classes were compiled at — see java21Home above.
+        javaHome = java21Home
 
         // Let Java work out the display scaling.
         //
@@ -85,7 +115,10 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "Circuvent HR"
-            packageVersion = "1.0.0"
+            // Windows Installer compares this to decide whether an install is
+            // an upgrade. Shipping a new build under an unchanged version means
+            // people who already have it installed get nothing.
+            packageVersion = "1.1.0"
             description = "Circuvent HR for Windows"
             vendor = "Circuvent Technologies"
 

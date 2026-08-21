@@ -44,9 +44,41 @@ for (const file of [".env.local", ".env"]) {
   }
 }
 
-const MSI = path.join(root, "android", "release-artifacts", "CircuventHR-Windows-1.0.0.msi");
-const VERSION = "1.0.0";
 const KEY_PREFIX = "downloads/windows";
+
+/**
+ * Which installer to publish.
+ *
+ * These used to be hardcoded to 1.0.0, which meant running this script after
+ * building a new version silently re-uploaded the *previous* installer and
+ * pointed the download page back at it. It looked like it worked — it printed
+ * a size, a checksum and "Done" — while shipping the wrong build.
+ *
+ * So the version is now required, and the file must exist. Guessing either of
+ * them is how the original bug happened.
+ */
+function readArg(name) {
+  const at = process.argv.indexOf(`--${name}`);
+  return at !== -1 ? process.argv[at + 1] : undefined;
+}
+
+const VERSION = readArg("version");
+if (!VERSION || !/^\d+\.\d+\.\d+$/.test(VERSION)) {
+  console.error(
+    "Usage: node scripts/publish-desktop-build.mjs --version <x.y.z> [--file <path>] [--dry-run]\n" +
+      "The version is required so that a stale installer cannot be published by default."
+  );
+  process.exit(1);
+}
+
+const MSI = readArg("file")
+  ? path.resolve(root, readArg("file"))
+  : path.join(root, "android", "release-artifacts", `CircuventHR-Windows-${VERSION}.msi`);
+
+if (!existsSync(MSI)) {
+  console.error(`No installer at ${MSI}. Build it first, or pass --file.`);
+  process.exit(1);
+}
 
 function requireEnv(name) {
   const value = process.env[name]?.trim();

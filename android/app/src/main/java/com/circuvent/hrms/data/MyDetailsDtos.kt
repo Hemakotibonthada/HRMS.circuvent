@@ -67,14 +67,14 @@ data class MyDetailsSave(
 /**
  * One dated fact in somebody's employment history.
  *
- * There is no promotions or transfers table in this system and `designation` is
- * a single overwritten column, so a role change leaves no record behind. The
- * timeline is therefore only what was genuinely recorded with a date.
+ * `kind` is a plain string, not an enum, on purpose: the server can start
+ * sending a new sort of entry without older installs failing to parse their own
+ * profile. The screen renders title, date and detail and never branches on it.
  */
 @Serializable
 data class TimelineEntryDto(
     val date: String = "",
-    /** joined | confirmed | pay_revised | left */
+    /** joined | confirmed | pay_revised | job_changed | left */
     val kind: String = "",
     val title: String = "",
     val detail: String? = null,

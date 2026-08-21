@@ -731,7 +731,7 @@
     <string name="profile_personal_editable_hint">You can change these in My details.</string>
     <string name="profile_job_readonly_hint">HR keeps these. Ask them if any of it is wrong.</string>
     <string name="profile_timeline_empty_title">Nothing recorded yet</string>
-    <string name="profile_timeline_empty_description">Your joining date, confirmation and pay revisions appear here once HR records them.</string>
+    <string name="profile_timeline_empty_description">Your joining date, confirmation, pay revisions and any role or team changes appear here once HR records them.</string>
 
     <!-- Praise: recognising a colleague -->
     <string name="praise_give_action">Praise a colleague</string>

@@ -53,15 +53,15 @@ import com.circuvent.hrms.data.TimelineEntryDto
 //
 // ─── On the timeline ───
 //
-// Keka shows promotions, transfers and role changes. This system records none
-// of them: there is no promotions table, no transfers table, and `designation`
-// is a single column that is overwritten — so the previous title is gone the
-// moment HR types a new one.
+// Keka shows promotions, transfers and role changes. This system now records
+// role, team, manager and employment-type changes as they happen, alongside
+// joining, confirmation, pay revisions and exit — but nothing before that
+// recording started was ever kept, so the list says what it is built from at
+// the bottom rather than implying it is complete.
 //
-// So the timeline shows only what was recorded with a date, and says so at the
-// bottom. Inventing "Promoted to Senior Engineer" by diffing something would
-// produce a plausible history no record supports, on the screen a person is
-// most likely to quote back at HR.
+// Inventing "Promoted to Senior Engineer" by diffing something would produce a
+// plausible history no record supports, on the screen a person is most likely
+// to quote back at HR.
 
 private enum class ProfileTab { SUMMARY, TIMELINE, PERSONAL, JOB }
 
