@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   GraduationCap, Search, Play, Users, Clock, Star,
@@ -36,13 +35,6 @@ const LEVEL_COLORS: Record<string, string> = {
   Intermediate: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
   Advanced: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
 };
-
-const LEARNING_PATHS = [
-  { id: "new-manager", name: "New Manager Path", courses: 5, duration: "40 hrs" },
-  { id: "tech-lead", name: "Tech Lead Track", courses: 7, duration: "56 hrs" },
-  { id: "compliance", name: "Annual Compliance", courses: 3, duration: "12 hrs" },
-  { id: "leadership", name: "Leadership Excellence", courses: 6, duration: "48 hrs" },
-];
 
 export default function LMSPage() {
   const store = useCourseStore();
@@ -185,27 +177,18 @@ export default function LMSPage() {
         </TabsContent>
 
         <TabsContent value="paths" className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {LEARNING_PATHS.map(path => (
-              <Card key={path.id} className="border-0 shadow-sm hover:shadow-md transition-shadow">
-                <CardContent className="p-5 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-                      <Layers className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <p className="font-semibold">{path.name}</p>
-                      <p className="text-xs text-muted-foreground">{path.courses} courses · {path.duration}</p>
-                    </div>
-                  </div>
-                  <Progress value={0} className="h-2" />
-                  <Button size="sm" variant="outline" className="gap-2">
-                    <Play className="h-3.5 w-3.5" /> Start Path
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          {/* Multi-course "learning paths" aren't a real concept in the training
+              store — this tab used to render 4 hardcoded paths ("New Manager
+              Path", "Tech Lead Track", etc.) with invented course counts and
+              durations, plus a progress bar frozen at 0% and a "Start Path"
+              button with no handler. That claimed curricula and progress
+              tracking the system doesn't have. An honest empty state is safer
+              than pretending curricula exist. */}
+          <DataEmptyState
+            icon={Layers}
+            title="Learning paths not available yet"
+            description="Curated multi-course learning paths aren't supported yet. Browse and enrol in individual courses from the Courses tab."
+          />
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-4">

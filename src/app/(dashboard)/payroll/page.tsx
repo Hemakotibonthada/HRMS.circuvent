@@ -11,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   DollarSign, Plus, Search, Users, Building2, FileText, Download,
@@ -27,7 +26,7 @@ import {
   PieChart, Pie, Cell, Legend, AreaChart, Area,
   Tooltip as RTooltip,
 } from "recharts";
-import { useEmployeeStore, startSync, type PayrollDoc } from "@/stores/unified-store";
+import { useEmployeeStore, startSync } from "@/stores/unified-store";
 import { COLLECTIONS } from "@/lib/collection-service";
 import {
   actOnRun,
@@ -66,8 +65,34 @@ const COMPLIANCE_ITEMS = [
  * approval and payment are decisions about a whole period. The table renders
  * one row per person, so each row has to know which run it came from — passing
  * the payslip id to `/api/payroll/runs/[id]` finds no run.
+ *
+ * This used to be `PayrollDoc & { runId: string }` — the admin document shape,
+ * which claims `basicPay`, `hra`, `specialAllowance` and `department` fields.
+ * `getRun()` doesn't return any of those (see `PayrollRecord` in
+ * `payroll-client.ts`), so they were hardcoded to 0 / "" and the page then
+ * computed "Provident Fund" and "Income Tax" as percentages of that fake 0,
+ * rendered "Basic"/"HRA" table columns that always read ₹0, and searched/
+ * charted department against a value that was always blank. This type only
+ * has the fields the run actually returns; department is resolved from the
+ * employee store separately (see `departmentById` below) rather than left
+ * blank or invented.
  */
-type PayslipRow = PayrollDoc & { runId: string };
+interface PayslipRow {
+  id: string;
+  runId: string;
+  employeeId: string;
+  employeeName: string;
+  month: string;
+  year: number;
+  workingDays: number;
+  presentDays: number;
+  lopDays: number;
+  grossEarnings: number;
+  totalDeductions: number;
+  netPay: number;
+  status: string;
+  anomalies: string[];
+}
 
 export default function PayrollPage() {
   const rbac = useRBAC();
@@ -116,17 +141,17 @@ export default function PayrollPage() {
             runId: detail.run.id,
             employeeId: record.employeeId,
             employeeName: record.employeeName ?? "—",
-            department: "",
             month: MONTHS[detail.run.periodMonth - 1] ?? "",
             year: detail.run.periodYear,
-            basicPay: 0,
-            hra: 0,
-            specialAllowance: 0,
+            workingDays: record.workingDays,
+            presentDays: record.presentDays,
+            lopDays: record.lopDays,
             grossEarnings: record.gross,
             totalDeductions: record.totalDeductions,
             netPay: record.netPay,
             status: detail.run.status,
-          } as PayslipRow);
+            anomalies: record.anomalies ?? [],
+          });
         }
       }
 
@@ -145,19 +170,29 @@ export default function PayrollPage() {
   useEffect(() => { void reload(); }, [reload]);
   useEffect(() => { if (!empStore.initialized) startSync(COLLECTIONS.employees, empStore); }, [empStore.initialized, empStore]);
 
+  // The payroll run has no notion of department — it knows who was paid, not
+  // where they sit in the org chart. Resolved from the employee record
+  // instead of being left blank, which is what fed a "Payroll by Department"
+  // chart that put 100% of every run under a single fake "Other" slice.
+  const departmentById = useMemo(() => {
+    const map: Record<string, string> = {};
+    empStore.items.forEach((e) => { map[e.id] = e.department; });
+    return map;
+  }, [empStore.items]);
+
   const filtered = useMemo(() => {
     let result = items;
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(p =>
         p.employeeName?.toLowerCase().includes(q) ||
-        p.department?.toLowerCase().includes(q)
+        (departmentById[p.employeeId] || "").toLowerCase().includes(q)
       );
     }
     if (statusFilter !== "all") result = result.filter(p => p.status === statusFilter);
     if (monthFilter !== "all") result = result.filter(p => p.month === monthFilter);
     return result;
-  }, [items, search, statusFilter, monthFilter]);
+  }, [items, search, statusFilter, monthFilter, departmentById]);
 
   // KPIs
   const grossPayroll = useMemo(() => items.reduce((s, p) => s + (p.grossEarnings || 0), 0), [items]);
@@ -181,10 +216,11 @@ export default function PayrollPage() {
   const deptPayroll = useMemo(() => {
     const counts: Record<string, number> = {};
     items.forEach(p => {
-      counts[p.department || "Other"] = (counts[p.department || "Other"] || 0) + (p.netPay || 0);
+      const dept = departmentById[p.employeeId] || "Other";
+      counts[dept] = (counts[dept] || 0) + (p.netPay || 0);
     });
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  }, [items]);
+  }, [items, departmentById]);
 
   const formatCurrency = (val: number) => `₹${(val / 100000).toFixed(1)}L`;
 
@@ -390,8 +426,6 @@ export default function PayrollPage() {
                     <tr className="border-b bg-muted/30">
                       <th className="text-left p-3 font-medium">Employee</th>
                       <th className="text-left p-3 font-medium">Department</th>
-                      <th className="text-right p-3 font-medium">Basic</th>
-                      <th className="text-right p-3 font-medium">HRA</th>
                       <th className="text-right p-3 font-medium">Gross</th>
                       <th className="text-right p-3 font-medium">Deductions</th>
                       <th className="text-right p-3 font-medium">Net Pay</th>
@@ -401,7 +435,7 @@ export default function PayrollPage() {
                   </thead>
                   <tbody>
                     {filtered.length === 0 ? (
-                      <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">No payroll records found</td></tr>
+                      <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No payroll records found</td></tr>
                     ) : (
                       filtered.map((p) => {
                         const st = STATUS_CONF[p.status] || STATUS_CONF.draft;
@@ -417,9 +451,7 @@ export default function PayrollPage() {
                                 <span className="font-medium">{p.employeeName}</span>
                               </div>
                             </td>
-                            <td className="p-3 text-muted-foreground">{p.department}</td>
-                            <td className="p-3 text-right">₹{(p.basicPay || 0).toLocaleString()}</td>
-                            <td className="p-3 text-right">₹{(p.hra || 0).toLocaleString()}</td>
+                            <td className="p-3 text-muted-foreground">{departmentById[p.employeeId] || "—"}</td>
                             <td className="p-3 text-right font-medium">₹{(p.grossEarnings || 0).toLocaleString()}</td>
                             <td className="p-3 text-right text-red-600 dark:text-red-400">-₹{(p.totalDeductions || 0).toLocaleString()}</td>
                             <td className="p-3 text-right font-bold text-emerald-600 dark:text-emerald-400">₹{(p.netPay || 0).toLocaleString()}</td>
@@ -484,7 +516,17 @@ export default function PayrollPage() {
           </div>
         </TabsContent>
 
-        {/* Compliance Tab */}
+        {/*
+          Every card in this tab used to show a "Compliant" badge at 100%
+          progress, unconditionally, for every statutory item — this system
+          has no integration with any government filing portal and has never
+          verified whether PF, TDS, ESI or professional tax was actually
+          remitted for any period. Asserting "Compliant" here is worse than
+          showing nothing: it could tell a real company they don't need to
+          file when nobody has actually checked. The due dates are the one
+          part of this that's real (public, statutory deadlines), so those
+          stay as a reminder; the status claim is gone.
+        */}
         <TabsContent value="compliance" className="space-y-4 mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {COMPLIANCE_ITEMS.map((item) => (
@@ -500,29 +542,30 @@ export default function PayrollPage() {
                         <p className="text-sm text-muted-foreground">Due: {item.dueDate}</p>
                       </div>
                     </div>
-                    <Badge className="status-active">Compliant</Badge>
+                    <Badge variant="outline" className="text-muted-foreground">Not tracked</Badge>
                   </div>
-                  <Progress value={100} className="mt-3 h-2" />
                 </CardContent>
               </Card>
             ))}
           </div>
           <Card className="border-0 shadow-sm">
-            <CardHeader><CardTitle className="text-base">Statutory Deductions Summary</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Statutory Deductions</CardTitle></CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {[
-                  { name: "Provident Fund (12%)", amount: Math.round(grossPayroll * 0.12) },
-                  { name: "TDS / Income Tax", amount: Math.round(grossPayroll * 0.1) },
-                  { name: "ESI (0.75%)", amount: Math.round(grossPayroll * 0.0075) },
-                  { name: "Professional Tax", amount: items.length * 200 },
-                ].map((d) => (
-                  <div key={d.name} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
-                    <span className="text-sm font-medium">{d.name}</span>
-                    <span className="text-sm font-bold">₹{d.amount.toLocaleString()}</span>
-                  </div>
-                ))}
+              {/*
+                This used to split Total Deductions into "Provident Fund
+                (12%)", "TDS / Income Tax", "ESI (0.75%)" and a flat
+                ₹200/head Professional Tax — fixed ratios of the aggregate,
+                not the run's real per-category withholding, which this page
+                has no way to read. Restating the one real number instead of
+                a guessed breakdown of it.
+              */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                <span className="text-sm font-medium">Total Deductions (all categories)</span>
+                <span className="text-sm font-bold">₹{totalDeductions.toLocaleString()}</span>
               </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                A per-category split (PF vs. TDS vs. ESI vs. professional tax) isn&apos;t available from the payroll API yet.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -547,44 +590,50 @@ export default function PayrollPage() {
                   </Badge>
                 </div>
                 <Separator />
+                {/*
+                  "Earnings" used to list "Basic Salary", "House Rent
+                  Allowance" and "Special Allowance" straight from
+                  `selectedPayslip.basicPay`/`.hra`/`.specialAllowance` —
+                  fields `getRun()` doesn't return, hardcoded to 0 above, so
+                  this always read three ₹0 lines above a real, different
+                  Gross Earnings figure. Attendance is what the run actually
+                  records per person.
+                */}
                 <div>
-                  <h4 className="font-semibold text-sm mb-2 text-emerald-600">Earnings</h4>
+                  <h4 className="font-semibold text-sm mb-2">Attendance</h4>
                   <div className="space-y-2">
-                    {[
-                      { label: "Basic Salary", amount: selectedPayslip.basicPay },
-                      { label: "House Rent Allowance", amount: selectedPayslip.hra },
-                      { label: "Special Allowance", amount: selectedPayslip.specialAllowance },
-                    ].map((e) => (
-                      <div key={e.label} className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{e.label}</span>
-                        <span>₹{(e.amount || 0).toLocaleString()}</span>
-                      </div>
-                    ))}
-                    <Separator />
-                    <div className="flex justify-between font-semibold text-sm">
-                      <span>Gross Earnings</span>
-                      <span className="text-emerald-600">₹{(selectedPayslip.grossEarnings || 0).toLocaleString()}</span>
-                    </div>
+                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">Working Days</span><span>{selectedPayslip.workingDays}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">Present Days</span><span>{selectedPayslip.presentDays}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">Loss of Pay Days</span><span>{selectedPayslip.lopDays}</span></div>
+                    {selectedPayslip.anomalies.length > 0 && (
+                      <>
+                        <Separator />
+                        {selectedPayslip.anomalies.map((a) => (
+                          <p key={a} className="text-xs text-amber-600">{a}</p>
+                        ))}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div>
+                  <h4 className="font-semibold text-sm mb-2 text-emerald-600">Earnings</h4>
+                  <div className="flex justify-between font-semibold text-sm">
+                    <span>Gross Earnings</span>
+                    <span className="text-emerald-600">₹{(selectedPayslip.grossEarnings || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+                {/*
+                  "Deductions" used to list "Provident Fund" as 12% of the
+                  same fake 0 Basic Pay, and "Income Tax" as a flat 10% of
+                  gross — guesses, not the run's real statutory withholding,
+                  which this page has no per-category access to (see the
+                  Compliance tab's Statutory Deductions card).
+                */}
+                <div>
                   <h4 className="font-semibold text-sm mb-2 text-red-600">Deductions</h4>
-                  <div className="space-y-2">
-                    {[
-                      { label: "Provident Fund", amount: Math.round((selectedPayslip.basicPay || 0) * 0.12) },
-                      { label: "Income Tax", amount: Math.round((selectedPayslip.grossEarnings || 0) * 0.1) },
-                      { label: "Professional Tax", amount: 200 },
-                    ].map((d) => (
-                      <div key={d.label} className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{d.label}</span>
-                        <span className="text-red-600">-₹{d.amount.toLocaleString()}</span>
-                      </div>
-                    ))}
-                    <Separator />
-                    <div className="flex justify-between font-semibold text-sm">
-                      <span>Total Deductions</span>
-                      <span className="text-red-600">-₹{(selectedPayslip.totalDeductions || 0).toLocaleString()}</span>
-                    </div>
+                  <div className="flex justify-between font-semibold text-sm">
+                    <span>Total Deductions</span>
+                    <span className="text-red-600">-₹{(selectedPayslip.totalDeductions || 0).toLocaleString()}</span>
                   </div>
                 </div>
                 <Separator />
@@ -604,7 +653,14 @@ export default function PayrollPage() {
                     Mark Paid
                   </Button>
                 )}
-                <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-2">
+                {/*
+                  This button had no onClick handler at all — clicking it
+                  did nothing, silently. Disabling it is honest about that;
+                  a handler that only closed the dialog or showed a toast
+                  would have been the same "fake success" pattern this pass
+                  removed everywhere else.
+                */}
+                <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-2" disabled title="Not available yet">
                   <Printer className="h-4 w-4" /> Print Payslip
                 </Button>
               </DialogFooter>

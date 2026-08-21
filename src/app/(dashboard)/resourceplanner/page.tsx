@@ -82,23 +82,23 @@ export default function ResourcePlannerPage() {
     });
   }, [departments, activeEmployees, teams]);
 
-  // Skill gap analysis
+  // Skill availability, from real employee skill tags. "demand" used to sit
+  // next to it as Math.floor(count * 0.7) — a fixed 70% of whatever
+  // "available" was, so it moved in lockstep with supply and could never
+  // show an actual shortage. Job postings only record a department and an
+  // openings count, not which skills they require, so there is no real
+  // per-skill demand figure anywhere in the schema to show instead; the
+  // chart now shows only what is measured.
   const skillAnalysis = useMemo(() => {
     const allSkills: Record<string, number> = {};
     activeEmployees.forEach(e => {
       (e.skills || []).forEach(s => { allSkills[s] = (allSkills[s] || 0) + 1; });
     });
-    // Job requirements (approximate from job titles)
-    const jobSkillDemand: Record<string, number> = {};
-    jobs.filter(j => j.status === "open").forEach(j => {
-      const key = j.department || "General";
-      jobSkillDemand[key] = (jobSkillDemand[key] || 0) + (j.openings || 1);
-    });
     return Object.entries(allSkills)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
-      .map(([skill, count]) => ({ skill, available: count, demand: Math.max(1, Math.floor(count * 0.7)) }));
-  }, [activeEmployees, jobs]);
+      .map(([skill, count]) => ({ skill, available: count }));
+  }, [activeEmployees]);
 
   // Allocation by department chart
   const allocationChart = useMemo(() => {
@@ -181,7 +181,7 @@ export default function ResourcePlannerPage() {
         <TabsList>
           <TabsTrigger value="utilization">Utilization</TabsTrigger>
           <TabsTrigger value="bench">Bench</TabsTrigger>
-          <TabsTrigger value="skills">Skill Gap</TabsTrigger>
+          <TabsTrigger value="skills">Skills</TabsTrigger>
           <TabsTrigger value="capacity">Capacity</TabsTrigger>
         </TabsList>
 
@@ -288,25 +288,30 @@ export default function ResourcePlannerPage() {
           </Card>
         </TabsContent>
 
-        {/* Skill Gap */}
+        {/* Skills */}
         <TabsContent value="skills" className="mt-4">
           <Card className="border-0 shadow-sm">
-            <CardHeader><CardTitle className="text-base">Skill Gap Analysis</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Skill Availability</CardTitle></CardHeader>
             <CardContent>
               {skillAnalysis.length === 0 ? (
                 <DataEmptyState icon={Zap} title="No skill data" description="Employee skills will be analyzed here." compact />
               ) : (
-                <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={skillAnalysis} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="skill" type="category" width={120} tick={{ fontSize: 11 }} />
-                    <RTooltip />
-                    <Legend />
-                    <Bar dataKey="available" name="Available" fill="#10b981" />
-                    <Bar dataKey="demand" name="Demand" fill="#ef4444" />
-                  </BarChart>
-                </ResponsiveContainer>
+                <>
+                  {/* No job posting records which skills it requires, so there is
+                      nothing real to compare "available" against — this shows
+                      current supply only, not a gap. */}
+                  <p className="text-xs text-muted-foreground mb-2">How many employees have each skill. Skill demand from open roles is not tracked yet, so no gap is shown.</p>
+                  <ResponsiveContainer width="100%" height={350}>
+                    <BarChart data={skillAnalysis} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" />
+                      <YAxis dataKey="skill" type="category" width={120} tick={{ fontSize: 11 }} />
+                      <RTooltip />
+                      <Legend />
+                      <Bar dataKey="available" name="Available" fill="#10b981" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </>
               )}
             </CardContent>
           </Card>

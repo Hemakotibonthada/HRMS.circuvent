@@ -161,25 +161,15 @@ export default function CultureHubPage() {
         </TabsContent>
 
         <TabsContent value="events" className="mt-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            {[
-              { title: "Town Hall", date: "Last Friday of Month", desc: "All-hands meeting with leadership updates", icon: Users },
-              { title: "Fun Friday", date: "Every Friday", desc: "Games, quizzes, and team activities", icon: Smile },
-              { title: "Birthday Celebrations", date: "Weekly", desc: "Celebrating team birthdays together", icon: CalendarDays },
-              { title: "Hackathon", date: "Quarterly", desc: "48-hour innovation sprint", icon: Lightbulb },
-            ].map(event => (
-              <Card key={event.title} className="border-0 shadow-sm hover:shadow-md transition-shadow">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white"><event.icon className="h-5 w-5" /></div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-sm">{event.title}</p>
-                    <p className="text-xs text-muted-foreground">{event.desc}</p>
-                  </div>
-                  <Badge variant="outline" className="text-xs">{event.date}</Badge>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          {/*
+            Used to list "Town Hall / Fun Friday / Birthday Celebrations / Hackathon"
+            with fixed cadences ("Every Friday", "Quarterly") as if this org's actual
+            events calendar, when nothing schedules, tracks or confirms any of it —
+            every tenant would have seen the same made-up programme. There is a real
+            `events` collection (COLLECTIONS.events) but no store or page populates
+            it yet, so an honest empty state is the only accurate option here.
+          */}
+          <DataEmptyState icon={CalendarDays} title="No events tracked yet" description="A company events calendar isn't set up yet, so nothing here reflects your organization's actual schedule." />
         </TabsContent>
 
         <TabsContent value="leaderboard" className="mt-4">

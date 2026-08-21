@@ -11,11 +11,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   Users, Plus, Search, UserCheck, Building2, Star,
-  Target, Heart, Shield, Eye, Trash2, Grid3X3,
+  Target, Shield, Eye, Trash2, Grid3X3,
   BarChart3, ArrowUpRight, Briefcase, Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -172,7 +171,6 @@ export default function TeamsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
               {filtered.map((team, idx) => {
-                const healthScore = Math.min(100, 50 + (team.memberCount || 0) * 5);
                 return (
                   <Card key={team.id} className="hover:shadow-lg transition-shadow animate-slide-up cursor-pointer group" onClick={() => setDetailTeam(team)}>
                     <CardHeader className="pb-2">
@@ -198,17 +196,18 @@ export default function TeamsPage() {
                       </div>
                       {team.description && <p className="text-sm text-muted-foreground line-clamp-2">{team.description}</p>}
                       <Separator />
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div><p className="text-muted-foreground">Members</p><p className="font-semibold text-lg">{team.memberCount || 0}</p></div>
-                        <div>
-                          <p className="text-muted-foreground">Health</p>
-                          <div className="flex items-center gap-2">
-                            <p className="font-semibold text-lg">{healthScore}%</p>
-                            <Heart className={cn("h-4 w-4", healthScore >= 80 ? "text-green-500" : healthScore >= 50 ? "text-amber-500" : "text-red-500")} />
-                          </div>
-                        </div>
-                      </div>
-                      <Progress value={healthScore} className="h-2" />
+                      {/*
+                        A "Health" figure used to sit next to Members here —
+                        Math.min(100, 50 + memberCount * 5), so a team's health
+                        was just a function of its size and nothing else about
+                        it (no engagement, attrition or output signal exists
+                        per team anywhere in the schema). A 3-person team
+                        always "scored" 65% and a 10-person team always scored
+                        100%, dressed up with a heart icon and a progress bar
+                        as if it meant something. Removed rather than shown
+                        next to real data it would be mistaken for.
+                      */}
+                      <div className="text-sm"><p className="text-muted-foreground">Members</p><p className="font-semibold text-lg">{team.memberCount || 0}</p></div>
                       <div className="flex items-center gap-1 pt-1">
                         {Array.from({ length: Math.min(5, team.memberCount || 0) }).map((_, i) => (
                           <Avatar key={i} className="h-7 w-7 -ml-1 first:ml-0 border-2 border-background">
@@ -250,14 +249,12 @@ export default function TeamsPage() {
                         <th className="text-left p-3 font-medium">Lead</th>
                         <th className="text-left p-3 font-medium">Department</th>
                         <th className="text-center p-3 font-medium">Members</th>
-                        <th className="text-center p-3 font-medium">Health</th>
                         <th className="text-center p-3 font-medium">Status</th>
                         <th className="text-right p-3 font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filtered.map(team => {
-                        const healthScore = Math.min(100, 50 + (team.memberCount || 0) * 5);
                         return (
                           <tr key={team.id} className="border-b hover:bg-muted/30 transition-colors">
                             <td className="p-3">
@@ -273,12 +270,7 @@ export default function TeamsPage() {
                             <td className="p-3 text-muted-foreground">{team.lead || "—"}</td>
                             <td className="p-3 text-muted-foreground">{team.department}</td>
                             <td className="p-3 text-center font-medium">{team.memberCount || 0}</td>
-                            <td className="p-3 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <Progress value={healthScore} className="h-1.5 w-16" />
-                                <span className="text-xs">{healthScore}%</span>
-                              </div>
-                            </td>
+                            {/* Health column removed — see the Grid view card for why. */}
                             <td className="p-3 text-center">
                               <Badge className={cn("text-xs", STATUS_CONF[team.status]?.className || "status-active")}>
                                 {STATUS_CONF[team.status]?.label || team.status}
@@ -341,13 +333,19 @@ export default function TeamsPage() {
             </Card>
           </div>
 
-          {/* Team Health Summary */}
+          {/*
+            This card used to be "Team Health Summary" with a per-team
+            Math.min(100, 50 + memberCount * 5) score — a number dressed up
+            as a health signal that was really just headcount in disguise.
+            Renamed to what it actually shows (roster + status) now that the
+            invented figure is gone; nothing here is measured that isn't
+            already a real, stored field.
+          */}
           <Card>
-            <CardHeader><CardTitle className="text-base">Team Health Summary</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Team Overview</CardTitle></CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {teams.map(t => {
-                  const healthScore = Math.min(100, 50 + (t.memberCount || 0) * 5);
                   return (
                     <div key={t.id} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
                       <div className="flex items-center gap-3">
@@ -363,13 +361,6 @@ export default function TeamsPage() {
                         <div className="text-right">
                           <p className="font-semibold text-sm">{t.memberCount || 0}</p>
                           <p className="text-xs text-muted-foreground">Members</p>
-                        </div>
-                        <div className="w-24">
-                          <div className="flex justify-between text-xs mb-0.5">
-                            <span className="text-muted-foreground">Health</span>
-                            <span className={cn("font-medium", healthScore >= 80 ? "text-green-600" : healthScore >= 50 ? "text-amber-600" : "text-red-600")}>{healthScore}%</span>
-                          </div>
-                          <Progress value={healthScore} className="h-1.5" />
                         </div>
                         <Badge className={cn("text-xs", STATUS_CONF[t.status]?.className || "status-active")}>
                           {STATUS_CONF[t.status]?.label || t.status}

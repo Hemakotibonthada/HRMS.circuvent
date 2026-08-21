@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
-  FileText, Plus, Search, FolderOpen, Upload, Download, Share2,
+  FileText, Plus, Search, FolderOpen, Upload,
   Eye, Lock, Globe, Shield, Users, Calendar, Clock,
   Filter, MoreHorizontal, ChevronRight, File, Folder,
   AlertTriangle, CheckCircle2, Tag, ExternalLink, Trash2,
@@ -263,8 +263,9 @@ export default function VaultPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge className={st.className}>{st.label}</Badge>
-                        <Button variant="ghost" size="icon" className="h-8 w-8"><Download className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8"><Share2 className="h-4 w-4" /></Button>
+                        {/* Download/Share icon buttons used to sit here with no onClick at
+                            all — every document's url is "" (nothing here ever stores a real
+                            file), so there was never anything to download or share. */}
                       </div>
                     </div>
                   </CardContent>
@@ -348,7 +349,6 @@ export default function VaultPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{doc.uploadedBy}</span>
-                      <Button variant="ghost" size="icon" className="h-7 w-7"><Download className="h-3.5 w-3.5" /></Button>
                     </div>
                   </div>
                 </CardContent>
@@ -403,27 +403,18 @@ export default function VaultPage() {
                   <div><p className="text-muted-foreground">Uploaded By</p><p className="font-medium">{selectedDoc.uploadedBy || "Unknown"}</p></div>
                   <div><p className="text-muted-foreground">Version</p><p className="font-medium">{selectedDoc.version || "1.0"}</p></div>
                 </div>
-                <Separator />
-                <div>
-                  <h4 className="font-semibold text-sm mb-2">Version History</h4>
-                  <div className="space-y-2">
-                    {["1.0", "0.9", "0.8"].slice(0, selectedDoc.version === "1.0" ? 1 : 3).map((v, i) => (
-                      <div key={v} className="flex items-center justify-between p-2 rounded bg-muted/30 text-sm">
-                        <span>v{v}</span>
-                        <span className="text-muted-foreground">{i === 0 ? "Current" : "Previous"}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
+              {/* A fabricated "Version History" list (hardcoded v1.0/v0.9/v0.8 entries) used
+                  to render here for every document, claiming prior revisions that never
+                  existed — this record only ever stores a single version string, never a
+                  real history. Removed rather than invent one. */}
               <DialogFooter className="gap-2">
                 <Button variant="outline" className="text-red-600 border-red-200" onClick={() => handleDelete(selectedDoc.id)}>
                   <Trash2 className="h-4 w-4 mr-1" /> Archive
                 </Button>
-                <Button variant="outline" className="gap-1"><Share2 className="h-4 w-4" /> Share</Button>
-                <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-1">
-                  <Download className="h-4 w-4" /> Download
-                </Button>
+                {/* Share/Download buttons removed: they had no onClick handler and no file
+                    storage backs them (every document's url is ""), so they could only ever
+                    look broken or lie about doing something. */}
               </DialogFooter>
             </>
           )}

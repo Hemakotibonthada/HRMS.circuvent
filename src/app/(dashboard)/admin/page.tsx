@@ -145,6 +145,18 @@ export default function AdminPage() {
     return Math.round((settled / claims.length) * 100);
   }, [expStore.items]);
 
+  // Training completion rate — replaces a formula that scored "Training" as
+  // courseStore.items.length * 15 (capped at 100), meaning just 7 courses
+  // existing at all — with nobody necessarily enrolled or having finished
+  // any of them — showed as a perfect 100% training score.
+  const trainingCompletionRate = useMemo(() => {
+    const courses = courseStore.items;
+    const totalEnrolled = courses.reduce((s, c) => s + (c.enrolled || 0), 0);
+    if (totalEnrolled === 0) return 0;
+    const totalCompleted = courses.reduce((s, c) => s + (c.completed || 0), 0);
+    return Math.round((totalCompleted / totalEnrolled) * 100);
+  }, [courseStore.items]);
+
   // Department headcount
   const deptHeadcount = useMemo(() => {
     const m: Record<string, number> = {};
@@ -764,7 +776,7 @@ export default function AdminPage() {
                     { metric: "Retention", value: totalEmployees > 0 ? Math.round(((totalEmployees - onNotice) / totalEmployees) * 100) : 100 },
                     { metric: "Attendance", value: totalEmployees > 0 ? Math.round((presentToday / Math.max(totalEmployees, 1)) * 100) : 0 },
                     { metric: "Goals", value: goalCompletionRate },
-                    { metric: "Training", value: courseStore.items.length > 0 ? Math.min(100, courseStore.items.length * 15) : 0 },
+                    { metric: "Training", value: trainingCompletionRate },
                     { metric: "Helpdesk", value: ticketResolutionRate },
                     { metric: "Expenses", value: expenseApprovalRate },
                   ]}>
@@ -805,18 +817,23 @@ export default function AdminPage() {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Composed: Expense trend */}
+            {/* Expense trend */}
             <Card>
-              <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-teal-500" />Expense vs Budget Trend</CardTitle></CardHeader>
+              <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-teal-500" />Monthly Expense Trend</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={280}>
+                  {/* This chart used to plot a dashed "Budget" line fixed at
+                      ₹500,000 for every single month, alongside the real
+                      expense total, implying the org had a configured
+                      monthly budget. No org-level monthly budget is
+                      configured anywhere in this app, so only the real
+                      expense total is plotted now. */}
                   <ComposedChart data={["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map((m, i) => ({
                     month: m,
                     expenses: expStore.items.filter(e => {
                       if (!e.date) return false;
                       return new Date(e.date).getMonth() === i;
                     }).reduce((s, e) => s + (e.amount || 0), 0),
-                    budget: 500000,
                   }))}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border/30" />
                     <XAxis dataKey="month" tick={{ fontSize: 10 }} />
@@ -824,7 +841,6 @@ export default function AdminPage() {
                     <RTooltip content={<CTooltip />} />
                     <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 10 }} />
                     <Bar dataKey="expenses" name="Actual" fill="#8b5cf6" radius={[4, 4, 0, 0]} fillOpacity={0.8} />
-                    <Line type="monotone" dataKey="budget" name="Budget" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -848,7 +864,10 @@ export default function AdminPage() {
                     <Scatter name="Departments" data={deptHeadcount.map(d => ({
                       dept: d.name,
                       size: d.value,
-                      tickets: ticketStore.items.filter(t => t.department === d.name).length || Math.floor(d.value * 0.3),
+                      // Departments with zero real tickets used to fall back to
+                      // Math.floor(d.value * 0.3) here, inventing a support load
+                      // for the very departments that hadn't logged any.
+                      tickets: ticketStore.items.filter(t => t.department === d.name).length,
                     }))} fill="#ec4899" />
                   </ScatterChart>
                 </ResponsiveContainer>

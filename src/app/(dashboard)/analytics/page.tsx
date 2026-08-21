@@ -60,6 +60,27 @@ export default function AnalyticsPage() {
   useEffect(() => { if (!jobStore.initialized) startSync(COLLECTIONS.recruitment, jobStore); }, [jobStore.initialized, jobStore]);
   useEffect(() => { if (!attStore.initialized) startSync(COLLECTIONS.attendance, attStore); }, [attStore.initialized, attStore]);
 
+  // The recruitment funnel below used to split the applicant total across
+  // fixed 60/30/10/5% stages, so it drew the same shape no matter how many
+  // candidates actually advanced. Real per-stage counts come from the
+  // application event log via the same report ats/page.tsx already uses.
+  const [funnelStages, setFunnelStages] = useState<{ name: string; entered: number }[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/ats/reports?report=funnel");
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(data.error || "Could not load the pipeline funnel");
+        setFunnelStages(data.stages ?? []);
+      } catch {
+        if (!cancelled) setFunnelStages([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const loading = (empStore.loading && !empStore.initialized);
   const employees = empStore.items;
   const leaves = leaveStore.items;
@@ -214,16 +235,10 @@ export default function AnalyticsPage() {
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
   }, [jobs]);
 
-  const recruitFunnel = useMemo(() => {
-    const total = jobs.reduce((s, j) => s + (j.applicants || 0), 0);
-    return [
-      { name: "Applied", value: total },
-      { name: "Screening", value: Math.round(total * 0.6) },
-      { name: "Interview", value: Math.round(total * 0.3) },
-      { name: "Offer", value: Math.round(total * 0.1) },
-      { name: "Hired", value: Math.round(total * 0.05) },
-    ];
-  }, [jobs]);
+  const recruitFunnel = useMemo(
+    () => funnelStages.map(s => ({ name: s.name, value: s.entered })),
+    [funnelStages]
+  );
 
   const openPositions = jobs.filter(j => j.status === "open").length;
   const totalApplicants = jobs.reduce((s, j) => s + (j.applicants || 0), 0);
@@ -254,9 +269,12 @@ export default function AnalyticsPage() {
       headcount: d.value,
       leaveUtil: Math.round(leaves.filter(l => l.department === d.name && l.status === "approved").reduce((s, l) => s + (l.days || 0), 0) / Math.max(d.value, 1) * 10),
       expenses: Math.min(100, Math.round(expenses.filter(e => e.department === d.name).reduce((s, e) => s + (e.amount || 0), 0) / 10000)),
-      tickets: Math.min(100, jobs.filter(j => j.department === d.name).length * 20),
+      // A "tickets" field used to sit here (open job count * 20, capped at
+      // 100) even though this page has no support-ticket data — the name
+      // claimed something never measured. It was never wired into a <Radar>
+      // axis below, so removing it changes nothing on screen.
     }));
-  }, [headcountByDept, leaves, expenses, jobs]);
+  }, [headcountByDept, leaves, expenses]);
 
   // ── Tenure scatter ───────────────────────────────────────
   const tenureScatter = useMemo(() => {
@@ -632,8 +650,8 @@ export default function AnalyticsPage() {
             <Card className="border-0 shadow-sm">
               <CardHeader><CardTitle className="text-base">Recruitment Funnel</CardTitle></CardHeader>
               <CardContent>
-                {recruitFunnel.every(r => r.value === 0) ? (
-                  <DataEmptyState title="No recruitment data" description="Post jobs to see the funnel." compact />
+                {recruitFunnel.length === 0 || recruitFunnel.every(r => r.value === 0) ? (
+                  <DataEmptyState title="No recruitment data" description="No applications have moved through the hiring pipeline yet, so there is nothing to draw a funnel from." compact />
                 ) : (
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={recruitFunnel} layout="vertical">

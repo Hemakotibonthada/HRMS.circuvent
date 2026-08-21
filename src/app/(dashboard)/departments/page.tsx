@@ -11,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   Building2, Plus, Search, Users, DollarSign, MapPin,
@@ -190,7 +189,6 @@ export default function DepartmentsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
               {filtered.map((dept, idx) => {
                 const headcount = deptHeadcounts[dept.name] || dept.employees || 0;
-                const budgetUsed = dept.budget ? Math.min(100, Math.round(((dept.budget * 0.65) / dept.budget) * 100)) : 0;
                 return (
                   <Card key={dept.id} className="hover:shadow-lg transition-shadow animate-slide-up cursor-pointer group" onClick={() => setDetailDept(dept)}>
                     <CardHeader className="pb-2">
@@ -229,13 +227,14 @@ export default function DepartmentsPage() {
                           <p className="font-semibold text-lg">${((dept.budget || 0) / 1000).toFixed(0)}K</p>
                         </div>
                       </div>
-                      <div>
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-muted-foreground">Budget Used</span>
-                          <span className="font-medium">{budgetUsed}%</span>
-                        </div>
-                        <Progress value={budgetUsed} className="h-2" />
-                      </div>
+                      {/* A "Budget Used" bar used to sit here claiming a
+                          fixed 65% of every department's budget was spent —
+                          the dept.budget term cancelled out of its own
+                          formula, so it was mathematically the same number
+                          for any non-zero budget. Expense claims (Travel,
+                          Meals, Software, ...) are tracked per employee, not
+                          rolled up against a department's total budget, so
+                          there is no real spend figure to show here instead. */}
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
                         <Button size="sm" variant="outline" className="flex-1 gap-1" onClick={e => { e.stopPropagation(); setDetailDept(dept); }}>
                           <Eye className="h-3 w-3" /> View

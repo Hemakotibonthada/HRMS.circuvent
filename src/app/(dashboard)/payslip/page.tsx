@@ -21,7 +21,6 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip as RTooltip,
 } from "recharts";
-import { type PayrollDoc } from "@/stores/unified-store";
 import { listMyPayslips } from "@/lib/payroll-client";
 import { COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
@@ -43,6 +42,33 @@ const NEW_REGIME_SLABS = [
   { upto: 1500000, rate: 20 }, { upto: Infinity, rate: 30 },
 ];
 
+/**
+ * What `/api/payroll/payslips` actually returns, per `MyPayslip` in
+ * `payroll-client.ts`: attendance counts and three totals — no itemised
+ * earnings or deductions. The page used to force this into the shape of the
+ * admin-side `PayrollDoc` (which does have `basicPay`/`hra`/`specialAllowance`
+ * fields), setting those three to a hardcoded 0 because this endpoint has no
+ * such numbers, then computing "Conveyance", "Medical Allowance" and
+ * "Provident Fund" as fixed fractions of that fake 0. Every line read ₹0
+ * while the real net pay a few lines below it was a different, correct
+ * number. This type only claims the fields the API actually has.
+ */
+interface DisplayPayslip {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  month: string;
+  year: number;
+  workingDays: number;
+  presentDays: number;
+  lopDays: number;
+  grossEarnings: number;
+  totalDeductions: number;
+  netPay: number;
+  status: string;
+  anomalies: string[];
+}
+
 function computeTax(annual: number, slabs: typeof OLD_REGIME_SLABS): number {
   let tax = 0;
   let remaining = annual;
@@ -60,7 +86,7 @@ function computeTax(annual: number, slabs: typeof OLD_REGIME_SLABS): number {
 export default function PayslipPage() {
   const [tab, setTab] = useState("current");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
-  const [detailItem, setDetailItem] = useState<PayrollDoc | null>(null);
+  const [detailItem, setDetailItem] = useState<DisplayPayslip | null>(null);
 
   /**
    * The employee's own payslips, from `/api/payroll/payslips`.
@@ -72,7 +98,7 @@ export default function PayslipPage() {
    * correct route for this all along, and it releases only approved and paid
    * runs so nobody sees a figure that is still being corrected.
    */
-  const [items, setItems] = useState<PayrollDoc[]>([]);
+  const [items, setItems] = useState<DisplayPayslip[]>([]);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -84,21 +110,21 @@ export default function PayslipPage() {
         const payslips = await listMyPayslips();
         if (cancelled) return;
         setItems(
-          payslips.map((slip) => ({
+          payslips.map((slip): DisplayPayslip => ({
             id: slip.id,
             employeeId: slip.employeeId,
             employeeName: slip.employeeName ?? "",
-            department: "",
             month: MONTHS[(slip.periodMonth ?? 1) - 1] ?? "",
             year: slip.periodYear ?? new Date().getFullYear(),
-            basicPay: 0,
-            hra: 0,
-            specialAllowance: 0,
+            workingDays: slip.workingDays,
+            presentDays: slip.presentDays,
+            lopDays: slip.lopDays,
             grossEarnings: slip.gross,
             totalDeductions: slip.totalDeductions,
             netPay: slip.netPay,
             status: slip.status,
-          }) as PayrollDoc)
+            anomalies: slip.anomalies ?? [],
+          }))
         );
         setLoadError(null);
       } catch (error) {
@@ -127,32 +153,16 @@ export default function PayslipPage() {
     ) || items[0] || null;
   }, [items, selectedMonth]);
 
-  // Earnings breakdown
-  const earnings = useMemo(() => {
-    if (!currentPayslip) return [];
-    return [
-      { label: "Basic Pay", amount: currentPayslip.basicPay || 0 },
-      { label: "HRA", amount: currentPayslip.hra || 0 },
-      { label: "Special Allowance", amount: currentPayslip.specialAllowance || 0 },
-      { label: "Conveyance", amount: Math.round((currentPayslip.basicPay || 0) * 0.08) },
-      { label: "Medical Allowance", amount: Math.round((currentPayslip.basicPay || 0) * 0.05) },
-    ];
-  }, [currentPayslip]);
-
-  const deductions = useMemo(() => {
-    if (!currentPayslip) return [];
-    const basic = currentPayslip.basicPay || 0;
-    return [
-      { label: "Provident Fund", amount: Math.round(basic * 0.12) },
-      { label: "Professional Tax", amount: 200 },
-      { label: "Income Tax (TDS)", amount: Math.round((currentPayslip.netPay || 0) * 0.1) },
-      { label: "ESI", amount: basic > 21000 ? 0 : Math.round((currentPayslip.grossEarnings || 0) * 0.0075) },
-    ];
-  }, [currentPayslip]);
-
-  const totalEarnings = earnings.reduce((s, e) => s + e.amount, 0);
-  const totalDeductions = deductions.reduce((s, d) => s + d.amount, 0);
-  const netPay = currentPayslip?.netPay || (totalEarnings - totalDeductions);
+  // This page used to rebuild "Basic Pay"/"HRA"/"Special Allowance" as
+  // hardcoded 0s (see DisplayPayslip above), then derive "Conveyance",
+  // "Medical Allowance", "Provident Fund" and "Income Tax (TDS)" as fixed
+  // percentages of those zeros or of net pay — a fabricated line-item
+  // breakdown that read ₹0 (or a flat guess) for every component while the
+  // real gross/deduction/net totals sat unused on the same record. The API
+  // only has those three totals, so this uses them directly.
+  const totalEarnings = currentPayslip?.grossEarnings || 0;
+  const totalDeductions = currentPayslip?.totalDeductions || 0;
+  const netPay = currentPayslip?.netPay || 0;
 
   // YTD Summary
   const ytdSummary = useMemo(() => {
@@ -162,10 +172,13 @@ export default function PayslipPage() {
     return { totalGross, totalDed, totalNet, months: items.length };
   }, [items]);
 
-  // Tax comparison
+  // Tax comparison. Projects from real pay history when there is any; a
+  // payslip with a real ₹0 gross (e.g. the only month on file was unpaid
+  // leave) is now projected as ₹0/year instead of assuming a fabricated
+  // "₹30,000/month" salary, which is what the old fallback invented.
   const annualIncome = ytdSummary.totalGross > 0
     ? Math.round(ytdSummary.totalGross / Math.max(1, ytdSummary.months) * 12)
-    : (currentPayslip?.grossEarnings || 30000) * 12;
+    : (currentPayslip?.grossEarnings || 0) * 12;
   const oldRegimeTax = computeTax(annualIncome, OLD_REGIME_SLABS);
   const newRegimeTax = computeTax(annualIncome, NEW_REGIME_SLABS);
 
@@ -272,40 +285,38 @@ export default function PayslipPage() {
         {/* Current Payslip */}
         <TabsContent value="current" className="mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Earnings */}
+            {/* Attendance — the real per-line numbers this payslip is built
+                from, in place of the fabricated Basic Pay/HRA/Conveyance/
+                Medical Allowance breakdown that used to sit here. */}
             <Card className="border-0 shadow-sm">
-              <CardHeader><CardTitle className="text-base text-emerald-600 flex items-center gap-2"><ArrowUp className="h-4 w-4" /> Earnings</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><Calendar className="h-4 w-4" /> Attendance</CardTitle></CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {earnings.map(e => (
-                    <div key={e.label} className="flex justify-between text-sm">
-                      <span>{e.label}</span>
-                      <span className="font-medium">₹{e.amount.toLocaleString()}</span>
-                    </div>
-                  ))}
-                  <Separator />
-                  <div className="flex justify-between font-semibold text-emerald-600">
-                    <span>Total Earnings</span>
-                    <span>₹{totalEarnings.toLocaleString()}</span>
-                  </div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between"><span>Working Days</span><span className="font-medium">{currentPayslip?.workingDays ?? 0}</span></div>
+                  <div className="flex justify-between"><span>Present Days</span><span className="font-medium">{currentPayslip?.presentDays ?? 0}</span></div>
+                  <div className="flex justify-between"><span>Loss of Pay Days</span><span className="font-medium">{currentPayslip?.lopDays ?? 0}</span></div>
+                  {currentPayslip && currentPayslip.anomalies.length > 0 && (
+                    <>
+                      <Separator />
+                      {currentPayslip.anomalies.map((a) => (
+                        <p key={a} className="text-xs text-amber-600">{a}</p>
+                      ))}
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
-            {/* Deductions */}
+            {/* Pay */}
             <Card className="border-0 shadow-sm">
-              <CardHeader><CardTitle className="text-base text-red-500 flex items-center gap-2"><ArrowDown className="h-4 w-4" /> Deductions</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><Wallet className="h-4 w-4" /> Pay</CardTitle></CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {deductions.map(d => (
-                    <div key={d.label} className="flex justify-between text-sm">
-                      <span>{d.label}</span>
-                      <span className="font-medium">₹{d.amount.toLocaleString()}</span>
-                    </div>
-                  ))}
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between text-emerald-600"><span className="flex items-center gap-1"><ArrowUp className="h-3 w-3" /> Gross Earnings</span><span className="font-medium">₹{totalEarnings.toLocaleString()}</span></div>
+                  <div className="flex justify-between text-red-500"><span className="flex items-center gap-1"><ArrowDown className="h-3 w-3" /> Total Deductions</span><span className="font-medium">−₹{totalDeductions.toLocaleString()}</span></div>
                   <Separator />
-                  <div className="flex justify-between font-semibold text-red-500">
-                    <span>Total Deductions</span>
-                    <span>₹{totalDeductions.toLocaleString()}</span>
+                  <div className="flex justify-between font-semibold">
+                    <span>Net Pay</span>
+                    <span>₹{netPay.toLocaleString()}</span>
                   </div>
                 </div>
               </CardContent>
@@ -454,19 +465,24 @@ export default function PayslipPage() {
             <>
               <DialogHeader><DialogTitle>Payslip — {detailItem.month} {detailItem.year}</DialogTitle></DialogHeader>
               <div className="space-y-3 text-sm">
-                <div className="grid grid-cols-2 gap-3">
-                  <div><p className="text-muted-foreground">Employee</p><p className="font-medium">{detailItem.employeeName}</p></div>
-                  <div><p className="text-muted-foreground">Department</p><p className="font-medium">{detailItem.department}</p></div>
-                </div>
+                <div><p className="text-muted-foreground">Employee</p><p className="font-medium">{detailItem.employeeName}</p></div>
                 <Separator />
-                <div className="flex justify-between"><span>Basic Pay</span><span className="font-medium">₹{(detailItem.basicPay || 0).toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>HRA</span><span className="font-medium">₹{(detailItem.hra || 0).toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>Special Allowance</span><span className="font-medium">₹{(detailItem.specialAllowance || 0).toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Working Days</span><span className="font-medium">{detailItem.workingDays}</span></div>
+                <div className="flex justify-between"><span>Present Days</span><span className="font-medium">{detailItem.presentDays}</span></div>
+                <div className="flex justify-between"><span>Loss of Pay Days</span><span className="font-medium">{detailItem.lopDays}</span></div>
                 <Separator />
                 <div className="flex justify-between text-emerald-600 font-semibold"><span>Gross</span><span>₹{(detailItem.grossEarnings || 0).toLocaleString()}</span></div>
                 <div className="flex justify-between text-red-500"><span>Deductions</span><span>−₹{(detailItem.totalDeductions || 0).toLocaleString()}</span></div>
                 <Separator />
                 <div className="flex justify-between font-bold text-lg"><span>Net Pay</span><span>₹{(detailItem.netPay || 0).toLocaleString()}</span></div>
+                {detailItem.anomalies.length > 0 && (
+                  <>
+                    <Separator />
+                    {detailItem.anomalies.map((a) => (
+                      <p key={a} className="text-xs text-amber-600">{a}</p>
+                    ))}
+                  </>
+                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDetailItem(null)}>Close</Button>

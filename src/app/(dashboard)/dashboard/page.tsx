@@ -136,17 +136,26 @@ export default function DashboardPage() {
     return Object.entries(counts).map(([name, value]) => ({ name: name.replace(/_/g, " "), value }));
   }, [goalStore.items]);
 
-  // Monthly hiring trend
+  // Monthly hiring trend. "attrition" used to be invented as 15% of that
+  // month's joiners, so the bar moved in lockstep with hiring and never
+  // reflected an actual departure. exitDate is only set once an exit is
+  // processed, so counting it is real — it will just read zero until
+  // offboarding has actually been used (see the same fix in admin/page.tsx).
   const hiringTrend = useMemo(() => {
     const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const year = new Date().getFullYear();
     return months.map(m => {
-      const count = empStore.items.filter(e => {
+      const joined = empStore.items.filter(e => {
         if (!e.joiningDate) return false;
         const d = new Date(e.joiningDate);
         return d.getFullYear() === year && d.toLocaleString("default", { month: "short" }) === m;
       }).length;
-      return { month: m, joined: count, attrition: Math.floor(count * 0.15) };
+      const attrition = empStore.items.filter(e => {
+        if (!e.exitDate) return false;
+        const d = new Date(e.exitDate);
+        return d.getFullYear() === year && d.toLocaleString("default", { month: "short" }) === m;
+      }).length;
+      return { month: m, joined, attrition };
     });
   }, [empStore.items]);
 

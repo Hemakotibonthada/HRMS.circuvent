@@ -11,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   Receipt, Plus, Search, CheckCircle2, Clock, DollarSign, Eye,
@@ -44,10 +43,12 @@ const STATUS_CONF: Record<string, { label: string; className: string }> = {
   rejected: { label: "Rejected", className: "status-rejected" },
   reimbursed: { label: "Reimbursed", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
 };
-const POLICY_LIMITS: Record<string, number> = {
-  Travel: 50000, Meals: 5000, "Office Supplies": 10000, Software: 25000,
-  Training: 30000, Equipment: 50000, Communication: 3000, Miscellaneous: 5000,
-};
+// A per-category "policy limit" map used to live here (Travel: ₹50,000,
+// Meals: ₹5,000, ...) and was displayed to employees and approvers as if it
+// were a real, admin-configured company policy. No such policy is
+// configured anywhere in this app — the numbers were invented once and
+// never touched again, so the "Max ₹X per quarter" and progress bars that
+// depended on them were removed rather than shown as real policy.
 
 export default function ExpensesPage() {
   const store = useExpenseStore();
@@ -105,20 +106,6 @@ export default function ExpensesPage() {
       byMonth[key] = (byMonth[key] || 0) + (e.amount || 0);
     });
     return Object.entries(byMonth).map(([name, value]) => ({ name, value }));
-  }, [items]);
-
-  // Policy usage
-  const policyUsage = useMemo(() => {
-    const used: Record<string, number> = {};
-    items.filter(e => e.status === "approved" || e.status === "reimbursed").forEach(e => {
-      used[e.category || "Other"] = (used[e.category || "Other"] || 0) + (e.amount || 0);
-    });
-    return CATEGORIES.map(c => ({
-      name: c,
-      used: used[c] || 0,
-      limit: POLICY_LIMITS[c] || 10000,
-      percent: Math.round(((used[c] || 0) / (POLICY_LIMITS[c] || 10000)) * 100),
-    }));
   }, [items]);
 
   const resetForm = () => setForm({ employeeName: "", department: "", category: "", amount: "", date: "", description: "", receipt: false });
@@ -309,23 +296,13 @@ export default function ExpensesPage() {
             </Card>
           </div>
 
-          {/* Policy Limits */}
-          <Card className="border-0 shadow-sm">
-            <CardHeader><CardTitle className="text-base">Category Policy Limits</CardTitle></CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {policyUsage.map((p) => (
-                  <div key={p.name} className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium">{p.name}</span>
-                      <span className="text-muted-foreground">₹{p.used.toLocaleString()} / ₹{p.limit.toLocaleString()}</span>
-                    </div>
-                    <Progress value={Math.min(p.percent, 100)} className={cn("h-2", p.percent > 90 ? "[&>div]:bg-red-500" : p.percent > 70 ? "[&>div]:bg-amber-500" : "")} />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          {/* A "Category Policy Limits" card used to sit here, comparing
+              real per-category spend against invented limits (e.g. "Travel:
+              ₹50,000 per quarter") that no admin ever configured — nothing
+              in this app defines expense policy limits, so the comparison
+              was fake even though the spend half of it was real. The
+              category pie chart above already shows the real spend
+              breakdown without pretending a limit exists. */}
         </TabsContent>
       </Tabs>
 
@@ -368,13 +345,10 @@ export default function ExpensesPage() {
                     </div>
                   </>
                 )}
-                <Separator />
-                <div className="p-3 rounded-lg bg-muted/30">
-                  <p className="text-sm font-medium">Policy Limit for {selectedExpense.category}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Max: ₹{(POLICY_LIMITS[selectedExpense.category] || 10000).toLocaleString()} per quarter
-                  </p>
-                </div>
+                {/* This dialog used to assert a per-category "Policy Limit"
+                    (e.g. "Max: ₹50,000 per quarter") here, which could have
+                    influenced a real approve/reject decision even though no
+                    such policy was ever configured anywhere in the app. */}
               </div>
               <DialogFooter className="gap-2">
                 {(selectedExpense.status === "submitted" || selectedExpense.status === "pending") && (
@@ -436,11 +410,12 @@ export default function ExpensesPage() {
               <input type="checkbox" id="receipt" checked={form.receipt} onChange={(e) => setForm(f => ({ ...f, receipt: e.target.checked }))} className="rounded" />
               <Label htmlFor="receipt" className="text-sm font-normal cursor-pointer">I have a receipt</Label>
             </div>
-            {form.category && (
-              <div className="p-2 rounded-lg bg-muted/30 text-xs text-muted-foreground">
-                Policy limit for {form.category}: ₹{(POLICY_LIMITS[form.category] || 10000).toLocaleString()} per quarter
-              </div>
-            )}
+            {/* A "Policy limit for {category}: ₹X per quarter" hint used to
+                render here, telling the employee about a per-category cap
+                that was invented for display purposes only — no such policy
+                is configured anywhere in the app, so showing it risked an
+                employee under- or over-claiming against a rule that doesn't
+                actually exist. */}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>

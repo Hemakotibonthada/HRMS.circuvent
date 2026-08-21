@@ -14,10 +14,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
-  Heart, Search, TrendingUp, Users, Star,
+  Heart, Search, TrendingUp, Star,
   MessageSquare, Target, BarChart3, ThumbsUp,
   Award, Smile, Plus, Calendar, Sparkles,
-  Activity, Megaphone, CheckCircle2, Lightbulb,
+  Activity, CheckCircle2, Lightbulb,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -39,14 +39,12 @@ import {
 // ═══════════════════════════════════════════════════════════════
 
 const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899","#6366f1","#14b8a6"];
-const INITIATIVE_LIST = [
-  { title: "Innovation Fridays", desc: "Dedicated time for passion projects", icon: Lightbulb, color: "from-amber-500 to-orange-500", status: "active" },
-  { title: "Mentorship Program", desc: "Pair senior & junior employees", icon: Users, color: "from-violet-500 to-purple-600", status: "active" },
-  { title: "Wellness Wednesdays", desc: "Group yoga, meditation, mindfulness", icon: Heart, color: "from-pink-500 to-rose-600", status: "active" },
-  { title: "Lunch & Learn", desc: "Monthly knowledge sharing sessions", icon: Megaphone, color: "from-blue-500 to-cyan-500", status: "upcoming" },
-  { title: "Hackathons", desc: "Quarterly company hackathons", icon: Sparkles, color: "from-emerald-500 to-green-600", status: "upcoming" },
-  { title: "Volunteer Days", desc: "Paid community volunteer time", icon: Award, color: "from-teal-500 to-cyan-600", status: "active" },
-];
+// A fixed list of six "culture initiatives" (Innovation Fridays, Mentorship
+// Program, ...) with hardcoded "active"/"upcoming" badges used to live here
+// and render identically for every organization, regardless of what
+// programs — if any — that org actually runs. Nothing in the schema
+// tracks initiatives, so there is no real per-org list to substitute; see
+// the Initiatives tab below for the honest empty state that replaced it.
 
 export default function EngagementPage() {
   const feedbackStore = useFeedbackStore();
@@ -83,7 +81,12 @@ export default function EngagementPage() {
     const goalScore = goals.length > 0
       ? Math.round(goals.reduce((s, g) => s + (g.progress || 0), 0) / goals.length)
       : 0;
-    return Math.min(100, Math.round((Math.max(surveyScore, 50) + goalScore) / 2));
+    // The survey half of this score used to be floored at 50 via
+    // Math.max(surveyScore, 50), so an org with zero real survey
+    // participation could still show an "Engagement Score" as high as 75%.
+    // Use the real survey score, however low, so the headline number
+    // reflects what was actually measured.
+    return Math.min(100, Math.round((surveyScore + goalScore) / 2));
   }, [surveys, goals]);
 
   const responseRate = useMemo(() => {
@@ -380,26 +383,11 @@ export default function EngagementPage() {
         </TabsContent>
 
         <TabsContent value="initiatives" className="mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
-            {INITIATIVE_LIST.map((init, i) => (
-              <Card key={i} className="animate-slide-up hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={cn("h-10 w-10 rounded-xl bg-gradient-to-br flex items-center justify-center", init.color)}>
-                      <init.icon className="h-5 w-5 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-sm">{init.title}</h3>
-                      <Badge className={cn("text-xs", init.status === "active" ? "status-active" : "status-pending")}>
-                        {init.status}
-                      </Badge>
-                    </div>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{init.desc}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <DataEmptyState
+            icon={Lightbulb}
+            title="No culture initiatives tracked yet"
+            description="Wellness programs, mentorships, hackathons and similar employee engagement initiatives aren't tracked in this app yet."
+          />
         </TabsContent>
       </Tabs>
 

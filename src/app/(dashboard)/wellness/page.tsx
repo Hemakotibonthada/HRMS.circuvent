@@ -15,9 +15,9 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   Heart, Plus, Search, Brain, Dumbbell, DollarSign,
-  Users, Smile, Scale, Activity, Target, Calendar,
-  TrendingUp, BarChart3, Leaf, Coffee, BookOpen,
-  ExternalLink, Sparkles,
+  Users, Scale, Activity, Target, Calendar,
+  TrendingUp, BarChart3, BookOpen,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -80,16 +80,13 @@ const STATUS_CONF: Record<string, { label: string; className: string }> = {
   completed: { label: "Completed", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
   paused: { label: "Paused", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
 };
-const RESOURCES = [
-  { title: "Mental Health Helpline", desc: "24/7 counseling support", icon: Brain, category: "Mental Health" },
-  { title: "Gym Membership Benefits", desc: "Discounted corporate memberships", icon: Dumbbell, category: "Physical Fitness" },
-  { title: "Financial Planning Guide", desc: "Retirement and investment resources", icon: DollarSign, category: "Financial Wellness" },
-  { title: "Team Building Activities", desc: "Monthly social events calendar", icon: Users, category: "Social Activities" },
-  { title: "Flexible Work Policy", desc: "Guidelines for remote and hybrid work", icon: Coffee, category: "Work-Life Balance" },
-  { title: "Meditation & Mindfulness", desc: "Guided sessions and app access", icon: Leaf, category: "Mental Health" },
-  { title: "Nutrition Counseling", desc: "Dietitian consultations available", icon: Heart, category: "Physical Fitness" },
-  { title: "Employee Assistance Program", desc: "Confidential counseling services", icon: Smile, category: "Mental Health" },
-];
+// The resources catalogue used to list a fixed set of specific employee
+// benefits — a 24/7 counselling helpline, gym membership, an EAP, a
+// financial planning guide — as if this HRMS instance had confirmed every
+// tenant company actually provides them. None of it came from configuration
+// or a real backend; every customer would see the identical claims whether
+// or not those programmes exist for them. There is no resources collection
+// to wire this to, so the tab now says plainly that nothing is configured.
 const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899","#6366f1","#14b8a6"];
 
 export default function WellnessPage() {
@@ -138,10 +135,11 @@ export default function WellnessPage() {
   const totalCapacity = useMemo(() => items.reduce((s, w) => s + (w.capacity || 0), 0), [items]);
   const utilizationRate = totalCapacity > 0 ? Math.round((totalEnrolled / totalCapacity) * 100) : 0;
 
-  const wellnessScore = useMemo(() => {
-    if (items.length === 0) return 0;
-    return Math.min(100, Math.round((activePrograms / Math.max(PROGRAM_CATEGORIES.length, 1)) * 100));
-  }, [items, activePrograms]);
+  // A "Wellness Score" used to live here — active-program count divided by
+  // the 5 fixed category tiles, capped at 100. That is category coverage,
+  // not wellness; it moved only because programmes were added, never
+  // because anyone's wellbeing was assessed. No survey or health data feeds
+  // this app, so there is nothing honest to compute in its place.
 
   const categoryData = useMemo(() =>
     PROGRAM_CATEGORIES.map(cat => ({
@@ -150,6 +148,7 @@ export default function WellnessPage() {
       enrolled: items.filter(w => w.category === cat.key).reduce((s, w) => s + (w.enrolled || 0), 0),
     })),
   [items]);
+
 
   const enrollmentData = useMemo(() =>
     items.map(w => ({ name: w.title?.substring(0, 15) || "N/A", enrolled: w.enrolled || 0, capacity: w.capacity || 0 }))
@@ -186,13 +185,12 @@ export default function WellnessPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 stagger-children">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
         {[
           { label: "Programs", value: items.length, icon: Heart, gradient: "from-violet-500 to-purple-600" },
           { label: "Active", value: activePrograms, icon: Activity, gradient: "from-emerald-500 to-green-600" },
           { label: "Enrolled", value: totalEnrolled, icon: Users, gradient: "from-blue-500 to-cyan-500" },
           { label: "Utilization", value: `${utilizationRate}%`, icon: Target, gradient: "from-amber-500 to-orange-500" },
-          { label: "Wellness Score", value: `${wellnessScore}%`, icon: Sparkles, gradient: "from-pink-500 to-rose-600" },
         ].map(kpi => (
           <Card key={kpi.label} className="animate-slide-up">
             <CardContent className="p-4 flex items-center gap-4">
@@ -302,55 +300,17 @@ export default function WellnessPage() {
         </TabsContent>
 
         <TabsContent value="resources" className="mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
-            {RESOURCES.map((res, i) => {
-              const catInfo = PROGRAM_CATEGORIES.find(c => c.key === res.category);
-              return (
-                <Card key={i} className="animate-slide-up hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-4">
-                    <div className={cn("h-10 w-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3", catInfo?.color || "from-violet-500 to-purple-600")}>
-                      <res.icon className="h-5 w-5 text-white" />
-                    </div>
-                    <h3 className="font-semibold text-sm mb-1">{res.title}</h3>
-                    <p className="text-xs text-muted-foreground mb-2">{res.desc}</p>
-                    <Badge variant="outline" className="text-xs">{res.category}</Badge>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          {/*
+            Used to render a fixed catalogue of specific benefits (a 24/7
+            helpline, gym membership, EAP, etc.) as though verified for this
+            company. See the removed RESOURCES constant above for why that
+            was dishonest — an empty state is the accurate replacement until
+            a real resources feature exists.
+          */}
+          <DataEmptyState icon={BookOpen} title="No wellness resources listed yet" description="This company hasn't documented any wellness resources or benefits here yet." />
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-4 space-y-6">
-          {/* Wellness Score Gauge */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Overall Wellness Score</CardTitle></CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-center gap-8">
-                <div className="relative h-32 w-32">
-                  <svg className="h-32 w-32 -rotate-90" viewBox="0 0 120 120">
-                    <circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" className="text-muted/30" strokeWidth="12" />
-                    <circle cx="60" cy="60" r="50" fill="none" stroke="url(#wellnessGradient)" strokeWidth="12" strokeLinecap="round"
-                      strokeDasharray={`${wellnessScore * 3.14} 314`} />
-                    <defs>
-                      <linearGradient id="wellnessGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="#8b5cf6" />
-                        <stop offset="100%" stopColor="#a855f7" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-3xl font-bold">{wellnessScore}%</span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm"><span className="font-medium">{activePrograms}</span> active programs</p>
-                  <p className="text-sm"><span className="font-medium">{totalEnrolled}</span> total enrolled</p>
-                  <p className="text-sm"><span className="font-medium">{utilizationRate}%</span> utilization</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader><CardTitle className="text-base">Programs by Category</CardTitle></CardHeader>

@@ -32,29 +32,46 @@ const ONBOARDING_PHASES = [
   { key: "month3", label: "Month 3", icon: Heart, color: "text-rose-500" },
 ];
 
-const ONBOARDING_TASKS = [
-  { phase: "preboarding", task: "Offer letter sent", weight: 10 },
-  { phase: "preboarding", task: "Background check", weight: 10 },
-  { phase: "day1", task: "ID card issued", weight: 5 },
-  { phase: "day1", task: "Workspace assigned", weight: 5 },
-  { phase: "day1", task: "IT setup complete", weight: 10 },
-  { phase: "week1", task: "HR induction", weight: 10 },
-  { phase: "week1", task: "Team introduction", weight: 5 },
-  { phase: "week1", task: "Policy acknowledgement", weight: 10 },
-  { phase: "month1", task: "30-day check-in", weight: 10 },
-  { phase: "month1", task: "Role-specific training", weight: 15 },
-  { phase: "month3", task: "90-day review", weight: 10 },
-];
+// Real per-employee checklist progress, sourced from the same /api/lifecycle
+// endpoint the Onboarding page uses (kind=onboarding). Only the fields this
+// page actually reads are declared here.
+interface LifecycleJourney {
+  employeeId: string;
+  progress: { total: number; completed: number; percent: number };
+}
 
 export default function OnboardingHubPage() {
   const nowMs = useNowMs();
   const empStore = useEmployeeStore();
   const { items, loading, initialized } = empStore;
   const [search, setSearch] = useState("");
+  const [journeys, setJourneys] = useState<Record<string, LifecycleJourney>>({});
 
   useEffect(() => {
     if (!initialized) startSync(COLLECTIONS.employees, empStore);
   }, [initialized, empStore]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/lifecycle?kind=onboarding&limit=200", {
+          credentials: "include",
+        });
+        if (!response.ok) return;
+        const body = (await response.json()) as { data: LifecycleJourney[] };
+        if (cancelled) return;
+        const byEmployee: Record<string, LifecycleJourney> = {};
+        for (const journey of body.data ?? []) byEmployee[journey.employeeId] = journey;
+        setJourneys(byEmployee);
+      } catch {
+        // Renders 0% rather than showing progress from nowhere.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const newJoiners = useMemo(() => {
     // Date.now() during render made "joined in the last 90 days" resolve
@@ -76,15 +93,15 @@ export default function OnboardingHubPage() {
     );
   }, [newJoiners, search]);
 
-  const getJoinerProgress = (joiningDate: string) => {
-    if (nowMs === null) return 0;
-    const daysSinceJoin = Math.floor((nowMs - new Date(joiningDate).getTime()) / (1000 * 60 * 60 * 24));
-    if (daysSinceJoin >= 90) return 100;
-    if (daysSinceJoin >= 30) return 75;
-    if (daysSinceJoin >= 7) return 50;
-    if (daysSinceJoin >= 1) return 25;
-    return 10;
-  };
+  /**
+   * Was a pure elapsed-time guess — 25% after one day, 75% after a month,
+   * 100% after 90 days — regardless of whether a single onboarding task had
+   * actually been completed. That asserted checklist progress the system
+   * never measured. Real per-task completion already exists via
+   * /api/lifecycle (the same source the Onboarding page uses); read it
+   * instead of estimating from the calendar.
+   */
+  const getJoinerProgress = (empId: string) => journeys[empId]?.progress.percent ?? 0;
 
   // Memoised so the memo below can depend on this function rather than
   // re-declaring `nowMs` as its own dependency. Listing the state a plain
@@ -101,12 +118,14 @@ export default function OnboardingHubPage() {
     return "preboarding";
   }, [nowMs]);
 
-  const getBuddyName = (emp: typeof items[0]) => {
-    const deptPeers = items.filter(e =>
-      e.department === emp.department && e.id !== emp.id && e.status === "active"
-    );
-    return deptPeers.length > 0 ? `${deptPeers[0].firstName} ${deptPeers[0].lastName}` : "Not assigned";
-  };
+  /**
+   * Was picking the first other active employee in the same department and
+   * labelling them "Buddy" — an arbitrary co-worker presented as if they'd
+   * been formally assigned, when no buddy-assignment feature exists. The
+   * reporting manager is the one real, sourced contact available for a new
+   * joiner; the Onboarding page uses the same field for the same reason.
+   */
+  const getBuddyName = (emp: typeof items[0]) => emp.reportingManager || "Not assigned";
 
   const phaseData = useMemo(() =>
     ONBOARDING_PHASES.map(p => ({
@@ -128,9 +147,9 @@ export default function OnboardingHubPage() {
     );
   }
 
-  const inProgress = newJoiners.filter(e => getJoinerProgress(e.joiningDate) < 100).length;
-  const completed = newJoiners.filter(e => getJoinerProgress(e.joiningDate) >= 100).length;
-  const avgProgress = newJoiners.length > 0 ? Math.round(newJoiners.reduce((s, e) => s + getJoinerProgress(e.joiningDate), 0) / newJoiners.length) : 0;
+  const inProgress = newJoiners.filter(e => getJoinerProgress(e.id) < 100).length;
+  const completed = newJoiners.filter(e => getJoinerProgress(e.id) >= 100).length;
+  const avgProgress = newJoiners.length > 0 ? Math.round(newJoiners.reduce((s, e) => s + getJoinerProgress(e.id), 0) / newJoiners.length) : 0;
 
   const kpis = [
     { label: "New Joiners (90d)", value: newJoiners.length, icon: UserPlus, gradient: "from-violet-500 to-purple-600" },
@@ -199,7 +218,7 @@ export default function OnboardingHubPage() {
 
       <div className="space-y-3">
         {filtered.map(emp => {
-          const progress = getJoinerProgress(emp.joiningDate);
+          const progress = getJoinerProgress(emp.id);
           const phase = getCurrentPhase(emp.joiningDate);
           const phaseInfo = ONBOARDING_PHASES.find(p => p.key === phase);
           const buddy = getBuddyName(emp);

@@ -72,7 +72,14 @@ export default function IntelligencePage() {
     const flightRiskEmps = emps.filter(e => {
       const empLeaves = leaves.filter(l => l.employeeId === e.id && l.status === "approved");
       const empGoals = goals.filter(g => g.employeeId === e.id);
-      const avgProgress = empGoals.length > 0 ? empGoals.reduce((s, g) => s + (g.progress || 0), 0) / empGoals.length : 50;
+      // An employee with no goals has no progress figure to be low, so the
+      // old code invented one ("50", i.e. a passing grade) to plug into the
+      // comparison below. That silently exempted every goal-less employee
+      // from this signal regardless of their leave frequency. Abstaining
+      // when there is nothing to measure is honest; inventing a number that
+      // happens to clear the threshold is not.
+      if (empGoals.length === 0) return false;
+      const avgProgress = empGoals.reduce((s, g) => s + (g.progress || 0), 0) / empGoals.length;
       return empLeaves.length > 5 && avgProgress < 40;
     });
     if (flightRiskEmps.length > 0) {

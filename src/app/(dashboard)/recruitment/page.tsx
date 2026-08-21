@@ -16,7 +16,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   Briefcase, Plus, Search, Users, MapPin, Calendar, Building2, Eye,
   TrendingUp, Clock, Target, CheckCircle2, AlertTriangle, ChevronRight,
-  Filter, Star, ArrowRight, UserPlus, FileText, Mail, Phone,
+  Filter, Star, UserPlus, FileText, Mail, Phone,
   DollarSign, GraduationCap, ChevronDown, MoreHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,6 @@ import {
 import { useJobStore, startSync, type JobDoc } from "@/stores/unified-store";
 import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
-import { clickable } from "@/lib/a11y/clickable";
 
 // ═══════════════════════════════════════════════════════════════
 // RECRUITMENT — Full ATS with Kanban pipeline, job postings,
@@ -56,6 +55,18 @@ const STATUS_CONF: Record<string, { label: string; className: string }> = {
   on_hold: { label: "On Hold", className: "status-pending" },
 };
 
+// Pipeline stages are configurable per org (see pipelineStages in
+// db/schema/ats.ts), not the fixed applied/screening/interview/offer/hired
+// list above, so the funnel is rendered from whatever stages the report
+// returns rather than assumed to be exactly five.
+interface FunnelStageRow {
+  stageId: string;
+  name: string;
+  entered: number;
+  conversionFromPrevious: number;
+  conversionFromStart: number;
+}
+
 export default function RecruitmentPage() {
   const rbac = useRBAC();
   const store = useJobStore();
@@ -72,7 +83,31 @@ export default function RecruitmentPage() {
     openings: "", status: "open",
   });
 
+  const [funnelStages, setFunnelStages] = useState<FunnelStageRow[]>([]);
+
   useEffect(() => { if (!initialized) startSync(COLLECTIONS.recruitment, store); }, [initialized, store]);
+
+  // The funnel used to be a fixed 0.6/0.3/0.1 fraction of each job's applicant
+  // count, so screening/interview/offer numbers moved in lockstep with
+  // applications regardless of how many candidates actually advanced. Real
+  // per-stage counts are tracked in the application event log (the same
+  // report ats/page.tsx already draws its funnel from), so they are fetched
+  // from there instead.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/ats/reports?report=funnel");
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(data.error || "Could not load the pipeline funnel");
+        setFunnelStages(data.stages ?? []);
+      } catch {
+        if (!cancelled) setFunnelStages([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -96,19 +131,6 @@ export default function RecruitmentPage() {
   const hiredCount = items.filter(j => j.status === "closed").length;
   const offerRate = totalApplicants > 0 ? Math.round((hiredCount / totalApplicants) * 100) : 0;
 
-  // Pipeline data computed from store
-  const pipelineData = useMemo(() => {
-    const stages: Record<string, number> = { applied: 0, screening: 0, interview: 0, offer: 0, hired: 0 };
-    items.forEach(j => {
-      stages.applied += j.applicants || 0;
-      stages.screening += Math.round((j.applicants || 0) * 0.6);
-      stages.interview += Math.round((j.applicants || 0) * 0.3);
-      stages.offer += Math.round((j.applicants || 0) * 0.1);
-      if (j.status === "closed") stages.hired += j.openings || 0;
-    });
-    return Object.entries(stages).map(([name, value]) => ({ name: STAGE_CONF[name]?.label || name, value }));
-  }, [items]);
-
   const deptData = useMemo(() => {
     const counts: Record<string, number> = {};
     items.forEach(j => {
@@ -116,6 +138,11 @@ export default function RecruitmentPage() {
     });
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
   }, [items]);
+
+  const funnelChartData = useMemo(
+    () => funnelStages.map(s => ({ name: s.name, value: s.entered })),
+    [funnelStages]
+  );
 
   const resetForm = () => setForm({
     title: "", department: "", location: "", experienceMin: "",
@@ -241,63 +268,57 @@ export default function RecruitmentPage() {
 
         {/* Pipeline Tab */}
         <TabsContent value="pipeline" className="space-y-4 mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            {PIPELINE_STAGES.filter(s => s !== "rejected").map((stage, idx) => {
-              const conf = STAGE_CONF[stage];
-              const count = pipelineData[idx]?.value || 0;
-              return (
-                <Card key={stage} className="border-0 shadow-sm">
-                  <CardHeader className="pb-2 pt-4 px-4">
-                    <div className="flex items-center justify-between">
-                      <Badge className={conf.className}>{conf.label}</Badge>
-                      <span className="text-lg font-bold">{count}</span>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-4">
-                    <div className="space-y-2">
-                      {filtered.slice(0, 3).map((job) => (
-                        <div
-                          key={`${stage}-${job.id}`}
-                          className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
-                          {...clickable(() => setSelectedJob(job))}
-                        >
-                          <p className="text-xs font-medium truncate">{job.title}</p>
-                          <p className="text-[10px] text-muted-foreground">{job.department}</p>
-                        </div>
-                      ))}
-                    </div>
-                    {idx < 4 && (
-                      <div className="flex justify-center mt-2">
-                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          {funnelStages.length === 0 || funnelStages.every(s => s.entered === 0) ? (
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-6">
+                <DataEmptyState
+                  title="Not available yet"
+                  description="No applications have moved through the hiring pipeline yet, so there is nothing to draw a funnel from. This fills in as candidates are advanced through stages."
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Each stage card used to repeat the same first three filtered
+                  jobs underneath every stage, implying those jobs were sitting
+                  in that particular stage when no per-stage job assignment was
+                  ever tracked here. Only the real stage name and the count
+                  from the funnel report are shown now. */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                {funnelStages.map((stage) => (
+                  <Card key={stage.stageId} className="border-0 shadow-sm">
+                    <CardContent className="p-4 text-center">
+                      <p className="text-xl font-bold">{stage.entered}</p>
+                      <p className="text-sm font-medium mt-1 truncate">{stage.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{stage.conversionFromStart}% of total</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
 
-          {/* Recruitment Funnel Chart */}
-          <Card className="border-0 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base">Recruitment Funnel</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={pipelineData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" />
-                  <YAxis dataKey="name" type="category" width={80} />
-                  <RTooltip />
-                  <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                    {pipelineData.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+              {/* Recruitment Funnel Chart */}
+              <Card className="border-0 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-base">Recruitment Funnel</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={funnelChartData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" />
+                      <YAxis dataKey="name" type="category" width={80} />
+                      <RTooltip />
+                      <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                        {funnelChartData.map((_, i) => (
+                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </TabsContent>
 
         {/* Jobs Tab */}
@@ -411,10 +432,14 @@ export default function RecruitmentPage() {
               </CardContent>
             </Card>
             <Card className="border-0 shadow-sm">
-              <CardHeader><CardTitle className="text-base">Applicant Trend</CardTitle></CardHeader>
+              {/* This duplicates the funnel stage counts as an area chart
+                  rather than a real week-over-week trend — no historical
+                  application dates are aggregated here — so it is labelled
+                  for what it actually shows. */}
+              <CardHeader><CardTitle className="text-base">Funnel by Stage</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={pipelineData}>
+                  <AreaChart data={funnelChartData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" />
                     <YAxis />

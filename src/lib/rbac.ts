@@ -372,7 +372,6 @@ export const MODULE_PERMISSION_MAP: Record<string, Permission> = {
   parking: "parking.view",
   badges: "badges.view",
   hrcalendar: "dashboard.view",
-  settlement: "offboarding.view",
   interviews: "recruitment.view",
   profile: "dashboard.view",
   resourceplanner: "reports.view",

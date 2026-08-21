@@ -10,11 +10,24 @@
 //   records    a module-level array of record-shaped objects, rendered as data
 //   answers    a hook or function that returns a fabrication and reads no source
 //   hollow     a success toast fired with nothing behind it that could succeed
+//   dead       a button styled and iconed for an action it has no handler for
 //   pretend    a delay or comment dressing up fabricated work as a real one
 //   invented   Math.random() rendered as a measurement
 //   identity   fake PAN/Aadhaar/account numbers on a person's record
 //   people     hardcoded names, emails and photos posing as records
 //   sample     placeholder text left in a shipping surface
+//
+// Known gaps, left to review rather than automated: a KPI computed by a
+// formula with a fixed floor or ceiling (`wellness/page.tsx` used to divide
+// active programmes by its own 5 category tiles and call the result a
+// "Wellness Score") reads the same as a real ratio to a regex — telling them
+// apart needs knowing what the numerator and denominator mean, not what they
+// match. A short hardcoded string list nested inside an otherwise-real
+// record's detail view (`vault/page.tsx` used to invent a three-entry
+// "Version History" for documents that only ever store one version) is
+// exactly the same shape as legitimate small string lists — quick-reply
+// chips, filter options — so a rule for it would flag far more of those than
+// it would ever catch of it. Both stay a code-review concern.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -107,6 +120,29 @@ const RULES: { kind: string; pattern: RegExp; skip?: RegExp }[] = [
     skip: /enumeration|timing|constant.?time|oracle/i,
   },
   { kind: "sample", pattern: /\/\/\s*(TODO|FIXME|HACK)\b/i },
+
+  // A button built and iconed for a real action that has no handler at all.
+  //
+  // `vault/page.tsx` rendered `<Button variant="ghost" size="icon"><Download
+  // className="h-4 w-4" /></Button>` in three places — the document list, the
+  // shared-documents tab, and the detail dialog's footer — none of them with
+  // an `onClick`. Every document's `url` is always `""`; nothing in the app
+  // ever stores a file to download or share, so the buttons could not have
+  // worked even if wired up. A hollow toast at least renders a message; this
+  // rendered a control that does nothing at all when clicked, which reads as
+  // broken rather than dishonest but erodes trust the same way.
+  //
+  // Scoped to the icons actually found doing this — Download, Share2, Upload
+  // — rather than every icon button, because most icon buttons in this
+  // codebase correctly open a dialog or toggle state and would otherwise
+  // flood the report. `disabled` is exempted: a control honestly marked
+  // unavailable (see `calculator/page.tsx`'s "Export PDF (not available
+  // yet)") is the fix for this category, not another instance of it.
+  {
+    kind: "dead",
+    pattern: /<Button\b[^>]*>\s*<(Download|Share2|Upload)\b/,
+    skip: /onClick|disabled/,
+  },
 
   // Work that is pretended rather than done.
   //
@@ -290,6 +326,53 @@ function findHardcodedRecordArrays(source: string, file: string): Finding[] {
 }
 
 /**
+ * A label sitting next to an invented recurrence: `{ title: "Fun Friday",
+ * date: "Every Friday" }`, `{ title: "Town Hall", date: "Last Friday of
+ * Month" }`. `culturehub/page.tsx`'s "Events" tab was four of these, and
+ * `findHardcodedRecordArrays` above never had a chance at it — the array was
+ * never assigned to a name, just opened inline inside the JSX it rendered
+ * (`{[ ... ].map(event => (`), so the `const X = [` anchor that check relies
+ * on does not exist here. Rather than teach the array walker to chase
+ * anonymous brackets through arbitrary JSX and risk it snagging the dozens of
+ * legitimate inline `{[...].map(...)}` lists this codebase uses for KPI cards
+ * built from real variables, this checks the one thing that was actually
+ * wrong: a real-looking name typed next to a schedule nobody configured,
+ * wherever the two sit on the same line.
+ *
+ * This codebase does have real recurring facts — `compliance-engine.ts`'s
+ * statutory filing calendar carries monthly and quarterly EPF deadlines —
+ * but they live in a lowercase, type-checked enum (`frequency: "monthly"`)
+ * that code branches on, never as the Title Case phrase written for a screen
+ * to print (`"Every Friday"`, `"Last Friday of Month"`). Matching only the
+ * display-prose shape is what keeps that file out of this report without a
+ * name-based exemption, and an empty label (a form's `title: ""` default) is
+ * excluded by requiring the label actually say something.
+ *
+ * The bar is two hits per file, not one: a single hardcoded schedule next to
+ * a label could be an odd one-off; several together is a calendar someone
+ * typed in and is asking a customer to trust.
+ */
+const LABEL_FIELD = /\b(title|label|name)\s*:\s*["'`][^"'`]+["'`]/;
+const CADENCE_VALUE =
+  /\b(date|cadence|frequency|schedule|recurrence)\s*:\s*["'`]\s*(Daily|Weekly|Monthly|Quarterly|Annually|Every \w+|Last \w+ of \w+)/;
+
+function findScheduledClaims(source: string, file: string): Finding[] {
+  const lines = source.split("\n");
+  const hitLines = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => LABEL_FIELD.test(line) && CADENCE_VALUE.test(line));
+
+  if (hitLines.length < 2) return [];
+
+  return hitLines.map(({ line, index }) => ({
+    file: file.replace(/\\/g, "/"),
+    line: index + 1,
+    kind: "records",
+    text: `hardcoded label with an invented recurrence — ${line.trim().slice(0, 88)}`,
+  }));
+}
+
+/**
  * Anything that could actually make a success toast true.
  *
  * Reuses the same signal `findFabricatedReturns` uses to tell a computed
@@ -468,6 +551,7 @@ for (const root of ROOTS) {
     const rawLines = raw.split("\n");
 
     findings.push(...findHardcodedRecordArrays(stripped, file));
+    findings.push(...findScheduledClaims(stripped, file));
     findings.push(...findFabricatedReturns(stripped, file));
     findings.push(...findFakeSuccessToasts(stripped, file));
 
@@ -510,7 +594,7 @@ for (const f of findings) {
   else byKind.set(f.kind, [f]);
 }
 
-const ORDER = ["records", "answers", "hollow", "pretend", "invented", "identity", "people", "sample"];
+const ORDER = ["records", "answers", "hollow", "dead", "pretend", "invented", "identity", "people", "sample"];
 
 console.log(`Scanned ${ROOTS.join(", ")}\n`);
 
