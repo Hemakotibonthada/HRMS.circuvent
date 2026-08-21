@@ -74,8 +74,20 @@ async function jobHistoryTableExists(tx: {
   if (tablePresent === false && Date.now() - lastCheckedAt < RECHECK_MS) return false;
 
   try {
+    // Existence alone is not enough. `to_regclass` answers yes for a table this
+    // role may not touch, and an INSERT that then fails with permission denied
+    // poisons the caller's transaction — the exact outcome this check exists to
+    // avoid. So it asks about privileges too.
+    //
+    // CASE is what makes that safe: Postgres guarantees it short-circuits, and
+    // `has_table_privilege` raises if handed a table that is not there, so the
+    // two questions cannot be asked as a plain AND.
     const result = (await tx.execute(
-      sql`select to_regclass('hrms.job_history') is not null as present`
+      sql`select case
+            when to_regclass('hrms.job_history') is null then false
+            else has_table_privilege('hrms.job_history', 'SELECT')
+             and has_table_privilege('hrms.job_history', 'INSERT')
+          end as present`
     )) as { rows?: Array<{ present?: unknown }> } | Array<{ present?: unknown }>;
 
     const rows = Array.isArray(result) ? result : (result.rows ?? []);
@@ -89,8 +101,9 @@ async function jobHistoryTableExists(tx: {
   lastCheckedAt = Date.now();
   if (tablePresent === false) {
     console.warn(
-      "[job-history] hrms.job_history is not present; job changes are being saved but not recorded. " +
-        "Apply drizzle/0044_job_history.sql with owner credentials."
+      "[job-history] hrms.job_history is missing or not readable/writable by this role; " +
+        "job changes are being saved but not recorded. Apply drizzle/0044_job_history.sql " +
+        "with owner credentials — it includes the GRANT to hrms_app."
     );
   }
   return tablePresent;

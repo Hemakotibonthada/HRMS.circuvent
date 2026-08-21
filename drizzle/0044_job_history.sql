@@ -82,3 +82,19 @@ DROP POLICY IF EXISTS "tenant_isolation" ON "hrms"."job_history";
 CREATE POLICY "tenant_isolation" ON "hrms"."job_history"
   USING (app_is_superuser() OR "org_id" = app_current_org())
   WITH CHECK (app_is_superuser() OR "org_id" = app_current_org());
+--> statement-breakpoint
+
+-- Stated explicitly rather than left to ALTER DEFAULT PRIVILEGES, which only
+-- applies to tables created by the role that set it. This migration is run by
+-- the owner, not by hrms_app, so the default may not reach it — and 0028 is
+-- blunt about the consequence: "a migration silently breaks the application for
+-- want of a grant."
+--
+-- The failure would be quiet in the worst way. The table would exist, the
+-- application's to_regclass check would say so, and the INSERT would then fail
+-- with permission denied *inside* the employee update's transaction — turning
+-- a missing grant into "HR cannot save anybody".
+--
+-- No DELETE. A history exists so that a record cannot be quietly rewritten;
+-- handing the application the ability to erase rows from it defeats the table.
+GRANT SELECT, INSERT ON "hrms"."job_history" TO hrms_app;
