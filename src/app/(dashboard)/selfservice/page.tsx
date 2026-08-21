@@ -34,6 +34,7 @@ const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ec4899","#ef4444","#63
 const QUICK_ACTIONS_EMPLOYEE = [
   { label: "Apply Leave", icon: CalendarDays, href: "/leave", color: "from-blue-500 to-cyan-500" },
   { label: "View Payslip", icon: DollarSign, href: "/payslip", color: "from-green-500 to-emerald-500" },
+  { label: "My Documents", icon: FileText, href: "/mydocuments", color: "from-slate-500 to-gray-500" },
   { label: "My Benefits", icon: Umbrella, href: "/mybenefits", color: "from-fuchsia-500 to-pink-500" },
   { label: "Clock In", icon: Clock, href: "/attendance", color: "from-orange-500 to-amber-500" },
   { label: "Helpdesk", icon: Headphones, href: "/helpdesk", color: "from-purple-500 to-violet-500" },

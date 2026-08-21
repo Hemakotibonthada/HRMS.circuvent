@@ -20,10 +20,11 @@ function payloadFor(body: string): Record<string, string> {
 }
 
 describe("the catalog", () => {
-  it("carries the eight templates from Office.Circuvent, plus the offer variants", () => {
-    expect(TEMPLATE_CATALOG).toHaveLength(12);
+  it("carries the eight templates from Office.Circuvent, plus the offer variants and the compensation revision", () => {
+    expect(TEMPLATE_CATALOG).toHaveLength(13);
     expect(TEMPLATE_CATALOG.map((t) => t.templateType).sort()).toEqual([
       "call_letter",
+      "compensation_revision",
       "experience_certificate",
       "offer_followup",
       "offer_letter",
@@ -271,11 +272,17 @@ describe("the content survived the port", () => {
     // A CIN belongs on a contract and on a certificate of service. On a
     // payslip email it is noise, and on a template that no org has filled in
     // it would render as a literal token in a legal document.
+    //
+    // A compensation revision letter belongs in this set: it varies the terms
+    // of the employment contract, and it is the document an employee hands a
+    // bank as proof of income, where an unidentifiable employer is no proof
+    // at all.
     const withRegistration = TEMPLATE_CATALOG.filter((t) =>
       extractTokens(t.body).includes("company_registration")
     ).map((t) => t.templateType);
 
     expect(withRegistration.sort()).toEqual([
+      "compensation_revision",
       "experience_certificate",
       "offer_letter",
       "offer_letter_apprenticeship",

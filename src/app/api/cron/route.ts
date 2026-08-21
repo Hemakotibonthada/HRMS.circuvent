@@ -51,6 +51,8 @@ import { syncDeviceAttendanceForAllOrgs } from "@/lib/attendance/device-sync";
 import { sweepInternReminders } from "@/lib/intern-reminders";
 import { processDueExits } from "@/lib/offboarding-exit";
 import { sweepOutboxes } from "@/lib/outbox-sweep";
+import { activeOrganisationIds } from "@/lib/outbox-sweep";
+import { backfillTemplatesForOrg } from "@/lib/template-backfill";
 import { purgeExpiredPunchPhotos } from "@/lib/attendance/punch-photo-purge";
 import { timingSafeEqual } from "@/lib/sso";
 
@@ -81,6 +83,28 @@ export async function GET(req: NextRequest) {
   const startedAt = Date.now();
   const result = await sweepOutboxes();
   const durationMs = Date.now() - startedAt;
+
+  // Templates added to the catalog since a tenant was created exist in code
+  // and in no database. `provision-tenant.ts` seeds the catalog once, at
+  // creation, so every existing customer is missing anything added later —
+  // which is how the compensation revision letter shipped with no
+  // organisation able to issue it. Additive and idempotent; a template an
+  // organisation already has is left untouched, edits included.
+  //
+  // Caught independently so a template problem cannot take down the outbox
+  // sweep's own response.
+  const templateBackfill: Array<{ orgId: string; added: string[] }> = [];
+  try {
+    for (const orgId of await activeOrganisationIds()) {
+      const outcome = await backfillTemplatesForOrg(orgId);
+      if (outcome.added.length > 0) templateBackfill.push(outcome);
+    }
+    if (templateBackfill.length > 0) {
+      console.info("[cron] seeded new document templates", { organisations: templateBackfill });
+    }
+  } catch (error) {
+    console.warn("[cron] template backfill failed", { error: String(error) });
+  }
 
   if (result.problems.length > 0) {
     // The per-row failures are already recorded on the outbox rows themselves.

@@ -17,6 +17,8 @@ import { NeonDocumentsRepository } from "@/db/repositories/documents.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { currentEmployeeId } from "@/lib/current-employee";
+import { isEmployeeVisibleDocument } from "@/lib/document-visibility";
 import { getObjectBytes, StorageConfigError, StorageRequestError } from "@/lib/storage/object-store";
 
 /**
@@ -52,13 +54,10 @@ export async function GET(
     return NextResponse.json(body, { status });
   }
 
-  // Deliberately staff-only, unlike the plain `GET /api/documents/[id]` (which
-  // also lets an employee read their own record): the archived PDF is the
-  // durable, printable artefact of a signed envelope, and this feature's own
-  // brief scopes downloading it to authorised staff rather than self-service.
-  if (!["owner", "admin", "hr"].includes(ctx.role)) {
-    return NextResponse.json({ error: "You cannot download this document" }, { status: 403 });
-  }
+  // Deliberately narrow, unlike the plain `GET /api/documents/[id]` (which
+  // also lets an employee read their own record): staff may download any
+  // document, an employee only one issued to them. See the ownership check
+  // below, which is made against the loaded row rather than the request.
 
   const { id } = await params;
 
@@ -66,6 +65,38 @@ export async function GET(
     const document = await new NeonDocumentsRepository(ctx).get(id);
     if (!document) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
+    }
+
+    // Staff may download anybody's; an employee may download their own, and
+    // only their own.
+    //
+    // The original brief scoped this to staff, on the reasoning that the
+    // archived PDF is the durable artefact of a signed envelope. That reading
+    // has one consequence nobody wanted: an employee could not obtain their
+    // own offer letter or salary revision — the documents they are most often
+    // asked for, by a bank or a landlord — without emailing HR to ask for a
+    // copy of a letter about themselves.
+    //
+    // The ownership check is made against the loaded document rather than
+    // against the request, so a guessed id belonging to somebody else is a
+    // 403 and not a download.
+    const privileged = ["owner", "admin", "hr"].includes(ctx.role);
+    if (!privileged) {
+      const self = await currentEmployeeId({ orgId: ctx.orgId, userId: ctx.userId });
+      if (!self || document.employeeId !== self) {
+        return NextResponse.json({ error: "You cannot download this document" }, { status: 403 });
+      }
+
+      // A draft is HR still working. It may name a figure that is never
+      // agreed, and an employee reading one would be reading a proposal as
+      // though it were a decision. Shares its definition with the list at
+      // `/api/me/documents`, so nothing can be listed and then refused here.
+      if (!isEmployeeVisibleDocument(String(document.status))) {
+        return NextResponse.json(
+          { error: "This document has not been issued yet." },
+          { status: 403 }
+        );
+      }
     }
 
     if (!document.blobUrl) {

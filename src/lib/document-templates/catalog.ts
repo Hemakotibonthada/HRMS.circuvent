@@ -1144,7 +1144,79 @@ ${letterhead(
       </div>
 ${LETTER_CLOSE}`;
 
-// ─── 6. Payslip notification email ───────────────────────────
+// ─── 6. Compensation revision letter ─────────────────────────
+
+// The letter an employee is given when their salary changes, and the one they
+// come looking for months later — when a bank asks for proof of income, or
+// when they want to check what was actually agreed against what payroll paid.
+//
+// It states the previous figure as well as the new one, deliberately. A letter
+// that names only the new number cannot be checked against anything: the
+// employee cannot confirm the rise they were told about, and neither can the
+// bank. It also states what the change was for, because "merit revision" and
+// "promotion" and "market correction" mean different things to the person
+// receiving it.
+//
+// Signed by the company alone, like the experience certificate: it is a
+// statement by the employer about a decision already taken, not an agreement
+// being struck. The employee accepted or declined at the review, not here.
+const COMPENSATION_REVISION = `${letterOpen("Compensation revision")}
+${letterhead(
+  `          <span class="meta-label">Issued</span>
+          <span class="meta-value">{{issue_date}}</span>
+          <span class="meta-label">Employee code</span>
+          <span class="meta-value">{{employee_code}}</span>`,
+  true
+)}
+
+      <h1>Revision to your compensation</h1>
+
+      <p>Dear <strong>{{full_name}}</strong>,</p>
+
+      <p>
+        We are pleased to confirm a revision to your compensation as
+        <strong>{{position_title}}</strong> in the <strong>{{department}}</strong>
+        department, with effect from <strong>{{effective_date}}</strong>.
+      </p>
+
+      ${table([
+        row("Previous annual cost to company", "{{previous_ctc}}"),
+        row("Revised annual cost to company", "{{revised_ctc}}"),
+        row("Change", "{{change_summary}}"),
+        row("Effective from", "{{effective_date}}"),
+        row("Reason", "{{revision_reason}}"),
+      ])}
+
+      <div class="section">
+        <p class="section-title">What this changes</p>
+        <div class="section-body">
+          <p>
+            Your revised salary is payable from the effective date above and will be
+            reflected in the payroll run for that period. All other terms of your
+            employment, including your notice period and the policies you are subject
+            to, are unchanged.
+          </p>
+          <p>
+            Deductions required by statute — provident fund, professional tax and income
+            tax — are recalculated on the revised figure. Your monthly take-home will
+            therefore not rise by exactly one twelfth of the increase.
+          </p>
+        </div>
+      </div>
+
+      <p>
+        This revision recognises your contribution to {{company_name}}. We thank you for
+        your work and look forward to your continued association with us.
+      </p>
+
+      <div class="signature">
+        <p>For {{company_name}},</p>
+        <strong>{{signatory_name}}</strong>
+        <span>{{signatory_title}}</span>
+      </div>
+${LETTER_CLOSE}`;
+
+// ─── 7. Payslip notification email ───────────────────────────
 
 const PAYSLIP_NOTIFICATION = `${emailOpen("Payslip available")}
         <span class="badge">Payroll</span>
@@ -1791,6 +1863,17 @@ export const TEMPLATE_CATALOG: readonly TemplateSeed[] = [
     body: EXPERIENCE_CERTIFICATE,
     // Signed by the company alone. It is a statement of fact by the employer
     // about a former employee, not an agreement between the two of them.
+    requiresSignature: true,
+    signatoryRoles: ["hr"],
+  },
+  {
+    templateType: "compensation_revision",
+    name: "Compensation Revision Letter",
+    category: "letter",
+    description: "Confirms a salary change, its effective date and what it was for",
+    body: COMPENSATION_REVISION,
+    // Signed by the company alone. It records a decision already taken at the
+    // review; the employee is not agreeing to anything by receiving it.
     requiresSignature: true,
     signatoryRoles: ["hr"],
   },
