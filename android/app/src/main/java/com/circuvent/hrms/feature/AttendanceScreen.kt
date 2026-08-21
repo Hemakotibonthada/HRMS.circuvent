@@ -38,7 +38,9 @@ import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppText
 import com.circuvent.hrms.core.ui.Banner
 import com.circuvent.hrms.core.ui.BannerTone
+import com.circuvent.hrms.core.ui.ChartPoint
 import com.circuvent.hrms.core.ui.EmptyState
+import com.circuvent.hrms.core.ui.LineChart
 import com.circuvent.hrms.core.ui.PillTone
 import com.circuvent.hrms.core.ui.SkeletonRows
 import com.circuvent.hrms.core.ui.StatusPill
@@ -132,6 +134,40 @@ fun AttendanceScreen(container: AppContainer, user: SessionUser?) {
                     val (rows, summary) = current.value
                     Column(verticalArrangement = Arrangement.spacedBy(Theme.spacing.sm)) {
                         if (summary != null) SummaryCard(summary)
+
+                        // Only days with a recorded duration. A day with no
+                        // punch is a gap in the measurement, not a zero-hour
+                        // day, and plotting it at the baseline invents a dip
+                        // that never happened.
+                        val worked = rows
+                            .filter { it.workedMinutes != null && it.workDate.isNotBlank() }
+                            .sortedBy { it.workDate }
+
+                        if (worked.isNotEmpty()) {
+                            AppCard {
+                                AppText(
+                                    stringResource(R.string.attendance_hours_chart_title),
+                                    weight = FontWeight.SemiBold,
+                                )
+                                AppText(
+                                    stringResource(R.string.attendance_hours_chart_subtitle),
+                                    tone = TextTone.MUTED,
+                                    size = Theme.type.caption,
+                                    lineHeight = Theme.type.captionLine,
+                                )
+                                LineChart(
+                                    points = worked.map {
+                                        ChartPoint(
+                                            it.workDate.takeLast(5),
+                                            (it.workedMinutes ?: 0) / 60f,
+                                        )
+                                    },
+                                    modifier = Modifier.padding(top = Theme.spacing.md),
+                                    valueSuffix = "h",
+                                )
+                            }
+                        }
+
                         if (rows.isEmpty()) {
                             EmptyState(
                                 title = stringResource(R.string.attendance_empty_title),

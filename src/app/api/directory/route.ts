@@ -8,9 +8,11 @@
 // so an ordinary employee — most of the company — got a 403 from the company
 // directory and could not look anybody up at all.
 //
-// This returns the four fields it takes to recognise and address somebody, to
-// anyone signed in. No email, no phone, no join date, no employee code: those
-// are contact details and employment facts, and widening an HR endpoint to
+// This returns the fields it takes to recognise and *contact* a colleague, to
+// anyone signed in. Work email is included because a directory without it is a
+// list of names — the reason people open a directory is to reach somebody.
+// Personal email, personal phone, join date and employee code are not: those
+// are personal details and employment facts, and widening an HR endpoint to
 // share them with everyone would have been the easy fix and the wrong one.
 //
 // Active employees only. A directory that lists people who have left is how
@@ -59,6 +61,7 @@ export async function GET(request: NextRequest) {
           lastName: employees.lastName,
           designation: employees.designation,
           avatarUrl: employees.avatarUrl,
+          workEmail: employees.workEmail,
           departmentName: departments.name,
         })
         .from(employees)
@@ -71,9 +74,10 @@ export async function GET(request: NextRequest) {
               ? or(
                   ilike(employees.firstName, term),
                   ilike(employees.lastName, term),
-                  ilike(employees.designation, term)
-                )
-              : undefined
+                ilike(employees.designation, term),
+                ilike(employees.workEmail, term)
+              )
+            : undefined
           )
         )
         .orderBy(asc(employees.firstName), asc(employees.lastName))
@@ -87,6 +91,7 @@ export async function GET(request: NextRequest) {
         designation: r.designation ?? "",
         departmentName: r.departmentName ?? null,
         avatarUrl: r.avatarUrl,
+        workEmail: r.workEmail ?? null,
       })),
     });
   } catch (error) {

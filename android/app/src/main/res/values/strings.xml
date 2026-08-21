@@ -686,6 +686,12 @@
     <!-- %1$s name, %2$s status, %3$s arrival time. -->
     <string name="team_member_content_description_with_time">%1$s, %2$s, arrived %3$s</string>
 
+    <!-- Charts -->
+    <string name="attendance_hours_chart_title">Hours a day</string>
+    <string name="attendance_hours_chart_subtitle">Only days with a recorded duration. A day with no punch is a gap, not a zero.</string>
+    <string name="leave_balance_chart_title">What is left</string>
+    <string name="leave_balance_chart_subtitle">Days remaining after what you have taken and what is pending.</string>
+
     <!-- Praise: recognising a colleague -->
     <string name="praise_give_action">Praise a colleague</string>
     <string name="praise_recent_section_label">Recent praise</string>

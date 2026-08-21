@@ -243,6 +243,7 @@ data class ColleagueDto(
     val designation: String = "",
     val departmentName: String? = null,
     val avatarUrl: String? = null,
+    val workEmail: String? = null,
 )
 
 @Serializable

@@ -31,6 +31,7 @@ import com.circuvent.hrms.core.design.Theme
 import com.circuvent.hrms.core.ui.AppButton
 import com.circuvent.hrms.core.ui.AppCard
 import com.circuvent.hrms.core.ui.AppText
+import com.circuvent.hrms.core.ui.Avatar
 import com.circuvent.hrms.core.ui.DateField
 import java.time.LocalDate
 import com.circuvent.hrms.core.ui.Banner
@@ -44,6 +45,7 @@ import com.circuvent.hrms.core.ui.TextTone
 import com.circuvent.hrms.core.ui.rememberFormattedDate
 import com.circuvent.hrms.core.ui.screenPadding
 import com.circuvent.hrms.data.AnnouncementsResponse
+import com.circuvent.hrms.data.ColleagueResponse
 import com.circuvent.hrms.data.DirectoryResponse
 import com.circuvent.hrms.data.ExpenseSubmission
 import com.circuvent.hrms.data.ExpensesResponse
@@ -89,17 +91,22 @@ private fun preferredDate(iso: String): String = rememberFormattedDate(iso)
  * organisation of any size is too many rows to hold on a phone, and the server
  * is already deciding what this caller may see.
  *
+ * Reads `/api/directory`, not `/api/employees`. The latter needs owner, admin,
+ * hr or manager and returns the whole record — personal phone, join date,
+ * employee code — so this screen answered 403 to most of the company, which is
+ * exactly the set of people who open a directory to look somebody up.
+ *
  * Debounced, because a request per keystroke is a request per keystroke.
  */
 @Composable
 fun DirectoryScreen(container: AppContainer) {
     var query by remember { mutableStateOf("") }
-    var state by remember { mutableStateOf<Loaded<DirectoryResponse>>(Loaded.Loading) }
+    var state by remember { mutableStateOf<Loaded<ColleagueResponse>>(Loaded.Loading) }
 
     LaunchedEffect(query) {
         if (query.isNotEmpty()) delay(350)
         state = try {
-            Loaded.Ready(container.repository.directory(query))
+            Loaded.Ready(container.repository.colleagues(query))
         } catch (e: Throwable) {
             failureOf("The directory", e)
         }
@@ -146,20 +153,31 @@ fun DirectoryScreen(container: AppContainer) {
                                 person.designation,
                             ),
                         ) {
-                            AppText(
-                                person.fullName.ifBlank { "${person.firstName} ${person.lastName}".trim() },
-                                weight = FontWeight.SemiBold,
-                            )
-                            if (person.designation.isNotBlank()) {
-                                AppText(
-                                    person.designation +
-                                        (person.departmentName?.let { " · $it" } ?: ""),
-                                    tone = TextTone.MUTED,
-                                    size = Theme.type.footnote,
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(Theme.spacing.md),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Avatar(
+                                    name = person.fullName,
+                                    imageUrl = person.avatarUrl,
+                                    size = 40.dp,
                                 )
-                            }
-                            if (person.email.isNotBlank()) {
-                                AppText(person.email, tone = TextTone.MUTED, size = Theme.type.caption)
+                                Column(Modifier.weight(1f)) {
+                                    AppText(person.fullName, weight = FontWeight.SemiBold, maxLines = 1)
+                                    if (person.designation.isNotBlank()) {
+                                        AppText(
+                                            person.designation +
+                                                (person.departmentName?.let { " · $it" } ?: ""),
+                                            tone = TextTone.MUTED,
+                                            size = Theme.type.footnote,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                    person.workEmail?.takeIf { it.isNotBlank() }?.let {
+                                        AppText(it, tone = TextTone.MUTED, size = Theme.type.caption, maxLines = 1)
+                                    }
+                                }
                             }
                         }
                     }
