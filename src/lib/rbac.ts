@@ -392,6 +392,32 @@ export const MODULE_PERMISSION_MAP: Record<string, Permission> = {
   // unreachable by anyone but an admin — MODULE_PERMISSION_MAP has no
   // wildcard, so an absent key fails closed in canAccessModule below.
   bankdetails: "dashboard.view",
+  // Same reasoning as bankdetails above, and the same trap: an employee's own
+  // letters and pay changes. Every employee has dashboard.view, and the route
+  // behind the page (`/api/me/documents`) scopes strictly to the caller's own
+  // employee record rather than trusting a module permission to do it.
+  //
+  // This page shipped without an entry and was therefore reachable only by an
+  // admin — the one role that does not need it. The test below now walks the
+  // route directory so the next page cannot repeat it.
+  mydocuments: "dashboard.view",
+  // An employee's own benefits enrolments. Found by the route-coverage test
+  // below with no entry at all, which meant Self Service linked every
+  // employee to a page that bounced them back to the dashboard. The
+  // `/api/benefits/*` routes behind it already scope to the caller's own
+  // record through `currentEmployeeId`.
+  mybenefits: "dashboard.view",
+  // The admin console. It was relying on the absent-key fallback to stay
+  // admin-only, which produced the right outcome for the wrong reason —
+  // indistinguishable from a page somebody forgot to map, which is precisely
+  // what the two entries above turned out to be.
+  //
+  // Gated on `settings.manage`, not `settings.view`: employees and managers
+  // both hold `settings.view` (they can open their own settings), so mapping
+  // it there would have handed the admin console to everybody. Making the
+  // fallback explicit is only an improvement if the permission chosen is
+  // actually the restrictive one.
+  admin: "settings.manage",
   calculator: "dashboard.view",
   vault: "documents.view",
   chatbot: "dashboard.view",

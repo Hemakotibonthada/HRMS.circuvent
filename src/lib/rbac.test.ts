@@ -2,6 +2,9 @@
 // These tests pin the privilege boundaries so a future edit to the permission
 // arrays cannot silently widen access.
 
+import { existsSync, readdirSync } from "node:fs";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 import {
   MODULE_PERMISSION_MAP,
@@ -189,6 +192,50 @@ describe("canAccessModule", () => {
       (m) => !MODULE_PERMISSION_MAP[m]
     );
     expect(unmapped).toEqual([]);
+  });
+
+  it("lets an employee open the pages built for them", () => {
+    // The failure this guards is not a widened privilege but a narrowed one:
+    // a self-service page an employee is redirected away from is a feature
+    // that silently does not exist for the only people who need it.
+    for (const module of ["mydocuments", "mybenefits", "payslip", "selfservice", "bankdetails"]) {
+      expect(canAccessModule("employee", module), `employee cannot open /${module}`).toBe(true);
+    }
+  });
+
+  it("keeps the admin console away from an employee", () => {
+    expect(canAccessModule("employee", "admin")).toBe(false);
+    expect(canAccessModule("manager", "admin")).toBe(false);
+    expect(canAccessModule("admin", "admin")).toBe(true);
+  });
+
+  it("has an entry for every page under (dashboard)", () => {
+    // The check above proves the map is internally consistent. It cannot
+    // prove the map covers the pages that actually exist, and that is the
+    // failure that ships: `MODULE_PERMISSION_MAP` has no wildcard, so a route
+    // with no entry fails closed and becomes reachable only by an admin —
+    // silently, with a redirect to the dashboard rather than an error.
+    //
+    // `mydocuments` shipped exactly that way: a page built for employees that
+    // every employee was redirected away from, and the only clue was
+    // `?denied=mydocuments` in the address bar. This walks the route
+    // directory so the next one is caught before it deploys rather than by
+    // somebody clicking the link in production.
+    const dashboardDir = path.resolve(__dirname, "../app/(dashboard)");
+    const segments = readdirSync(dashboardDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      // Route groups and dynamic segments are not modules in their own right.
+      .map((entry) => entry.name)
+      .filter((name) => !name.startsWith("(") && !name.startsWith("[") && !name.startsWith("_"))
+      // Only directories that actually render a page are gated.
+      .filter((name) => existsSync(path.join(dashboardDir, name, "page.tsx")));
+
+    const missing = segments.filter((segment) => !MODULE_PERMISSION_MAP[segment]);
+
+    expect(
+      missing,
+      `These pages exist but have no MODULE_PERMISSION_MAP entry, so only an admin can open them: ${missing.join(", ")}`
+    ).toEqual([]);
   });
 });
 
