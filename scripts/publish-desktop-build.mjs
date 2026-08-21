@@ -121,6 +121,15 @@ async function main() {
   console.log(`size       ${(info.size / 1024 / 1024).toFixed(1)} MB`);
   console.log(`sha256     ${sha256}`);
   console.log(`key        ${key}`);
+  // Which bucket, always, and before the dry-run exits.
+  //
+  // The download route reads whichever bucket *production* is configured with,
+  // and this machine's .env.local points somewhere else — so publishing from a
+  // developer shell uploaded the installer to a bucket nothing serves, printed
+  // "Done", and left /download reporting that no build had been published. The
+  // destination was the one thing the output never said.
+  console.log(`bucket     ${process.env.S3_BUCKET ?? "<unset>"}`);
+  console.log(`endpoint   ${process.env.S3_ENDPOINT ?? "<unset>"}`);
 
   if (dryRun) {
     console.log("\n--dry-run: nothing uploaded.");
