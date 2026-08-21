@@ -93,6 +93,24 @@ const PUBLIC_PREFIXES = [
   // and both outboxes stop draining — which is the exact outage the sweep was
   // built to end.
   "/api/cron",
+  // Razorpay posts here server-to-server when a payment is captured. It has no
+  // cookie, no session and no way to obtain one, and it does not follow a
+  // redirect into a sign-in form.
+  //
+  // The handler authenticates the request itself, and more strictly than a
+  // session would: it recomputes an HMAC-SHA256 over the exact raw body using
+  // the webhook secret and compares in constant time, refusing outright when
+  // no secret is configured. So this is not an exemption from authentication —
+  // it is the only authentication that makes sense for a caller that is not a
+  // person.
+  //
+  // Stated plainly because the failure is both silent and expensive: without
+  // this entry the middleware answers 401 "Not signed in" before the handler
+  // runs, Razorpay records a failed delivery, and the subscription is never
+  // activated. The customer's card is charged and the product they bought is
+  // never switched on — and nothing in this application ever learns of it,
+  // because the request did not reach any code that logs.
+  "/api/billing/webhook",
   // ── discovery and link-preview surfaces ────────────────────────────────
   // Googlebot, Bingbot and every chat client that unfurls a link arrive with
   // no cookie and follow no redirects into a sign-in form. Gating these does

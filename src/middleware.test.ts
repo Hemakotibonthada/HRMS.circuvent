@@ -56,6 +56,36 @@ describe("middleware", () => {
       }
     });
 
+    it("lets Razorpay reach the billing webhook without a session", async () => {
+      /*
+       * Razorpay posts server-to-server with no cookie. Gated, the middleware
+       * answers 401 before the handler runs: Razorpay records a failed
+       * delivery, the subscription is never activated, and the customer has
+       * paid for something that was never switched on. Nothing in the
+       * application logs it, because the request reached no application code.
+       *
+       * The handler does its own, stricter check — an HMAC over the raw body —
+       * so this is not an exemption from authentication.
+       */
+      const response = await middleware(makeRequest("/api/billing/webhook"));
+      expect(response.status).toBe(200);
+    });
+
+    it("keeps the rest of billing behind a session", async () => {
+      // The exemption above is for one path, not for /api/billing. Checkout
+      // starts a payment, settings holds the merchant credentials, and verify
+      // grants a plan — none may be reachable without a session.
+      for (const path of [
+        "/api/billing/checkout",
+        "/api/billing/settings",
+        "/api/billing/verify",
+        "/api/billing/subscription",
+      ]) {
+        const response = await middleware(makeRequest(path));
+        expect(response.status, `${path} must require a session`).toBe(401);
+      }
+    });
+
     it("does not treat a prefix collision as public", async () => {
       // "/loginsomething" must not inherit "/login"'s exemption.
       const response = await middleware(makeRequest("/loginsomething"));
