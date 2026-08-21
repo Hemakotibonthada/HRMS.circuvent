@@ -132,6 +132,7 @@ export default function BillingPage() {
         order?: { id: string; amount: number; currency: string };
         keyId?: string;
         plan?: { id: string; name: string };
+        customer?: { email?: string };
       };
       if (!res.ok || !body.order || !body.keyId || !body.plan) {
         toast.error(body.error || "Could not start checkout.");
@@ -142,7 +143,7 @@ export default function BillingPage() {
 
       const outcome = await openCheckout(
         { order: body.order, keyId: body.keyId, plan: body.plan },
-        {}
+        { email: body.customer?.email }
       );
 
       if (outcome.status === "paid") {

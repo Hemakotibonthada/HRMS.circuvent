@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
         plan: { id: plan.id, name: plan.name },
         employees,
         amountMinor,
+        customer: { email: ctx.email ?? undefined },
       });
     } catch (error) {
       if (error instanceof RazorpayError) {
@@ -148,6 +149,13 @@ export async function POST(request: NextRequest) {
       plan: { id: plan.id, name: plan.name },
       employees,
       amountMinor,
+      /*
+       * Handed to the checkout widget so the customer is not asked to retype
+       * an address this server already has. Without it Razorpay opens on a
+       * contact form rather than the payment methods — a needless step
+       * between deciding to pay and paying, and a common place to give up.
+       */
+      customer: { email: ctx.email ?? undefined },
     });
   } catch (error) {
     if (error instanceof RazorpayError) {
