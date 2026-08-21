@@ -53,6 +53,7 @@ import { processDueExits } from "@/lib/offboarding-exit";
 import { sweepOutboxes } from "@/lib/outbox-sweep";
 import { activeOrganisationIds } from "@/lib/outbox-sweep";
 import { backfillTemplatesForOrg } from "@/lib/template-backfill";
+import { syncEmployeesFromRegistration } from "@/db/repositories/registration-sync.neon";
 import { purgeExpiredPunchPhotos } from "@/lib/attendance/punch-photo-purge";
 import { timingSafeEqual } from "@/lib/sso";
 
@@ -93,6 +94,29 @@ export async function GET(req: NextRequest) {
   //
   // Caught independently so a template problem cannot take down the outbox
   // sweep's own response.
+  // Fills employee records from the joining form the person completed on the
+  // Careers portal. Anybody hired through the ATS handoff gets this at hire
+  // time; anybody added another way keeps empty columns while the answers sit
+  // unused in `candidate_registration`. `date_of_birth` is the one that bites
+  // — a payslip PDF's password is built from it, and PF and ESI eligibility
+  // are decided by it.
+  //
+  // Fills only what is empty, so running nightly cannot revert a correction
+  // somebody typed. Each update queues a Paystub sync, because Paystub reads
+  // those columns to print the payslip.
+  const registrationSync: Array<{ orgId: string; updated: number }> = [];
+  try {
+    for (const orgId of await activeOrganisationIds()) {
+      const outcome = await syncEmployeesFromRegistration({ orgId });
+      if (outcome.updated > 0) registrationSync.push({ orgId, updated: outcome.updated });
+    }
+    if (registrationSync.length > 0) {
+      console.info("[cron] filled employee records from registrations", { organisations: registrationSync });
+    }
+  } catch (error) {
+    console.warn("[cron] registration sync failed", { error: String(error) });
+  }
+
   const templateBackfill: Array<{ orgId: string; added: string[] }> = [];
   try {
     for (const orgId of await activeOrganisationIds()) {
