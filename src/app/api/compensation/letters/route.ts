@@ -169,6 +169,26 @@ export async function POST(request: NextRequest) {
     const repository = new NeonDocumentsRepository(ctx);
     const results: IssueOutcome[] = [];
 
+    // The letter is signed by the company, and the person issuing it is who
+    // signs. Resolved once, before the loop, because a run that generated
+    // forty letters and then failed on the signatory would have written forty
+    // unsignable envelopes first.
+    //
+    // Refused rather than defaulted: `buildSlots` throws "No recipient given
+    // for the hr signatory" for every employee otherwise, which is a stack
+    // trace about slots rather than a sentence about what is missing.
+    const signatoryEmail = ctx.email?.trim();
+    if (!signatoryEmail) {
+      return NextResponse.json(
+        {
+          error:
+            "Your account has no email address on its session, so the letters would have " +
+            "nobody to sign them. Sign in again, or ask an administrator to set your email.",
+        },
+        { status: 409 }
+      );
+    }
+
     for (const row of changes) {
       const change: PayChange = {
         previousSalaryMinor: row.previousSalaryMinor,
@@ -216,9 +236,38 @@ export async function POST(request: NextRequest) {
             employeeId: row.employeeId,
             title,
             extraValues: compensationLetterTokens(change),
+            // The template declares `signatoryRoles: ["hr"]`, and every role
+            // it declares must have a recipient or the envelope cannot be
+            // sent. Omitting this failed on the first employee, every time.
+            recipients: { hr: { email: signatoryEmail } },
           },
           ctx.userId
         );
+        // Generated documents start as drafts, and a draft is deliberately
+        // invisible to the employee — `/api/me/documents` shows only what has
+        // been issued. Without this the letters would be created, reported as
+        // issued, and never appear for anybody, which is the failure this
+        // whole feature exists to avoid.
+        //
+        // Sending is what puts it in front of the person and starts the
+        // signature request. A failure here leaves the letter as a draft that
+        // HR can send by hand, so it is reported per employee rather than
+        // discarding the document.
+        try {
+          await repository.send(document.id);
+        } catch (sendError) {
+          results.push({
+            employeeId: row.employeeId,
+            salaryHistoryId: row.id,
+            status: "failed",
+            documentId: document.id,
+            detail: `The letter was created but could not be sent: ${
+              sendError instanceof Error ? sendError.message : String(sendError)
+            }`,
+          });
+          continue;
+        }
+
         results.push({
           employeeId: row.employeeId,
           salaryHistoryId: row.id,
