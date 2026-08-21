@@ -6,16 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  UserPlus, Plus, Search, CheckCircle2, Clock, Users,
+  UserPlus, Search, CheckCircle2, Clock, Users,
   Calendar, ListChecks, Target, AlertCircle, Briefcase,
   ChevronRight, Eye, Star, Shield, ChevronDown, Award,
 } from "lucide-react";
@@ -81,7 +77,6 @@ export default function OnboardingPage() {
   const [search, setSearch] = useState("");
   const [phaseFilter, setPhaseFilter] = useState("all");
   const [tab, setTab] = useState("onboarding");
-  const [createOpen, setCreateOpen] = useState(false);
   const [selectedJoiner, setSelectedJoiner] = useState<EmployeeDoc | null>(null);
   /**
    * Onboarding checklists, keyed by employee.
@@ -93,7 +88,6 @@ export default function OnboardingPage() {
    */
   const [journeys, setJourneys] = useState<Record<string, LifecycleJourney>>({});
   const [saving, setSaving] = useState<string | null>(null);
-  const [taskForm, setTaskForm] = useState({ phase: "pre", taskName: "", description: "" });
 
   useEffect(() => { if (!initialized) startSync(COLLECTIONS.employees, store); }, [initialized, store]);
 
@@ -273,26 +267,26 @@ export default function OnboardingPage() {
 
   const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899"];
 
-  const handleCreateTask = async () => {
-    if (!taskForm.taskName) { toast.error("Task name is required"); return; }
-    toast.success(`Task "${taskForm.taskName}" added to ${PHASES.find(p => p.key === taskForm.phase)?.label}`);
-    setCreateOpen(false);
-    setTaskForm({ phase: "pre", taskName: "", description: "" });
-  };
-
   if (loading && !initialized) return <div className="p-6"><DataLoadingSkeleton /></div>;
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      {/* Header */}
+      {/*
+        The header used to carry an "Add Task" button claiming to append a
+        custom task to a joiner's checklist. It only toasted success and
+        cleared the form — nothing was written anywhere, not even to local
+        state, so the "task" never appeared on any checklist. The real
+        checklist (below) is generated per journey from the fixed PHASES
+        list via /api/lifecycle; there is no endpoint that accepts an
+        arbitrary custom task, so there was nothing honest left to wire the
+        button to. Removed rather than disabled: a permanently greyed-out
+        primary header action would be worse clutter than no button at all.
+      */}
       <div className="flex items-center justify-between animate-slide-up">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Onboarding</h1>
           <p className="text-muted-foreground mt-1">New hire onboarding workflows and checklists</p>
         </div>
-        <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-lg gap-2" onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4" /> Add Task
-        </Button>
       </div>
 
       {/* KPIs */}
@@ -562,34 +556,6 @@ export default function OnboardingPage() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Create Task Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Add Onboarding Task</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="space-y-2">
-              <Label>Phase</Label>
-              <Select value={taskForm.phase} onValueChange={v => setTaskForm(f => ({ ...f, phase: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{PHASES.map(p => <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Task Name *</Label>
-              <Input placeholder="e.g. Security briefing" value={taskForm.taskName} onChange={e => setTaskForm(f => ({ ...f, taskName: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea placeholder="Task details..." value={taskForm.description} onChange={e => setTaskForm(f => ({ ...f, description: e.target.value }))} rows={3} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleCreateTask}>Add Task</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

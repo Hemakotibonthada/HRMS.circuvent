@@ -15,7 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   Headphones, Plus, Search, CheckCircle2, Clock, AlertTriangle,
-  MessageSquare, Send, ArrowUpRight, Filter, Users, Eye,
+  MessageSquare, ArrowUpRight, Filter, Users, Eye,
   Shield, Zap, Calendar, Tag, ChevronRight, XCircle,
   UserPlus, CornerDownRight, AlertOctagon, Timer,
 } from "lucide-react";
@@ -69,7 +69,6 @@ export default function HelpdeskPage() {
   const [tab, setTab] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<TicketDoc | null>(null);
-  const [reply, setReply] = useState("");
   const [form, setForm] = useState({
     title: "", category: "", priority: "medium",
     description: "", reporterName: "",
@@ -97,12 +96,38 @@ export default function HelpdeskPage() {
     return result;
   }, [items, search, categoryFilter, priorityFilter, statusFilter, tab]);
 
+  const getSlaStatus = (ticket: TicketDoc): string => {
+    if (ticket.status === "resolved" || ticket.status === "closed") return "within";
+    if (ticket.priority === "critical") return "breached";
+    if (ticket.priority === "high") return "at_risk";
+    return "within";
+  };
+
   // KPIs
   const totalTickets = items.length;
   const openCount = items.filter(t => t.status === "open").length;
   const inProgressCount = items.filter(t => t.status === "in_progress").length;
-  const breachedCount = Math.floor(items.filter(t => t.status === "open").length * 0.15);
-  const avgResolution = items.filter(t => t.status === "resolved").length > 0 ? "4.2h" : "N/A";
+  /**
+   * Reuses the same per-ticket SLA check as the badge shown on each row, so
+   * the aggregate can never disagree with what clicking into a ticket shows.
+   * This used to be `Math.floor(openCount * 0.15)` — a flat guess with no
+   * relationship to any ticket's actual priority, age, or SLA deadline.
+   */
+  const breachedCount = items.filter(t => getSlaStatus(t) === "breached").length;
+  /**
+   * Only tickets carrying both ends of a real timestamp contribute. This
+   * used to be the literal string "4.2h" whenever at least one ticket was
+   * resolved — the same figure regardless of how long anything actually
+   * took, which measures nothing. Nothing on this page currently stamps
+   * `resolvedAt`, so this reads "N/A" until something does; that is the
+   * honest state, not a bug to paper over with a plausible-looking number.
+   */
+  const resolvedDurationsMs = items
+    .filter((t) => t.status === "resolved" && !!t.createdAt && !!t.resolvedAt)
+    .map((t) => new Date(t.resolvedAt as string).getTime() - new Date(t.createdAt).getTime());
+  const avgResolution = resolvedDurationsMs.length > 0
+    ? `${(resolvedDurationsMs.reduce((a, b) => a + b, 0) / resolvedDurationsMs.length / 3_600_000).toFixed(1)}h`
+    : "N/A";
 
   // Category distribution
   const categoryData = useMemo(() => {
@@ -135,13 +160,6 @@ export default function HelpdeskPage() {
     return Object.entries(byDate).slice(-10).map(([name, value]) => ({ name, value }));
   }, [items]);
 
-  const getSlaStatus = (ticket: TicketDoc): string => {
-    if (ticket.status === "resolved" || ticket.status === "closed") return "within";
-    if (ticket.priority === "critical") return "breached";
-    if (ticket.priority === "high") return "at_risk";
-    return "within";
-  };
-
   const resetForm = () => setForm({ title: "", category: "", priority: "medium", description: "", reporterName: "" });
 
   const handleCreate = async () => {
@@ -170,12 +188,6 @@ export default function HelpdeskPage() {
     } catch {
       toast.error("Failed to update ticket");
     }
-  };
-
-  const handleReply = () => {
-    if (!reply.trim()) return;
-    toast.success("Reply sent!");
-    setReply("");
   };
 
   if (loading && !initialized) return <DataLoadingSkeleton />;
@@ -387,12 +399,15 @@ export default function HelpdeskPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Input placeholder="Type a reply..." value={reply} onChange={(e) => setReply(e.target.value)} className="flex-1" onKeyDown={(e) => { if (e.key === "Enter") handleReply(); }} />
-                    <Button size="icon" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleReply}>
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  {/*
+                    A reply box used to sit here: typing a message and
+                    pressing send just toasted "Reply sent!" and cleared the
+                    field. Nothing was appended to the thread above, not even
+                    in memory — the ticket schema has no field for a growing
+                    conversation (only a single closing `resolution` note),
+                    so there was nowhere for a reply to actually go. Left out
+                    rather than faked until replies have somewhere to live.
+                  */}
                 </div>
               </div>
               <DialogFooter className="gap-2">
@@ -454,7 +469,13 @@ export default function HelpdeskPage() {
               <Label>Description</Label>
               <Textarea value={form.description} onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe your issue in detail..." rows={4} />
             </div>
-            <p className="text-xs text-muted-foreground">Note: Attach files after creating the ticket via the ticket detail view.</p>
+            {/*
+              This dialog used to promise "Attach files after creating the
+              ticket via the ticket detail view" — the detail view has no
+              upload control and never has, so the note pointed people at a
+              feature that does not exist. Dropped rather than left for
+              someone to discover by looking for a button that isn't there.
+            */}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>

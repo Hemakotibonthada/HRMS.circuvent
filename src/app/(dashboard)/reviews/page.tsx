@@ -167,7 +167,16 @@ export default function ReviewsPage() {
                 </div>
               ))}
               <Textarea placeholder="Additional comments about your performance..." className="mt-3" />
-              <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-2" onClick={() => toast.success("Self-assessment saved")}><Send className="h-4 w-4" />Save Assessment</Button>
+              {/*
+                This used to be a "Save Assessment" button that only toasted
+                "Self-assessment saved" — the ratings above live in local
+                component state and were never sent anywhere, so the message
+                was true of nothing. Disabled until there is a real place for
+                a self-assessment to be submitted to, rather than telling
+                someone their input was recorded when it evaporates on
+                refresh.
+              */}
+              <Button variant="outline" className="gap-2" disabled>Not available yet</Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -184,7 +193,8 @@ export default function ReviewsPage() {
                 </div>
               ))}
               <Textarea placeholder="Manager feedback and development areas..." className="mt-3" />
-              <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-2" onClick={() => toast.success("Manager review saved")}><Send className="h-4 w-4" />Submit Review</Button>
+              {/* Same problem as the self-assessment form: no endpoint accepts a manager's ratings, so nothing was ever saved. */}
+              <Button variant="outline" className="gap-2" disabled>Not available yet</Button>
             </CardContent>
           </Card>
         </TabsContent>

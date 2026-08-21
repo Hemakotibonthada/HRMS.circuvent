@@ -12,7 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   Shield, Search, FileText, AlertTriangle, Eye,
@@ -29,13 +28,12 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip as RTooltip, AreaChart, Area,
   PieChart, Pie, Cell, Legend, LineChart, Line,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ComposedChart,
 } from "recharts";
 
 // ═══════════════════════════════════════════════════════════════
-// AUDIT LOG — Activity tracking, security events, compliance,
-// action distribution, and compliance checklist management
+// AUDIT LOG — Activity tracking, security events, module/action
+// breakdowns; all derived from real audit-log events
 // ═══════════════════════════════════════════════════════════════
 
 const SEVERITY_CONF: Record<string, { label: string; className: string; icon: typeof Info }> = {
@@ -51,17 +49,6 @@ const SEVERITY_CONF: Record<string, { label: string; className: string; icon: ty
 const MODULES = ["Employees", "Payroll", "Leave", "Attendance", "Recruitment", "Assets", "Settings", "Auth", "Documents"];
 const ACTIONS = ["create", "update", "delete", "login", "logout", "export", "import", "approve", "reject"];
 const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899","#6366f1","#14b8a6"];
-
-const COMPLIANCE_SCORES = [
-  { category: "Data Privacy", score: 92 },
-  { category: "Access Control", score: 88 },
-  { category: "Audit Trail", score: 95 },
-  { category: "Password Policy", score: 78 },
-  { category: "Encryption", score: 90 },
-  { category: "Backup", score: 85 },
-  { category: "Retention Policy", score: 82 },
-  { category: "User Provisioning", score: 87 },
-];
 
 export default function AuditPage() {
   const store = useAuditStore();
@@ -153,11 +140,6 @@ export default function AuditPage() {
       total: Object.values(acts).reduce((s, v) => s + v, 0),
     }));
   }, [items]);
-
-  // Compliance radar
-  const complianceRadar = useMemo(() =>
-    COMPLIANCE_SCORES.map(c => ({ category: c.category.length > 10 ? c.category.substring(0, 10) + "…" : c.category, score: c.score, target: 90 })),
-  []);
 
   const severityDistribution = useMemo(() => {
     const map: Record<string, number> = {};
@@ -386,48 +368,32 @@ export default function AuditPage() {
         </TabsContent>
 
         <TabsContent value="compliance" className="mt-4 space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Compliance Scores — Progress Bars */}
-            <Card>
-              <CardHeader><CardTitle className="text-base">Compliance Scores</CardTitle></CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {COMPLIANCE_SCORES.map(cs => (
-                    <div key={cs.category}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="font-medium">{cs.category}</span>
-                        <span className={cn("font-bold", cs.score >= 90 ? "text-green-600" : cs.score >= 75 ? "text-amber-600" : "text-red-600")}>{cs.score}%</span>
-                      </div>
-                      <Progress value={cs.score} className="h-2" />
-                    </div>
-                  ))}
-                </div>
-                <Separator className="my-4" />
-                <div className="flex items-center justify-between">
-                  <p className="font-medium">Overall Compliance Score</p>
-                  <p className="text-2xl font-bold text-green-600">{Math.round(COMPLIANCE_SCORES.reduce((s, c) => s + c.score, 0) / COMPLIANCE_SCORES.length)}%</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Compliance Radar */}
-            <Card>
-              <CardHeader><CardTitle className="text-base">Compliance Radar</CardTitle></CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={320}>
-                  <RadarChart data={complianceRadar}>
-                    <PolarGrid stroke="hsl(var(--border))" />
-                    <PolarAngleAxis dataKey="category" tick={{ fontSize: 9 }} />
-                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
-                    <Radar name="Score" dataKey="score" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.25} strokeWidth={2} />
-                    <Radar name="Target" dataKey="target" stroke="#ef4444" fill="transparent" strokeDasharray="5 5" strokeWidth={1.5} />
-                    <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 10 }} />
-                    <RTooltip />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </div>
+          {/*
+            This tab used to show a "Compliance Scores" panel (Data Privacy
+            92%, Password Policy 78%, Encryption 90%, etc.), a matching
+            radar chart, and a "Compliance Checklist" that asserted things
+            like "Two-factor authentication enabled for all admin accounts"
+            and "Employee data encrypted at rest and in transit" as passed.
+            Every number and every checkmark was a literal constant — none
+            of it was ever measured against this org's actual settings. That
+            is worse than showing nothing: a customer relying on a passed
+            compliance check that no one verified is a real risk. There is
+            no compliance-scanning backend to source this from, so the
+            module-level chart below is real (derived from audit-log
+            events); the score/checklist panels are gone until a real check
+            exists to back them.
+          */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Compliance Scoring</CardTitle></CardHeader>
+            <CardContent>
+              <DataEmptyState
+                icon={Shield}
+                title="Not available yet"
+                description="Automated compliance scoring and checklist verification are not implemented. What follows is real activity from the audit log, not a compliance assessment."
+                compact
+              />
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader><CardTitle className="text-base">Events by Module</CardTitle></CardHeader>
             <CardContent>
@@ -442,38 +408,6 @@ export default function AuditPage() {
                   </BarChart>
                 </ResponsiveContainer>
               )}
-            </CardContent>
-          </Card>
-          {/* Compliance Summary Table */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Compliance Checklist</CardTitle></CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {[
-                  { check: "All user passwords meet complexity requirements", passed: true },
-                  { check: "Two-factor authentication enabled for all admin accounts", passed: true },
-                  { check: "Audit logs retained for minimum 90 days", passed: true },
-                  { check: "Employee data encrypted at rest and in transit", passed: true },
-                  { check: "Regular backup schedule configured and verified", passed: (COMPLIANCE_SCORES.find(c => c.category === "Backup")?.score ?? 0) >= 80 },
-                  { check: "Access reviews completed quarterly", passed: false },
-                  { check: "Data classification policy implemented", passed: true },
-                  { check: "Incident response plan documented and tested", passed: true },
-                  { check: "GDPR/privacy consent forms collected", passed: (COMPLIANCE_SCORES.find(c => c.category === "Data Privacy")?.score ?? 0) >= 90 },
-                  { check: "Session timeout configured for inactive users", passed: true },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
-                    {item.passed ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
-                    ) : (
-                      <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0" />
-                    )}
-                    <span className={cn("text-sm", !item.passed && "text-amber-600 dark:text-amber-400 font-medium")}>{item.check}</span>
-                    <Badge className={cn("text-xs ml-auto", item.passed ? "status-active" : "status-pending")}>
-                      {item.passed ? "Passed" : "Action Needed"}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
             </CardContent>
           </Card>
 

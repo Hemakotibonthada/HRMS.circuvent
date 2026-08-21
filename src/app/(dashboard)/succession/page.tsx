@@ -1,23 +1,19 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
-  Users, Target, TrendingUp, Plus, Search, ChevronRight,
+  Users, Target, TrendingUp, Search, ChevronRight,
   Award, Clock, Star, Shield, Briefcase, BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 import { useEmployeeStore, useGoalStore, startSync, type EmployeeDoc } from "@/stores/unified-store";
 import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
@@ -46,13 +42,9 @@ interface SuccessionPlan {
 export default function SuccessionPage() {
   const empStore = useEmployeeStore();
   const goalStore = useGoalStore();
-  const [editedPlans, setEditedPlans] = useState<SuccessionPlan[] | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("all");
   const [selectedPlan, setSelectedPlan] = useState<SuccessionPlan | null>(null);
-  const [form, setForm] = useState<{ position: string; department: string; currentHolder: string; criticality: "High" | "Medium" | "Low" }>({ position: "", department: "", currentHolder: "", criticality: "High" });
-  const [candidateForm, setCandidateForm] = useState({ employeeId: "", readiness: "1-2 Years" as typeof READINESS_LEVELS[number] });
 
   useEffect(() => {
     if (!empStore.initialized) startSync(COLLECTIONS.employees, empStore);
@@ -82,9 +74,14 @@ export default function SuccessionPage() {
     }));
   }, [empStore.items]);
 
-  // Null until the user edits, so the seed keeps tracking employee changes
-  // until then and stops the moment their own edits exist.
-  const plans = editedPlans ?? seededPlans;
+  // "Add Plan"/"Add Candidate" used to write into a parallel edited-plans
+  // layer that only ever existed in this component's state — refresh the
+  // tab, or open it on another machine, and it was gone, even though the
+  // toast that followed said "added". There is no succession endpoint to
+  // persist to (no `succession` entry in COLLECTIONS, see
+  // collection-service.ts), so rather than keep faking a save this page now
+  // only shows what is honestly derivable from real employee records.
+  const plans = seededPlans;
 
   const goalCompletionMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -120,36 +117,6 @@ export default function SuccessionPage() {
     return list;
   }, [plans, tab, search]);
 
-  const handleAddPlan = useCallback(() => {
-    if (!form.position || !form.department) { toast.error("Position and department required"); return; }
-    const newPlan: SuccessionPlan = {
-      id: `sp-${Date.now()}`, position: form.position, department: form.department,
-      currentHolder: form.currentHolder || "Vacant", criticality: form.criticality,
-      candidates: [],
-    };
-    // Falls back to the seed on the first edit, so the user's change is
-    // applied on top of what they were looking at rather than an empty list.
-    setEditedPlans(prev => [newPlan, ...(prev ?? plans)]);
-    toast.success(`Plan for "${form.position}" added`);
-    setAddOpen(false);
-    setForm({ position: "", department: "", currentHolder: "", criticality: "High" });
-  }, [form, plans]);
-
-  const handleAddCandidate = useCallback(() => {
-    if (!selectedPlan || !candidateForm.employeeId) { toast.error("Select an employee"); return; }
-    const emp = empStore.items.find(e => e.id === candidateForm.employeeId);
-    if (!emp) return;
-    const goalComp = goalCompletionMap.get(emp.id) || 0;
-    setEditedPlans(prev => (prev ?? plans).map(p => p.id === selectedPlan.id ? {
-      ...p, candidates: [...p.candidates, {
-        employeeId: emp.id, name: `${emp.firstName} ${emp.lastName}`,
-        readiness: candidateForm.readiness, goalCompletion: goalComp,
-      }],
-    } : p));
-    toast.success(`${emp.firstName} added as successor candidate`);
-    setCandidateForm({ employeeId: "", readiness: "1-2 Years" });
-  }, [selectedPlan, candidateForm, empStore.items, goalCompletionMap, plans]);
-
   if (loading) return <div className="p-6"><DataLoadingSkeleton /></div>;
 
   return (
@@ -159,9 +126,14 @@ export default function SuccessionPage() {
           <h1 className="text-2xl font-bold tracking-tight">Succession Planning</h1>
           <p className="text-muted-foreground text-sm mt-0.5">{plans.length} positions · {coverageRate}% coverage</p>
         </div>
-        <Button className="gap-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={() => setAddOpen(true)}>
-          <Plus className="h-4 w-4" /> Add Plan
-        </Button>
+        {/*
+          An "Add Plan" button used to sit here, opening a dialog that only
+          ever wrote into local component state. The toast said "Plan
+          added"; nothing was added anywhere durable, and no one else viewing
+          this page would ever see it. There is no succession API to save a
+          plan to, so the control is gone rather than left promising a save
+          that can't happen.
+        */}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -197,7 +169,7 @@ export default function SuccessionPage() {
         </TabsList>
         <TabsContent value={tab}>
           {filtered.length === 0 ? (
-            <DataEmptyState icon={Users} title="No succession plans" description="Create succession plans for key positions." actionLabel="Add Plan" onAction={() => setAddOpen(true)} />
+            <DataEmptyState icon={Users} title="No succession plans" description="Positions here are derived from employees whose title includes manager, director, head, or lead — none currently match." />
           ) : (
             <div className="space-y-3">
               {filtered.map(plan => (
@@ -266,41 +238,17 @@ export default function SuccessionPage() {
                   ))}
                 </div>
               )}
-              <div className="border-t pt-3 space-y-3">
-                <h4 className="text-sm font-semibold">Add Candidate</h4>
-                <Select value={candidateForm.employeeId} onValueChange={v => setCandidateForm(p => ({ ...p, employeeId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
-                  <SelectContent>{empStore.items.map(e => <SelectItem key={e.id} value={e.id}>{e.firstName} {e.lastName} — {e.department}</SelectItem>)}</SelectContent>
-                </Select>
-                <Select value={candidateForm.readiness} onValueChange={v => setCandidateForm(p => ({ ...p, readiness: v as typeof READINESS_LEVELS[number] }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{READINESS_LEVELS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
-                </Select>
-                <Button size="sm" onClick={handleAddCandidate} className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0">Add Candidate</Button>
-              </div>
+              {/*
+                An "Add Candidate" form used to sit here (employee + readiness
+                selects, a "candidate added" toast). It wrote into the same
+                local-only state as "Add Plan" above and vanished on refresh
+                for the same reason: no succession endpoint exists to persist
+                a candidate to. Removed rather than left implying a save that
+                never happens; candidates above are exactly what has actually
+                been recorded, which today is none.
+              */}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add Succession Plan</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div><Label>Position</Label><Input value={form.position} onChange={e => setForm(p => ({ ...p, position: e.target.value }))} placeholder="e.g. Engineering Director" /></div>
-            <div><Label>Department</Label><Input value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))} placeholder="e.g. Engineering" /></div>
-            <div><Label>Current Holder</Label><Input value={form.currentHolder} onChange={e => setForm(p => ({ ...p, currentHolder: e.target.value }))} placeholder="Name" /></div>
-            <div><Label>Criticality</Label>
-              <Select value={form.criticality} onValueChange={v => setForm(p => ({ ...p, criticality: v as SuccessionPlan["criticality"] }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="High">High</SelectItem><SelectItem value="Medium">Medium</SelectItem><SelectItem value="Low">Low</SelectItem></SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddPlan} className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0">Add Plan</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

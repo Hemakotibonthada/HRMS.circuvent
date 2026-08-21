@@ -13,26 +13,107 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend, AreaChart, Area } from "recharts";
-import { IndianRupee, FileText, Calculator, Upload, History, TrendingDown, TrendingUp, Plus, AlertTriangle, CheckCircle2, Lightbulb, Download, PiggyBank } from "lucide-react";
+import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend, AreaChart, Area } from "recharts";
+import { IndianRupee, FileText, Calculator, Upload, History, TrendingDown, Plus, AlertTriangle, CheckCircle2, Lightbulb, PiggyBank } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { DataEmptyState, DataLoadingSkeleton } from "@/components/data-empty-state";
+import { STANDARD_DEDUCTION as REGIME_STANDARD_DEDUCTION_MINOR } from "@/lib/income-tax-declaration";
 
 // ═══════════════════════════════════════════════════════════════
 // TAX DECLARATION & COMPUTATION — Investment proofs, regime comparison
 // ═══════════════════════════════════════════════════════════════
 
-interface Declaration {
-  id: string; section: string; category: string; description: string; amount: number; limit: number; proofUploaded: boolean; status: "declared" | "verified" | "rejected";
+/**
+ * A claimed section, as `GET /api/tax/declaration` returns it — a real row
+ * from `it_declaration_items`, not one of the twelve invented 80C/ELSS/LIC
+ * entries this page used to render under an employee's own name.
+ */
+interface DeclarationApiItem {
+  section: string;
+  declaredMinor: string;
+  proofStatus: "not_required" | "awaiting" | "submitted" | "accepted" | "rejected";
 }
 
-const STANDARD_DEDUCTION = 75000;
+/** The declaration header row: regime, financial year, and the HRA inputs. */
+interface DeclarationApiRecord {
+  id: string;
+  regime: "old" | "new";
+  financialYear: number;
+  status: string;
+  selfOrFamilyIsSenior: boolean;
+  parentsAreSenior: boolean;
+  rentPaidMinor: string;
+  metroCity: boolean;
+  landlordPan: string | null;
+}
+
+interface DeclarationSummaryItem {
+  section: string;
+  reason: string | null;
+  declaredMinor: string;
+  allowedMinor: string;
+}
+
+/** What the server actually allows, after regime, caps and proof are applied. */
+interface DeclarationSummary {
+  totalAllowedMinor: string;
+  standardDeductionMinor: string;
+  totalReliefMinor: string;
+  items: DeclarationSummaryItem[];
+}
+
+/** Section metadata — labels and statutory caps — as the server knows them. */
+interface DeclarationSection {
+  code: string;
+  label: string;
+  capMinor: string | null;
+  allowedInNewRegime: boolean;
+  requiresProof: boolean;
+}
+
+/** Why an allowed amount is below what was declared, in words a non-accountant reads. */
+function reasonLabel(reason: string): string {
+  switch (reason) {
+    case "not_allowed_in_new_regime": return "Not allowed under the new regime";
+    case "over_section_cap": return "Reduced to the section's cap";
+    case "over_shared_cap": return "Reduced — shares a cap with another claimed section";
+    case "proof_missing": return "Reduced to zero — proof window closed without evidence";
+    case "excluded_by_other_section": return "Not counted — mutually exclusive with another claimed section";
+    default: return reason;
+  }
+}
+
+/** `FY 2025-26` from the year the financial year starts in. */
+function formatFinancialYear(fy: number): string {
+  return `FY ${fy}-${String((fy + 1) % 100).padStart(2, "0")}`;
+}
+
+/** Mirrors the `call()` helper in payroll-client.ts: same error shape, one endpoint. */
+async function declarationRequest<T>(init?: RequestInit): Promise<T> {
+  const res = await fetch("/api/tax/declaration", {
+    credentials: "include",
+    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+    ...init,
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message = body && typeof body === "object" && "error" in body ? String((body as { error: unknown }).error) : `Request failed (${res.status})`;
+    throw new Error(message);
+  }
+  return body as T;
+}
 
 /**
- * Statutory ceilings for FY 2025-26. A fact about Indian tax law, not about
- * any employee, so it belongs in the source.
+ * Regime-specific standard deduction, from the same source payroll and the
+ * declaration API use. The previous flat ₹75,000 applied the new regime's
+ * figure to the old regime too, overstating old-regime relief by ₹25,000
+ * every time the two were compared here.
  */
-const SECTION_LIMITS: Record<string, number> = { "80C": 150000, "80D": 75000, "80E": 0, "80G": 0, "HRA": 300000, "LTA": 40000, "80TTA": 10000 };
+const STANDARD_DEDUCTION: Record<"old" | "new", number> = {
+  old: Number(REGIME_STANDARD_DEDUCTION_MINOR.old) / 100,
+  new: Number(REGIME_STANDARD_DEDUCTION_MINOR.new) / 100,
+};
 
 /**
  * Generic guidance. Deliberately impersonal — the previous version said
@@ -49,7 +130,9 @@ const TAX_TIPS = [
 export default function TaxPage() {
   const [regime, setRegime] = useState<"old" | "new">("old");
   const [showDialog, setShowDialog] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["80C", "80D"]));
+  const [newSection, setNewSection] = useState("");
+  const [newAmount, setNewAmount] = useState("");
+  const [savingDeclaration, setSavingDeclaration] = useState(false);
 
   /**
    * Real figures, from released payslips.
@@ -60,9 +143,9 @@ export default function TaxPage() {
    * insurance premium. It rendered them under an employee's own name on a
    * page they file taxes from.
    *
-   * Declarations have no storage anywhere in the product, so they are shown
-   * as empty rather than invented. Gross income and TDS do exist — they are on
-   * every payslip — and are summed here from the real ones.
+   * Gross income and TDS are summed from the real payslips below. Declared
+   * sections come from `/api/tax/declaration`, which is real and persisted —
+   * see the block after this one.
    */
   const [payslips, setPayslips] = useState<MyPayslip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,6 +169,47 @@ export default function TaxPage() {
       cancelled = true;
     };
   }, []);
+
+  /**
+   * The declaration itself. `/api/tax/declaration` auto-creates an empty row
+   * on first read instead of 404ing, so "not yet loaded" and "loaded, nothing
+   * declared" are the only two states this page has to handle.
+   */
+  const [declaration, setDeclaration] = useState<DeclarationApiRecord | null>(null);
+  const [declarationItems, setDeclarationItems] = useState<DeclarationApiItem[]>([]);
+  const [summary, setSummary] = useState<DeclarationSummary | null>(null);
+  const [sections, setSections] = useState<DeclarationSection[]>([]);
+  const [declLoading, setDeclLoading] = useState(true);
+  const [declError, setDeclError] = useState<string | null>(null);
+  const [declVersion, setDeclVersion] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setDeclLoading(true);
+      try {
+        const body = await declarationRequest<{
+          declaration: DeclarationApiRecord | null;
+          items: DeclarationApiItem[];
+          summary: DeclarationSummary | null;
+          sections: DeclarationSection[];
+        }>();
+        if (cancelled) return;
+        setDeclaration(body.declaration);
+        setDeclarationItems(body.items ?? []);
+        setSummary(body.summary ?? null);
+        setSections(body.sections ?? []);
+        if (body.declaration) setRegime(body.declaration.regime);
+      } catch (error) {
+        if (!cancelled) setDeclError(error instanceof Error ? error.message : "The declaration could not be read");
+      } finally {
+        if (!cancelled) setDeclLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [declVersion]);
 
   // Year to date, from what has actually been released. Zero when no payslip
   // exists yet, which is the honest answer for a new joiner.
@@ -115,31 +239,18 @@ export default function TaxPage() {
       });
   }, [payslips]);
 
-  /** No storage exists for declarations, so there are none to show. */
-  const DECLARATIONS: Declaration[] = useMemo(() => [], []);
-
-  /** Nor for prior years. */
-  const PREV_DECLARATIONS: { year: string; totalDeductions: number; taxPaid: number; regime: string }[] =
-    useMemo(() => [], []);
-
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(section)) next.delete(section); else next.add(section);
-      return next;
-    });
-  };
-
-  const sectionTotals = useMemo(() => {
-    const totals: Record<string, number> = {};
-    DECLARATIONS.forEach(d => { totals[d.section] = (totals[d.section] || 0) + d.amount; });
-    return totals;
-  }, []);
-
-  const totalDeductions = useMemo(() => Object.values(sectionTotals).reduce((a, b) => a + b, 0), [sectionTotals]);
+  // Sum of what was actually declared, regardless of regime. The regime-aware
+  // allowed amount (after caps and proof rules) comes from `summary` and is
+  // shown per-section in the Declaration tab, not folded into this total —
+  // the live regime toggle below previews both regimes and a cap total for
+  // one regime would be silently wrong when previewing the other.
+  const totalDeductions = useMemo(
+    () => declarationItems.reduce((sum, item) => sum + Number(item.declaredMinor) / 100, 0),
+    [declarationItems]
+  );
 
   const computeOldRegime = () => {
-    const taxableIncome = Math.max(0, GROSS_INCOME - STANDARD_DEDUCTION - totalDeductions);
+    const taxableIncome = Math.max(0, GROSS_INCOME - STANDARD_DEDUCTION.old - totalDeductions);
     let tax = 0;
     if (taxableIncome > 1000000) tax += (taxableIncome - 1000000) * 0.3;
     if (taxableIncome > 500000) tax += Math.min(taxableIncome - 500000, 500000) * 0.2;
@@ -149,7 +260,7 @@ export default function TaxPage() {
   };
 
   const computeNewRegime = () => {
-    const taxableIncome = Math.max(0, GROSS_INCOME - STANDARD_DEDUCTION);
+    const taxableIncome = Math.max(0, GROSS_INCOME - STANDARD_DEDUCTION.new);
     let tax = 0;
     const slabs = [[300000, 0], [400000, 0.05], [500000, 0.1], [600000, 0.15], [700000, 0.2], [Infinity, 0.3]];
     let remaining = taxableIncome;
@@ -174,21 +285,61 @@ export default function TaxPage() {
     grossIncome: GROSS_INCOME,
     totalDeductions,
     taxLiability: selectedTax.total,
-    proofsPending: DECLARATIONS.filter(d => !d.proofUploaded).length,
+    proofsPending: declarationItems.filter(item => item.proofStatus === "awaiting").length,
   };
 
-  const grouped = useMemo(() => {
-    const groups: Record<string, Declaration[]> = {};
-    DECLARATIONS.forEach(d => { if (!groups[d.section]) groups[d.section] = []; groups[d.section].push(d); });
-    return groups;
-  }, []);
+  /**
+   * Adds or updates one section on the real declaration. The dialog used to
+   * accept an amount, a free-text "investment type" and description, and a
+   * proof-upload toggle, then just closed itself and toasted success — none
+   * of it reached storage. `it_declaration_items` has no description column,
+   * so that field is gone rather than wired to nowhere; everything else here
+   * is a real PUT.
+   */
+  const handleAddDeclaration = async () => {
+    if (!newSection) {
+      toast.error("Choose a section");
+      return;
+    }
+    const rupees = Number(newAmount);
+    if (!Number.isFinite(rupees) || rupees <= 0) {
+      toast.error("Enter an amount greater than zero");
+      return;
+    }
+    setSavingDeclaration(true);
+    try {
+      const nextItems = declarationItems.filter(item => item.section !== newSection);
+      nextItems.push({ section: newSection, declaredMinor: String(Math.round(rupees * 100)), proofStatus: "awaiting" });
+      const body = await declarationRequest<{ saved: boolean; warnings: { section?: string; message: string }[] }>({
+        method: "PUT",
+        body: JSON.stringify({
+          regime,
+          selfOrFamilyIsSenior: declaration?.selfOrFamilyIsSenior ?? false,
+          parentsAreSenior: declaration?.parentsAreSenior ?? false,
+          rentPaidMinor: declaration?.rentPaidMinor ?? "0",
+          metroCity: declaration?.metroCity ?? false,
+          landlordPan: declaration?.landlordPan ?? null,
+          items: nextItems.map(item => ({ section: item.section, declaredMinor: item.declaredMinor })),
+        }),
+      });
+      toast.success(body.warnings.length > 0 ? body.warnings[0].message : "Declaration saved");
+      setNewSection("");
+      setNewAmount("");
+      setShowDialog(false);
+      setDeclVersion(v => v + 1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The declaration could not be saved");
+    } finally {
+      setSavingDeclaration(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-slide-up">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-500 bg-clip-text text-transparent">Income Tax</h1>
-          <p className="text-muted-foreground mt-1">FY 2025-26 Tax Declaration and Computation</p>
+          <p className="text-muted-foreground mt-1">{declaration ? formatFinancialYear(declaration.financialYear) : "FY"} Tax Declaration and Computation</p>
         </div>
         <Button className="bg-gradient-to-r from-green-600 to-emerald-500 text-white" onClick={() => setShowDialog(true)}>
           <Plus className="h-4 w-4 mr-2" /> Add Declaration
@@ -212,40 +363,50 @@ export default function TaxPage() {
 
         {/* Declaration Tab */}
         <TabsContent value="declaration" className="space-y-4">
-          {Object.entries(grouped).map(([section, items]) => {
-            const sectionLimit = SECTION_LIMITS[section] || 0;
-            const sectionTotal = sectionTotals[section] || 0;
-            const usage = sectionLimit > 0 ? Math.min((sectionTotal / sectionLimit) * 100, 100) : 0;
-            return (
-              <Card key={section}>
-                <CardHeader className="pb-2 cursor-pointer" onClick={() => toggleSection(section)}>
-                  <CardTitle className="text-base flex items-center justify-between">
-                    <span className="flex items-center gap-2">Section {section} <Badge variant="outline">{items.length} items</Badge></span>
-                    <span className="text-sm font-normal text-muted-foreground">&#8377;{sectionTotal.toLocaleString("en-IN")} {sectionLimit > 0 ? `/ ₹${sectionLimit.toLocaleString("en-IN")}` : ""}</span>
-                  </CardTitle>
-                  {sectionLimit > 0 && <Progress value={usage} className="h-1.5 mt-1" />}
-                </CardHeader>
-                {expandedSections.has(section) && (
+          {declLoading ? (
+            <DataLoadingSkeleton rows={3} />
+          ) : declError ? (
+            <DataEmptyState icon={AlertTriangle} title="Declaration could not be loaded" description={declError} />
+          ) : declarationItems.length === 0 ? (
+            <DataEmptyState
+              icon={FileText}
+              title="No sections declared yet"
+              description="Add a section below once you know what you're claiming this year — nothing is pre-filled or assumed."
+              actionLabel="Add Declaration"
+              onAction={() => setShowDialog(true)}
+            />
+          ) : (
+            declarationItems.map(item => {
+              const meta = sections.find(s => s.code === item.section);
+              const summaryLine = summary?.items.find(s => s.section === item.section);
+              const declaredRupees = Number(item.declaredMinor) / 100;
+              const capRupees = meta?.capMinor ? Number(meta.capMinor) / 100 : null;
+              const usage = capRupees && capRupees > 0 ? Math.min((declaredRupees / capRupees) * 100, 100) : 0;
+              return (
+                <Card key={item.section}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center justify-between">
+                      <span className="flex items-center gap-2">{meta?.label ?? `Section ${item.section}`} <Badge variant="outline">{item.section}</Badge></span>
+                      <span className="text-sm font-normal text-muted-foreground">&#8377;{declaredRupees.toLocaleString("en-IN")} {capRupees ? `/ ₹${capRupees.toLocaleString("en-IN")}` : ""}</span>
+                    </CardTitle>
+                    {capRupees ? <Progress value={usage} className="h-1.5 mt-1" /> : null}
+                  </CardHeader>
                   <CardContent>
-                    <div className="space-y-2">
-                      {items.map(d => (
-                        <div key={d.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50">
-                          <div className="flex items-center gap-3">
-                            <Badge variant="outline" className="text-xs w-14 justify-center">{d.category}</Badge>
-                            <div><p className="text-sm font-medium">{d.description}</p><p className="text-xs text-muted-foreground">{d.proofUploaded ? "Proof uploaded" : "Proof pending"}</p></div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="font-semibold text-sm">&#8377;{d.amount.toLocaleString("en-IN")}</span>
-                            <Badge className={cn(d.status === "verified" ? "status-active" : d.status === "rejected" ? "status-rejected" : "status-pending")}>{d.status}</Badge>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {item.proofStatus === "accepted" ? "Proof accepted" : item.proofStatus === "rejected" ? "Proof rejected" : item.proofStatus === "not_required" ? "No proof required" : "Proof pending"}
+                      </span>
+                      {summaryLine && summaryLine.reason ? (
+                        <span className="flex items-center gap-1 text-amber-600"><AlertTriangle className="h-3 w-3" />{reasonLabel(summaryLine.reason)}</span>
+                      ) : (
+                        <Badge className={cn(item.proofStatus === "accepted" ? "status-active" : item.proofStatus === "rejected" ? "status-rejected" : "status-pending")}>{item.proofStatus}</Badge>
+                      )}
                     </div>
                   </CardContent>
-                )}
-              </Card>
-            );
-          })}
+                </Card>
+              );
+            })
+          )}
 
           {/* Tax Saving Tips */}
           <Card className="border-amber-200 bg-amber-50/30 dark:bg-amber-950/10">
@@ -278,7 +439,7 @@ export default function TaxPage() {
               <CardHeader><CardTitle className="text-base flex items-center gap-2">Old Regime {regime === "old" && <Badge className="status-active">Selected</Badge>}</CardTitle></CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex justify-between"><span>Gross Income</span><span>&#8377;{GROSS_INCOME.toLocaleString("en-IN")}</span></div>
-                <div className="flex justify-between text-green-600"><span>(-) Standard Deduction</span><span>&#8377;{STANDARD_DEDUCTION.toLocaleString("en-IN")}</span></div>
+                <div className="flex justify-between text-green-600"><span>(-) Standard Deduction</span><span>&#8377;{STANDARD_DEDUCTION.old.toLocaleString("en-IN")}</span></div>
                 <div className="flex justify-between text-green-600"><span>(-) Total Deductions</span><span>&#8377;{totalDeductions.toLocaleString("en-IN")}</span></div>
                 <Separator />
                 <div className="flex justify-between font-medium"><span>Taxable Income</span><span>&#8377;{oldTax.taxableIncome.toLocaleString("en-IN")}</span></div>
@@ -294,7 +455,7 @@ export default function TaxPage() {
               <CardHeader><CardTitle className="text-base flex items-center gap-2">New Regime {regime === "new" && <Badge className="bg-blue-500 text-white">Selected</Badge>}</CardTitle></CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex justify-between"><span>Gross Income</span><span>&#8377;{GROSS_INCOME.toLocaleString("en-IN")}</span></div>
-                <div className="flex justify-between text-green-600"><span>(-) Standard Deduction</span><span>&#8377;{STANDARD_DEDUCTION.toLocaleString("en-IN")}</span></div>
+                <div className="flex justify-between text-green-600"><span>(-) Standard Deduction</span><span>&#8377;{STANDARD_DEDUCTION.new.toLocaleString("en-IN")}</span></div>
                 <div className="flex justify-between text-muted-foreground"><span>(-) Deductions</span><span>Not applicable</span></div>
                 <Separator />
                 <div className="flex justify-between font-medium"><span>Taxable Income</span><span>&#8377;{newTax.taxableIncome.toLocaleString("en-IN")}</span></div>
@@ -313,70 +474,86 @@ export default function TaxPage() {
 
         {/* Documents Tab */}
         <TabsContent value="documents" className="space-y-4">
-          <div className="grid gap-3">
-            {DECLARATIONS.map(d => (
-              <Card key={d.id} className={cn(!d.proofUploaded && "border-amber-300 bg-amber-50/20")}>
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-sm">{d.description}</p>
-                      <p className="text-xs text-muted-foreground">Section {d.section} &middot; &#8377;{d.amount.toLocaleString("en-IN")}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {d.proofUploaded ? (
-                        <Badge className="status-active"><CheckCircle2 className="h-3 w-3 mr-1" />Uploaded</Badge>
-                      ) : (
-                        <Button size="sm" variant="outline" onClick={() => toast.success(`Upload proof for ${d.description}`)}><Upload className="h-3 w-3 mr-1" />Upload</Button>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          {declLoading ? (
+            <DataLoadingSkeleton rows={3} />
+          ) : declarationItems.length === 0 ? (
+            <DataEmptyState icon={Upload} title="No proofs to track yet" description="Proof status appears here once a section has been declared." />
+          ) : (
+            <div className="grid gap-3">
+              {declarationItems.map(item => {
+                const meta = sections.find(s => s.code === item.section);
+                return (
+                  <Card key={item.section} className={cn(item.proofStatus === "rejected" && "border-red-300 bg-red-50/20", item.proofStatus === "awaiting" && meta?.requiresProof && "border-amber-300 bg-amber-50/20")}>
+                    <CardContent className="pt-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-sm">{meta?.label ?? `Section ${item.section}`}</p>
+                          <p className="text-xs text-muted-foreground">Section {item.section} &middot; &#8377;{(Number(item.declaredMinor) / 100).toLocaleString("en-IN")}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {item.proofStatus === "accepted" ? (
+                            <Badge className="status-active"><CheckCircle2 className="h-3 w-3 mr-1" />Accepted</Badge>
+                          ) : item.proofStatus === "rejected" ? (
+                            <Badge className="status-rejected"><AlertTriangle className="h-3 w-3 mr-1" />Rejected</Badge>
+                          ) : item.proofStatus === "not_required" ? (
+                            <Badge variant="outline">No proof required</Badge>
+                          ) : (
+                            // No upload endpoint exists yet. The old button called
+                            // toast.success on click and never touched storage —
+                            // disabled and labelled honestly beats a button that lies.
+                            <Button size="sm" variant="outline" disabled title="Proof upload isn't available yet"><Upload className="h-3 w-3 mr-1" />Not available yet</Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
 
         {/* History Tab */}
         <TabsContent value="history" className="space-y-4">
-          <div className="grid gap-3">
-            {PREV_DECLARATIONS.map(p => (
-              <Card key={p.year}>
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold">{p.year}</p>
-                      <p className="text-sm text-muted-foreground">Total Deductions: &#8377;{p.totalDeductions.toLocaleString("en-IN")} &middot; Regime: {p.regime}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-red-600">&#8377;{p.taxPaid.toLocaleString("en-IN")}</p>
-                      <Button size="sm" variant="ghost"><Download className="h-3 w-3 mr-1" />Form 16</Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          <Card><CardHeader><CardTitle className="text-base">Tax Paid Trend</CardTitle></CardHeader><CardContent>
-            <div className="h-[220px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={PREV_DECLARATIONS.map(p => ({ year: p.year.replace("FY ", ""), tax: p.taxPaid }))}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="year" /><YAxis /><RTooltip /><Bar dataKey="tax" fill="#ef4444" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
-          </CardContent></Card>
+          {/*
+           * There is no year-over-year store: each financial year is one row,
+           * and this page only reads the current one. The old UI invented three
+           * prior years — deduction totals, tax paid, a bar chart, a "Form 16"
+           * button that opened nothing — none of which existed. An honest empty
+           * state is what's left until multi-year history is a real feature.
+           */}
+          <DataEmptyState
+            icon={History}
+            title="No prior year history yet"
+            description="Past financial years will appear here once this product stores more than the current one."
+          />
         </TabsContent>
       </Tabs>
 
       {/* Add Declaration Dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      <Dialog open={showDialog} onOpenChange={(open) => { setShowDialog(open); if (!open) { setNewSection(""); setNewAmount(""); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Add Investment Declaration</DialogTitle></DialogHeader>
           <div className="grid gap-4 py-2">
-            <div><Label>Section</Label><Select><SelectTrigger><SelectValue placeholder="Select section" /></SelectTrigger><SelectContent>{Object.keys(SECTION_LIMITS).map(s => <SelectItem key={s} value={s}>Section {s}</SelectItem>)}</SelectContent></Select></div>
-            <div><Label>Investment Type</Label><Input placeholder="e.g., PPF, ELSS, LIC" /></div>
-            <div><Label>Description</Label><Input placeholder="Investment description" /></div>
-            <div><Label>Amount (INR)</Label><Input type="number" placeholder="Enter amount" /></div>
-            <div className="flex items-center gap-2"><Switch /><Label>Upload proof now</Label></div>
+            {/*
+             * "Investment Type" and "Description" used to be free text here,
+             * and "Upload proof now" a switch — none of the three had anywhere
+             * to go: it_declaration_items stores a section code, an amount and
+             * a proof status, nothing else. Removed rather than kept as inputs
+             * that silently discarded whatever was typed into them.
+             */}
+            <div>
+              <Label>Section</Label>
+              <Select value={newSection} onValueChange={setNewSection}>
+                <SelectTrigger><SelectValue placeholder="Select section" /></SelectTrigger>
+                <SelectContent>{sections.map(s => <SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div><Label>Amount (INR)</Label><Input type="number" min="0" value={newAmount} onChange={e => setNewAmount(e.target.value)} placeholder="Enter amount" /></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-green-600 to-emerald-500 text-white" onClick={() => { setShowDialog(false); toast.success("Declaration added!"); }}>Submit</Button>
+            <Button variant="outline" onClick={() => setShowDialog(false)} disabled={savingDeclaration}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-green-600 to-emerald-500 text-white" onClick={handleAddDeclaration} disabled={savingDeclaration}>{savingDeclaration ? "Saving..." : "Submit"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

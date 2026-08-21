@@ -7,10 +7,13 @@
 //
 // Categories, roughly in order of how much damage they do:
 //
+//   records    a module-level array of record-shaped objects, rendered as data
+//   answers    a hook or function that returns a fabrication and reads no source
+//   hollow     a success toast fired with nothing behind it that could succeed
+//   pretend    a delay or comment dressing up fabricated work as a real one
 //   invented   Math.random() rendered as a measurement
 //   identity   fake PAN/Aadhaar/account numbers on a person's record
 //   people     hardcoded names, emails and photos posing as records
-//   notice     notification lists that are the same for every user
 //   sample     placeholder text left in a shipping surface
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -226,6 +229,25 @@ const RECORD_KEYS = /\b(id|employeeId|userId)\s*:\s*["'`]/;
 const TENANT_VALUE =
   /\b(amount|balance|salary|total|paid|due)\s*:\s*[₹$]?\s*[\d"']|\b(date|time|createdAt|submittedAt|uploadedAt)\s*:\s*["'`]\d|["'`]\d{1,2}\s+(min|hour|hr|day)s?\s+ago["'`]|["'`][₹$]\s?[\d,]+["'`]/i;
 
+/**
+ * The other shape a fabricated record array took: no `id`, no money, no date
+ * — a category label next to an invented number out of 100. `COMPLIANCE_SCORES`
+ * was `{ category: "Data Privacy", score: 92 }` eight times, rendered as a
+ * radar chart and averaged into "Overall Compliance Score: 91%"; nothing on
+ * the page had ever measured a single one of those numbers. `RECORD_KEYS` and
+ * `TENANT_VALUE` both miss it — there is no row identifier and no currency —
+ * so it needs its own pair of gates, checked as an alternative to those two,
+ * not instead of them.
+ *
+ * Each half is common enough alone that neither should trigger anything by
+ * itself: a settings catalogue has an `area`, a chart config has a
+ * `dimension`, a progress step has a `percent`. It is a label field and a
+ * scored-out-of-100 field on the same objects that is specific to a
+ * scorecard someone typed in rather than computed.
+ */
+const SCORE_ROW = /\b(category|area|metric|dimension)\s*:\s*["'`]/i;
+const SCORE_VALUE = /\b(score|rating|percent(?:age)?|compliance|completion|utilization)\s*:\s*\d{1,3}\b/i;
+
 function findHardcodedRecordArrays(source: string, file: string): Finding[] {
   const found: Finding[] = [];
   const lines = source.split("\n");
@@ -250,14 +272,149 @@ function findHardcodedRecordArrays(source: string, file: string): Finding[] {
 
     const objects = (body.match(/\{/g) ?? []).length;
     if (objects < 3) continue;
-    if (!RECORD_KEYS.test(body)) continue;
-    if (!TENANT_VALUE.test(body)) continue;
 
+    const isTenantRecord = RECORD_KEYS.test(body) && TENANT_VALUE.test(body);
+    const isScoredCatalogue = SCORE_ROW.test(body) && SCORE_VALUE.test(body);
+    if (!isTenantRecord && !isScoredCatalogue) continue;
+
+    const reason = isTenantRecord ? "carrying tenant-shaped values" : "carrying an invented score per row";
     found.push({
       file: file.replace(/\\/g, "/"),
       line: i + 1,
       kind: "records",
-      text: `${match[1]} — ${objects} hardcoded rows carrying tenant-shaped values`,
+      text: `${match[1]} — ${objects} hardcoded rows ${reason}`,
+    });
+  }
+
+  return found;
+}
+
+/**
+ * Anything that could actually make a success toast true.
+ *
+ * Reuses the same signal `findFabricatedReturns` uses to tell a computed
+ * value from a fabricated one — `await` of anything but a fake timer, a
+ * `fetch`, a store — and adds the write-side calls a read-only hook would
+ * never need: `.mutate(`, `useMutation`, `axios.`. If a handler awaited
+ * nothing and called none of these before announcing success, nothing ran
+ * that could have failed, which means the toast is not reporting an outcome.
+ *
+ * Also covers the two real actions that succeed or fail without a network
+ * round trip: building a downloadable file with `new Blob(` /
+ * `URL.createObjectURL(`, and writing to the clipboard with
+ * `navigator.clipboard.`. Both can genuinely fail — a browser can refuse a
+ * clipboard write — and both were being reported as hollow: the audit log
+ * export in `audit/page.tsx` builds its CSV from data already on screen, and
+ * `chatbot/page.tsx` and `letters/page.tsx` copy real text to the clipboard,
+ * none of which needed a server round trip to be a genuine action.
+ */
+const MUTATION_SOURCE =
+  /\bfetch\s*\(|\.mutate\s*\(|useMutation|\baxios\.|\bawait\s+(?!new\s+Promise)|new\s+Blob\s*\(|URL\.createObjectURL\s*\(|navigator\.clipboard\./;
+
+/**
+ * `toast.success(...)` with nothing behind it that could have succeeded.
+ *
+ * This is how "Download Sample", "Export" and "Upload proof now" on the
+ * import screen worked: the button's entire handler was the toast call, so
+ * clicking it always "succeeded" whether or not a file existed to export.
+ * The toast is indistinguishable from a real one — same text, same colour,
+ * same position — which is what makes it worse than an error: an error at
+ * least tells the user something happened.
+ *
+ * The scope checked is the block enclosing the toast call, found by
+ * scanning backward for the nearest unmatched `{` — the mirror image of how
+ * `findFabricatedReturns` scans forward from a declaration. That block's own
+ * opening line is included in the text searched, not just what follows the
+ * brace, so `somePromise.then(() => { ... toast.success(...) })` still sees
+ * the `.then(` that precedes its own `{`.
+ *
+ * A single enclosing block is not always enough. `submit()` in
+ * `holidays/page.tsx` reads:
+ *
+ *     try {
+ *       const response = await fetch("/api/holidays/bulk", { ... });
+ *       ...
+ *       if (payload.imported > 0) {
+ *         toast.success(`Imported ${payload.imported} holidays`);
+ *       }
+ *     }
+ *
+ * and the immediate enclosing block is the `if`, not the `try` — so a
+ * single-level scan never sees the `fetch` sitting one block further out,
+ * as a sibling statement of the `if` rather than something inside it. The
+ * scan below keeps stepping one enclosing block further out, re-checking the
+ * accumulated scope for a mutation source after each step, and stops the
+ * moment it finds one — so it also sees a `try` around the `if`, or a
+ * `switch` case around a `try`. The step count and the 200-line window are
+ * shared across every step combined, so a toast that is genuinely hollow
+ * several blocks deep cannot be excused by an unrelated fetch call that
+ * belongs to a different function much further up the same file.
+ *
+ * A handler whose entire body is the toast call — `onClick={() =>
+ * toast.success(...)}, no braces at all — is reported directly, since there
+ * is no enclosing block to search.
+ *
+ * This does not know that a named helper called two lines above actually
+ * did the work if that helper is invoked without `await` — a fire-and-forget
+ * call with no `await`, no `fetch`, and no `.mutate` in sight is rare enough
+ * in this codebase's async-first style that the false negative is an
+ * acceptable trade for not having to model call graphs.
+ */
+function findFakeSuccessToasts(source: string, file: string): Finding[] {
+  const found: Finding[] = [];
+  const lines = source.split("\n");
+  const call = /\btoast\.success\s*\(/;
+  const isHandlerBody = /=>\s*toast\.success\s*\(/;
+
+  /** The line holding the nearest unmatched `{` scanning backward from
+   *  `from`, down to (and including) `earliest`. -1 if none is found. */
+  const enclosingBraceLine = (from: number, earliest: number): number => {
+    let depth = 0;
+    for (let start = from; start >= earliest; start--) {
+      for (let c = lines[start].length - 1; c >= 0; c--) {
+        if (lines[start][c] === "}") depth++;
+        else if (lines[start][c] === "{") depth--;
+      }
+      if (depth < 0) return start;
+    }
+    return -1;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!call.test(lines[i])) continue;
+
+    if (isHandlerBody.test(lines[i])) {
+      found.push({
+        file: file.replace(/\\/g, "/"),
+        line: i + 1,
+        kind: "hollow",
+        text: lines[i].trim().slice(0, 96),
+      });
+      continue;
+    }
+
+    const earliest = Math.max(0, i - 200);
+    let boundary = i;
+    let sawEnclosingBrace = false;
+    let sawSource = false;
+    for (let step = 0; step < 3; step++) {
+      const brace = enclosingBraceLine(boundary, earliest);
+      if (brace < 0) break;
+      sawEnclosingBrace = true;
+      boundary = brace;
+      if (MUTATION_SOURCE.test(lines.slice(boundary, i + 1).join("\n"))) {
+        sawSource = true;
+        break;
+      }
+      boundary -= 1;
+    }
+    if (!sawEnclosingBrace || sawSource) continue;
+
+    found.push({
+      file: file.replace(/\\/g, "/"),
+      line: i + 1,
+      kind: "hollow",
+      text: lines[i].trim().slice(0, 96),
     });
   }
 
@@ -312,6 +469,7 @@ for (const root of ROOTS) {
 
     findings.push(...findHardcodedRecordArrays(stripped, file));
     findings.push(...findFabricatedReturns(stripped, file));
+    findings.push(...findFakeSuccessToasts(stripped, file));
 
     lines.forEach((line, index) => {
       const trimmed = line.trim();
@@ -352,7 +510,7 @@ for (const f of findings) {
   else byKind.set(f.kind, [f]);
 }
 
-const ORDER = ["records", "answers", "pretend", "invented", "identity", "people", "sample"];
+const ORDER = ["records", "answers", "hollow", "pretend", "invented", "identity", "people", "sample"];
 
 console.log(`Scanned ${ROOTS.join(", ")}\n`);
 

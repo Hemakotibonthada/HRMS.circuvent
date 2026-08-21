@@ -27,6 +27,7 @@ export type ApiScope =
   | "employees:read"
   | "employees:write"
   | "profiles:read"
+  | "candidates:read"
   | "leave:read"
   | "leave:write"
   | "attendance:read"
@@ -40,6 +41,7 @@ export const ALL_SCOPES: readonly ApiScope[] = [
   "employees:read",
   "employees:write",
   "profiles:read",
+  "candidates:read",
   "leave:read",
   "leave:write",
   "attendance:read",
@@ -65,6 +67,8 @@ export const SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
   "employees:write": "Create and change employee records.",
   "profiles:read":
     "Read the public-facing profile only — name, avatar, job title, department, work location. No pay, no identifiers, no personal contact details.",
+  "candidates:read":
+    "Read what somebody entered in the Career portal — education and previous employers. Never their previous salary, statutory identifiers, or a former manager's contact details.",
   "leave:read": "Read leave balances and requests.",
   "leave:write": "Apply for and approve leave.",
   "attendance:read": "Read attendance and shift records.",

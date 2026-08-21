@@ -16,16 +16,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { TwoFactorSettings } from "@/components/two-factor-settings";
 import { IntegrationsPanel } from "@/components/integrations-panel";
 import {
-  Settings, Building2, Users, Shield, Bell, Palette, Globe,
+  Building2, Users, Shield, Bell, Palette, Globe,
   Lock, Mail, Key, Database, Clock, Calendar, Save, RotateCcw,
-  CheckCircle2, AlertTriangle, Eye, EyeOff, Plus, Trash2,
-  Download, Upload, ChevronRight, Zap, Monitor, Smartphone, MessageSquare,
+  CheckCircle2, AlertTriangle, Eye, EyeOff,
+  Upload, ChevronRight, Zap, Monitor, Smartphone, MessageSquare,
   HardDrive, Cloud, Webhook, FileText, CreditCard, Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRBAC } from "@/hooks/use-rbac";
 import { visibleSections, resolveSection } from "@/lib/settings-sections";
+import { ROLE_PERMISSIONS, getRoleLabel, type Role } from "@/lib/rbac";
 
 // ═══════════════════════════════════════════════════════════════
 // SETTINGS
@@ -41,42 +42,51 @@ import { visibleSections, resolveSection } from "@/lib/settings-sections";
 // rule can be tested without rendering the page.
 
 
+// Every module here used to carry a real-looking `enabled` flag rendered as
+// a working Switch, plus a "core" flag that made some switches disabled-on.
+// Nothing outside this file ever read that flag: which modules an employee
+// can actually reach is decided by MODULE_PERMISSION_MAP in lib/rbac.ts, a
+// role-based allow-list. So toggling "Payroll & Compensation" off here made
+// it look disabled while payroll stayed fully reachable for everyone — a
+// switch that lies about what it controls is worse than no switch, so this
+// is now a read-only catalog of what the product includes. "compliance" is
+// also gone from the list: its standalone page was fabricated (deleted from
+// (dashboard)/compliance) and the one real implementation,
+// (dashboard)/compliancehub, has no nav entry, so listing it as an available
+// module would claim a feature nobody can currently reach.
 const MODULES_LIST = [
-  { id: "employees", name: "Employee Management", enabled: true, description: "Core employee directory and profiles", core: true },
-  { id: "attendance", name: "Attendance & Time", enabled: true, description: "Clock in/out, timesheets, shifts", core: true },
-  { id: "leave", name: "Leave Management", enabled: true, description: "Leave applications and approvals", core: true },
-  { id: "payroll", name: "Payroll & Compensation", enabled: true, description: "Salary processing and payslips", core: true },
-  { id: "recruitment", name: "Recruitment & ATS", enabled: true, description: "Job postings and candidate tracking", core: false },
-  { id: "performance", name: "Performance Management", enabled: true, description: "Reviews, goals, and OKRs", core: false },
-  { id: "training", name: "Training & LMS", enabled: true, description: "Courses, certifications, learning paths", core: false },
-  { id: "expenses", name: "Expense Management", enabled: true, description: "Claims, approvals, reimbursements", core: false },
-  { id: "helpdesk", name: "Helpdesk & Ticketing", enabled: true, description: "Employee support tickets", core: false },
-  { id: "assets", name: "Asset Management", enabled: true, description: "Hardware and software inventory", core: false },
-  { id: "onboarding", name: "Onboarding", enabled: true, description: "New hire workflows and checklists", core: false },
-  { id: "offboarding", name: "Offboarding", enabled: true, description: "Exit management and clearance", core: false },
-  { id: "analytics", name: "HR Analytics", enabled: true, description: "Workforce intelligence dashboards", core: false },
-  { id: "engagement", name: "Engagement & Culture", enabled: true, description: "Kudos, surveys, culture hub", core: false },
-  { id: "workflows", name: "Workflow Automation", enabled: false, description: "Custom approval workflows", core: false },
-  { id: "chatbot", name: "HR AI Assistant", enabled: true, description: "AI-powered HR chatbot", core: false },
-  { id: "documents", name: "Document Management", enabled: true, description: "File storage and versioning", core: false },
-  { id: "compliance", name: "Compliance", enabled: true, description: "Regulatory compliance tracking", core: false },
+  { id: "employees", name: "Employee Management", description: "Core employee directory and profiles" },
+  { id: "attendance", name: "Attendance & Time", description: "Clock in/out, timesheets, shifts" },
+  { id: "leave", name: "Leave Management", description: "Leave applications and approvals" },
+  { id: "payroll", name: "Payroll & Compensation", description: "Salary processing and payslips" },
+  { id: "recruitment", name: "Recruitment & ATS", description: "Job postings and candidate tracking" },
+  { id: "performance", name: "Performance Management", description: "Reviews, goals, and OKRs" },
+  { id: "training", name: "Training & LMS", description: "Courses, certifications, learning paths" },
+  { id: "expenses", name: "Expense Management", description: "Claims, approvals, reimbursements" },
+  { id: "helpdesk", name: "Helpdesk & Ticketing", description: "Employee support tickets" },
+  { id: "assets", name: "Asset Management", description: "Hardware and software inventory" },
+  { id: "onboarding", name: "Onboarding", description: "New hire workflows and checklists" },
+  { id: "offboarding", name: "Offboarding", description: "Exit management and clearance" },
+  { id: "analytics", name: "HR Analytics", description: "Workforce intelligence dashboards" },
+  { id: "engagement", name: "Engagement & Culture", description: "Kudos, surveys, culture hub" },
+  { id: "workflows", name: "Workflow Automation", description: "Custom approval workflows" },
+  { id: "chatbot", name: "HR AI Assistant", description: "AI-powered HR chatbot" },
+  { id: "documents", name: "Document Management", description: "File storage and versioning" },
 ];
 
-const ROLES = [
-  { id: "admin", name: "Administrator", count: 2, color: "from-red-500 to-orange-500", permissions: 65 },
-  { id: "hr", name: "HR Manager", count: 3, color: "from-violet-500 to-purple-600", permissions: 48 },
-  { id: "manager", name: "Department Manager", count: 8, color: "from-blue-500 to-cyan-500", permissions: 25 },
-  { id: "employee", name: "Employee", count: 114, color: "from-emerald-500 to-green-600", permissions: 12 },
-];
-
-const DATA_RETENTION = [
-  { type: "Employee Records", retention: "7 years after exit", size: "245 MB", records: 145 },
-  { type: "Payroll Data", retention: "10 years", size: "180 MB", records: 1728 },
-  { type: "Attendance Logs", retention: "3 years", size: "420 MB", records: 45000 },
-  { type: "Leave Records", retention: "5 years", size: "85 MB", records: 3200 },
-  { type: "Documents", retention: "Until deleted", size: "1.2 GB", records: 890 },
-  { type: "Audit Logs", retention: "5 years", size: "320 MB", records: 28000 },
-  { type: "Chat/Messages", retention: "1 year", size: "45 MB", records: 5600 },
+// Names and permission counts used to be hardcoded here ("65/48/25/12
+// permissions") and didn't match the real grant lists at all. They now come
+// from getRoleLabel() and ROLE_PERMISSIONS[role].length in lib/rbac.ts, the
+// actual compiled-in role definitions, so this can't drift from reality
+// again. The "N users" figure that used to sit next to them (2/3/8/114) is
+// removed rather than replaced with a real one: nothing queries employee
+// counts per role today, and inventing another plausible-looking number
+// would repeat the exact mistake this pass exists to fix.
+const ROLES: { id: Role; color: string }[] = [
+  { id: "admin", color: "from-red-500 to-orange-500" },
+  { id: "hr", color: "from-violet-500 to-purple-600" },
+  { id: "manager", color: "from-blue-500 to-cyan-500" },
+  { id: "employee", color: "from-emerald-500 to-green-600" },
 ];
 
 const GRADIENTS = ["from-violet-500 to-purple-600","from-blue-500 to-cyan-500","from-emerald-500 to-green-600","from-amber-500 to-orange-500","from-pink-500 to-rose-600","from-teal-500 to-cyan-600","from-indigo-500 to-blue-600","from-red-500 to-orange-500"];
@@ -93,11 +103,22 @@ export default function SettingsPage() {
   const activeSection = resolveSection(requestedSection, canManage);
   const setActiveSection = setRequestedSection;
 
-  const [modules, setModules] = useState(MODULES_LIST);
   const [showPassword, setShowPassword] = useState(false);
+  // name/domain/industry/size/founded used to default to Circuvent's own
+  // details ("Circuvent Technologies Pvt. Ltd.", "circuvent.com", founded
+  // "2021"). This page isn't scoped to any one tenant, so every other
+  // company that signed up would open Settings and see the vendor's own
+  // company information sitting in the fields as if it were already
+  // configured for them — worse than a missing feature, since it's actively
+  // wrong for every customer but one. Left blank rather than guessing at a
+  // real value: there is no organization-settings endpoint this form reads
+  // from yet, so there's nothing honest to prefill these five fields with.
+  // The remaining fields default to values that match this app's actual
+  // schema defaults (db/schema/identity.ts), not to another company's
+  // identity, so they're left as reasonable starting points.
   const [orgSettings, setOrgSettings] = useState({
-    name: "Circuvent Technologies Pvt. Ltd.", domain: "circuvent.com",
-    industry: "Information Technology", size: "51-200", founded: "2021",
+    name: "", domain: "",
+    industry: "", size: "", founded: "",
     timezone: "Asia/Kolkata", dateFormat: "DD/MM/YYYY", currency: "INR",
     language: "English", fiscalYearStart: "April", workWeek: "Mon-Fri",
     workHours: "9:00 AM - 6:00 PM", probation: "90 days", notice: "60 days",
@@ -113,13 +134,6 @@ export default function SettingsPage() {
     quietStart: "22:00", quietEnd: "08:00",
   });
 
-  const toggleModule = (id: string) => {
-    const mod = modules.find(m => m.id === id);
-    if (mod?.core) { toast.error("Core modules cannot be disabled"); return; }
-    setModules(prev => prev.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m));
-    toast.success(`Module ${mod?.enabled ? "disabled" : "enabled"}`);
-  };
-
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between animate-slide-up">
@@ -130,7 +144,14 @@ export default function SettingsPage() {
           </p>
         </div>
         {canManage && (
-          <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-md gap-2" onClick={() => toast.success("All settings saved!")}><Save className="h-4 w-4" />Save Changes</Button>
+          // Organization/Security/Notifications below are all editable, but
+          // nothing ever persists them — there was no request behind this
+          // button, so "All settings saved!" confirmed a write that never
+          // happened. Disabled and relabelled rather than left clickable:
+          // real persistence for security policy would also mean enforcing
+          // it (session timeout, password rules) inside lib/auth, which is
+          // out of scope here.
+          <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-md gap-2 opacity-50 cursor-not-allowed" disabled title="Settings are not persisted yet"><Save className="h-4 w-4" />Save Changes (not available yet)</Button>
         )}
       </div>
 
@@ -154,11 +175,11 @@ export default function SettingsPage() {
             <>
               <Card><CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Building2 className="h-4 w-4 text-violet-500" />Company Information</CardTitle></CardHeader>
                 <CardContent className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Company Name</Label><Input value={orgSettings.name} onChange={e => setOrgSettings(p => ({ ...p, name: e.target.value }))} /></div>
-                  <div className="space-y-2"><Label>Domain</Label><Input value={orgSettings.domain} onChange={e => setOrgSettings(p => ({ ...p, domain: e.target.value }))} /></div>
-                  <div className="space-y-2"><Label>Industry</Label><Select value={orgSettings.industry} onValueChange={v => setOrgSettings(p => ({ ...p, industry: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Information Technology","Finance","Healthcare","Education","Manufacturing","Retail","Consulting"].map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent></Select></div>
-                  <div className="space-y-2"><Label>Company Size</Label><Select value={orgSettings.size} onValueChange={v => setOrgSettings(p => ({ ...p, size: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["1-10","11-50","51-200","201-500","500+"].map(s => <SelectItem key={s} value={s}>{s} employees</SelectItem>)}</SelectContent></Select></div>
-                  <div className="space-y-2"><Label>Founded</Label><Input value={orgSettings.founded} onChange={e => setOrgSettings(p => ({ ...p, founded: e.target.value }))} /></div>
+                  <div className="space-y-2"><Label>Company Name</Label><Input value={orgSettings.name} onChange={e => setOrgSettings(p => ({ ...p, name: e.target.value }))} placeholder="Your company's name" /></div>
+                  <div className="space-y-2"><Label>Domain</Label><Input value={orgSettings.domain} onChange={e => setOrgSettings(p => ({ ...p, domain: e.target.value }))} placeholder="yourcompany.com" /></div>
+                  <div className="space-y-2"><Label>Industry</Label><Select value={orgSettings.industry} onValueChange={v => setOrgSettings(p => ({ ...p, industry: v }))}><SelectTrigger><SelectValue placeholder="Not set" /></SelectTrigger><SelectContent>{["Information Technology","Finance","Healthcare","Education","Manufacturing","Retail","Consulting"].map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Company Size</Label><Select value={orgSettings.size} onValueChange={v => setOrgSettings(p => ({ ...p, size: v }))}><SelectTrigger><SelectValue placeholder="Not set" /></SelectTrigger><SelectContent>{["1-10","11-50","51-200","201-500","500+"].map(s => <SelectItem key={s} value={s}>{s} employees</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Founded</Label><Input value={orgSettings.founded} onChange={e => setOrgSettings(p => ({ ...p, founded: e.target.value }))} placeholder="e.g. 2021" /></div>
                   <div className="space-y-2"><Label>Logo</Label><div className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50"><Upload className="h-5 w-5 mx-auto text-muted-foreground mb-1" /><p className="text-[10px] text-muted-foreground">Upload company logo</p></div></div>
                 </CardContent>
               </Card>
@@ -244,30 +265,36 @@ export default function SettingsPage() {
 
           {/* ─── Modules ─── */}
           {activeSection === "modules" && (
-            <Card><CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Zap className="h-4 w-4 text-amber-500" />HRMS Modules ({modules.filter(m => m.enabled).length}/{modules.length} active)</CardTitle></CardHeader>
+            <Card><CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Zap className="h-4 w-4 text-amber-500" />HRMS Modules ({MODULES_LIST.length})</CardTitle></CardHeader>
               <CardContent className="space-y-2">
-                {modules.map((mod, i) => (
-                  <div key={mod.id} className={cn("flex items-center justify-between rounded-lg border p-3 transition-all", !mod.enabled && "opacity-60")}>
-                    <div className="flex items-center gap-3">
-                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]} text-white shadow-sm`}><Zap className="h-3.5 w-3.5" /></div>
-                      <div><div className="flex items-center gap-1.5"><p className="text-xs font-medium">{mod.name}</p>{mod.core && <Badge className="text-[7px] bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 border-0">Core</Badge>}</div><p className="text-[10px] text-muted-foreground">{mod.description}</p></div>
-                    </div>
-                    <Switch checked={mod.enabled} onCheckedChange={() => toggleModule(mod.id)} disabled={mod.core} />
+                {MODULES_LIST.map((mod, i) => (
+                  <div key={mod.id} className="flex items-center gap-3 rounded-lg border p-3">
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]} text-white shadow-sm`}><Zap className="h-3.5 w-3.5" /></div>
+                    <div><p className="text-xs font-medium">{mod.name}</p><p className="text-[10px] text-muted-foreground">{mod.description}</p></div>
                   </div>
                 ))}
+                <p className="text-[10px] text-muted-foreground pt-1">Access to each module is controlled by role permissions, not by a switch on this page.</p>
               </CardContent>
             </Card>
           )}
 
           {/* ─── Roles ─── */}
           {activeSection === "roles" && (
-            <Card><CardHeader className="flex-row items-center justify-between py-3"><CardTitle className="text-sm flex items-center gap-2"><Key className="h-4 w-4 text-indigo-500" />Roles ({ROLES.length})</CardTitle><Button size="sm" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-1 text-xs"><Plus className="h-3 w-3" />Add Role</Button></CardHeader>
+            <Card><CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Key className="h-4 w-4 text-indigo-500" />Roles ({ROLES.length})</CardTitle></CardHeader>
+              {/*
+                "Add Role" and a per-role "Configure" button used to sit here,
+                neither with a handler, next to a "2/3/8/114 users" figure
+                nothing ever queried. Removed rather than wired up: roles are
+                a fixed, compiled-in set (see the Role type in lib/rbac.ts),
+                not a dynamic system a customer can extend or reconfigure, so
+                both buttons promised a capability that doesn't exist
+                anywhere in the product, not just on this screen.
+              */}
               <CardContent className="space-y-3">
                 {ROLES.map(role => (
-                  <div key={role.id} className="flex items-center gap-4 rounded-lg border p-4 hover:shadow-sm transition-all">
+                  <div key={role.id} className="flex items-center gap-4 rounded-lg border p-4">
                     <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${role.color} text-white shadow-md`}><Shield className="h-5 w-5" /></div>
-                    <div className="flex-1"><h3 className="text-sm font-semibold">{role.name}</h3><div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground"><span>{role.count} users</span><span>{role.permissions} permissions</span></div></div>
-                    <Button variant="outline" size="sm" className="text-xs gap-1"><Settings className="h-3 w-3" />Configure</Button>
+                    <div className="flex-1"><h3 className="text-sm font-semibold">{getRoleLabel(role.id)}</h3><p className="mt-0.5 text-[10px] text-muted-foreground">{ROLE_PERMISSIONS[role.id].length} permissions granted</p></div>
                   </div>
                 ))}
               </CardContent>
@@ -278,7 +305,21 @@ export default function SettingsPage() {
           {activeSection === "data" && (
             <>
               <Card><CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Database className="h-4 w-4 text-emerald-500" />Data Retention Policies</CardTitle></CardHeader>
-                <CardContent><div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr className="border-b"><th className="text-left py-2 font-semibold">Data Type</th><th className="text-left py-2 font-semibold">Retention</th><th className="text-right py-2 font-semibold">Size</th><th className="text-right py-2 font-semibold">Records</th></tr></thead><tbody>{DATA_RETENTION.map(d => (<tr key={d.type} className="border-b last:border-0"><td className="py-2.5">{d.type}</td><td className="py-2.5 text-muted-foreground">{d.retention}</td><td className="py-2.5 text-right font-medium">{d.size}</td><td className="py-2.5 text-right">{d.records.toLocaleString()}</td></tr>))}</tbody></table></div></CardContent>
+                <CardContent>
+                  {/*
+                    This table used to list seven data types (Employee Records,
+                    Payroll Data, Attendance Logs, ...), each with an invented
+                    retention period, storage size and record count -- e.g.
+                    "Attendance Logs, 3 years, 420 MB, 45,000 records". Nothing
+                    in this codebase measures table sizes or row counts per
+                    data type, so every figure was made up, and would still
+                    have been wrong the moment a real measurement existed to
+                    check it against. An admin using this page to judge
+                    whether the company is past a retention limit deserves
+                    "not tracked yet," not a confident, invented number.
+                  */}
+                  <p className="text-xs text-muted-foreground">Retention periods, storage size and record counts are not measured yet, so there is nothing real to show here.</p>
+                </CardContent>
               </Card>
               <Card><CardHeader className="py-3"><CardTitle className="text-sm">Backup & Recovery</CardTitle></CardHeader>
                 <CardContent className="space-y-3">
@@ -298,7 +339,14 @@ export default function SettingsPage() {
                     inventing a fix for it.
                   */}
                   <div className="flex items-center justify-between rounded-lg border p-3"><div><p className="text-xs font-medium">Last Backup</p><p className="text-[10px] text-muted-foreground">No backup has been recorded for this environment</p></div><Badge className="status-inactive text-[9px] border-0">Unknown</Badge></div>
-                  <div className="flex gap-2"><Button variant="outline" size="sm" className="text-xs gap-1"><Download className="h-3 w-3" />Export All Data</Button><Button variant="outline" size="sm" className="text-xs gap-1"><Upload className="h-3 w-3" />Import Data</Button><Button variant="outline" size="sm" className="text-xs gap-1 text-red-600"><Trash2 className="h-3 w-3" />Purge Old Data</Button></div>
+                  {/*
+                    Export All Data / Import Data / Purge Old Data used to sit
+                    here with no onClick at all -- clicking any of them did
+                    nothing, silently. There is no bulk export, bulk import or
+                    purge endpoint anywhere in the API for them to call, so
+                    they are removed rather than kept as buttons that look
+                    actionable and are not.
+                  */}
                 </CardContent>
               </Card>
             </>
@@ -309,41 +357,37 @@ export default function SettingsPage() {
             <>
             <IntegrationsPanel />
 
-            {/* Cross-App Sync */}
+            {/*
+              This card used to show HRMS/CV-365/Mail as three separately
+              databased apps, each with a permanent green "Primary"/"Connected"
+              badge nothing here ever checked, plus a "Sync Behavior" list
+              describing a Firebase Auth fan-out that copied every new hire
+              into CV-365's and Mail's own Firestore databases. The header
+              comment on /api/sync/bulk explains that fan-out no longer
+              exists: identity is now a single shared schema all three apps
+              read directly, Mail has moved to Postgres, and Firebase is being
+              retired. Three confident status badges for connections nothing
+              measured were already the "assert, don't measure" problem this
+              pass looks for; leaving them describe a sync mechanism that no
+              longer runs would have made them wrong twice over. The button
+              below calls the same real endpoint and now reads the response
+              shape it actually returns instead of fields (`synced`, `total`)
+              that endpoint stopped sending, which is why the old button's
+              success toast rendered as "Synced undefined/undefined employees."
+            */}
             <Card className="mt-4">
-              <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Webhook className="h-4 w-4 text-violet-500" />Cross-App Employee Sync</CardTitle></CardHeader>
+              <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Webhook className="h-4 w-4 text-violet-500" />Cross-App Account Coverage</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">Sync employee data between HRMS, CV-365, and Mail.circuvent. All apps share the same Firebase project with separate databases.</p>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { app: "HRMS", db: "hrms-circuvent", status: "Primary", color: "status-active" },
-                    { app: "CV-365", db: "cv-365", status: "Connected", color: "status-active" },
-                    { app: "Mail", db: "default", status: "Connected", color: "status-active" },
-                  ].map(app => (
-                    <div key={app.app} className="rounded-lg border p-3 text-center">
-                      <p className="text-xs font-semibold">{app.app}</p>
-                      <p className="text-[9px] text-muted-foreground">DB: {app.db}</p>
-                      <Badge className={cn("text-[8px] border-0 mt-1", app.color)}>{app.status}</Badge>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="text-xs gap-1 flex-1" onClick={() => { fetch("/api/sync/bulk", { method: "POST" }).then(r => r.json()).then(d => { if (d.success) toast.success(`Synced ${d.synced}/${d.total} employees`); else toast.error("Sync failed"); }); }}>
-                    <Webhook className="h-3 w-3" />Run Full Sync
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-xs gap-1">
-                    <Clock className="h-3 w-3" />Sync History
-                  </Button>
-                </div>
-                <div className="rounded-lg bg-muted/50 p-3 space-y-1">
-                  <h4 className="text-[10px] font-semibold text-muted-foreground">Sync Behavior</h4>
-                  <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc pl-4">
-                    <li>New employees auto-sync to CV-365 and Mail on creation</li>
-                    <li>Employee updates sync displayName, department, designation</li>
-                    <li>Firebase Auth account shared across all apps (SSO)</li>
-                    <li>Mail accounts auto-activated with default settings</li>
-                  </ul>
-                </div>
+                <p className="text-xs text-muted-foreground">HRMS, CV-365 and Mail.circuvent read the same identity records directly, so there is no separate database to keep in sync. This checks which employees have a usable sign-in account.</p>
+                <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => {
+                  fetch("/api/sync/bulk", { method: "POST" }).then(r => r.json()).then(d => {
+                    if (!d.success) { toast.error(d.error || "Could not check account coverage"); return; }
+                    toast.success(`${d.summary.withWorkEmail} of ${d.summary.employees} employees have a sign-in account`);
+                    if (d.needsAttention) toast.warning(d.needsAttention);
+                  }).catch(() => toast.error("Could not reach the account check"));
+                }}>
+                  <Webhook className="h-3 w-3" />Check Account Coverage
+                </Button>
               </CardContent>
             </Card>
             </>

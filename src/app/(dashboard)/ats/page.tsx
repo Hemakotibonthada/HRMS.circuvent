@@ -17,14 +17,33 @@ import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/
 import { COLLECTIONS } from "@/lib/collection-service";
 
 const COLORS = ["#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ec4899", "#ef4444"];
-const PIPELINE_STAGES = ["Applied", "Screened", "Interview", "Offered", "Hired"];
-const STAGE_COLORS: Record<string, string> = {
-  Applied: "from-slate-500 to-gray-600",
-  Screened: "from-blue-500 to-cyan-500",
-  Interview: "from-amber-500 to-orange-500",
-  Offered: "from-violet-500 to-purple-600",
-  Hired: "from-emerald-500 to-green-600",
-};
+
+// Pipeline stages are configurable per org (see pipelineStages in
+// db/schema/ats.ts), not a fixed five-name list, so colour is assigned by
+// position rather than looked up by a stage name that may not exist.
+const STAGE_GRADIENTS = [
+  "from-slate-500 to-gray-600",
+  "from-blue-500 to-cyan-500",
+  "from-amber-500 to-orange-500",
+  "from-violet-500 to-purple-600",
+  "from-emerald-500 to-green-600",
+  "from-pink-500 to-rose-600",
+];
+
+interface FunnelStageRow {
+  stageId: string;
+  name: string;
+  entered: number;
+  conversionFromPrevious: number;
+  conversionFromStart: number;
+}
+
+interface SourceRow {
+  source: string;
+  applications: number;
+  hires: number;
+  hireRate: number;
+}
 
 function CTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
   if (!active || !payload) return null;
@@ -37,8 +56,53 @@ export default function ATSPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [tab, setTab] = useState("pipeline");
+  const [funnelStages, setFunnelStages] = useState<FunnelStageRow[]>([]);
+  const [sourceReport, setSourceReport] = useState<SourceRow[]>([]);
 
   useEffect(() => { if (!initialized) startSync(COLLECTIONS.recruitment, store); }, [initialized, store]);
+
+  // Pipeline stage counts and conversion rates used to come from applying a
+  // fixed 0.6^stage dropoff curve to the total applicant count, so the funnel
+  // always drew the same shape regardless of how hiring was actually going.
+  // Real per-stage counts are tracked in the application event log — a
+  // candidate who reached interview and was later rejected still counts as
+  // having reached it — so they are fetched from there instead.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/ats/reports?report=funnel");
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(data.error || "Could not load the pipeline funnel");
+        setFunnelStages(data.stages ?? []);
+      } catch {
+        if (!cancelled) setFunnelStages([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Source Analytics used to split the applicant total across six invented
+  // channels (LinkedIn, Referral, Naukri, Direct, Campus, Others) at fixed
+  // percentages that never changed no matter where candidates actually came
+  // from. Real source attribution is recorded per application, so it is
+  // fetched from there instead.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/ats/reports?report=sources");
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(data.error || "Could not load source analytics");
+        setSourceReport(data.sources ?? []);
+      } catch {
+        if (!cancelled) setSourceReport([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -55,29 +119,13 @@ export default function ATSPage() {
   const totalOpenings = items.reduce((s, j) => s + (j.openings || 0), 0);
   const activeJobs = items.filter(j => j.status === "open" || j.status === "active").length;
 
-  const pipelineData = useMemo(() => {
-    const total = totalApplicants || 100;
-    return PIPELINE_STAGES.map((stage, idx) => {
-      const dropoff = Math.pow(0.6, idx);
-      return { stage, count: Math.round(total * dropoff), percentage: Math.round(dropoff * 100) };
-    });
-  }, [totalApplicants]);
-
-  const conversionRates = useMemo(() => {
-    return PIPELINE_STAGES.slice(0, -1).map((stage, idx) => ({
-      from: stage,
-      to: PIPELINE_STAGES[idx + 1],
-      rate: pipelineData[idx + 1] && pipelineData[idx].count > 0
-        ? Math.round((pipelineData[idx + 1].count / pipelineData[idx].count) * 100) : 0,
+  const conversionPairs = useMemo(() => {
+    return funnelStages.slice(1).map((stage, idx) => ({
+      from: funnelStages[idx].name,
+      to: stage.name,
+      rate: stage.conversionFromPrevious,
     }));
-  }, [pipelineData]);
-
-  const sourceData = useMemo(() => {
-    const sources = ["LinkedIn", "Referral", "Naukri", "Direct", "Campus", "Others"];
-    return sources.map((source, i) => ({
-      name: source, value: Math.max(1, Math.round(totalApplicants * [0.3, 0.25, 0.2, 0.1, 0.1, 0.05][i])),
-    }));
-  }, [totalApplicants]);
+  }, [funnelStages]);
 
   const deptData = useMemo(() => {
     const deptMap = new Map<string, { jobs: number; applicants: number }>();
@@ -121,44 +169,57 @@ export default function ATSPage() {
         <TabsList><TabsTrigger value="pipeline">Pipeline</TabsTrigger><TabsTrigger value="jobs">Jobs</TabsTrigger><TabsTrigger value="analytics">Analytics</TabsTrigger></TabsList>
 
         <TabsContent value="pipeline" className="mt-4 space-y-4">
-          {/* Pipeline Stages */}
-          <div className="flex items-center gap-0 overflow-x-auto pb-2">
-            {pipelineData.map((stage, idx) => (
-              <div key={stage.stage} className="flex items-center">
-                <Card className={cn("border-0 shadow-md min-w-[140px]")}>
-                  <CardContent className="p-4 text-center">
-                    <div className={cn("h-12 w-12 rounded-xl bg-gradient-to-br mx-auto flex items-center justify-center text-white font-bold text-lg mb-2", STAGE_COLORS[stage.stage])}>
-                      {stage.count}
-                    </div>
-                    <p className="text-sm font-semibold">{stage.stage}</p>
-                    <p className="text-[10px] text-muted-foreground">{stage.percentage}% of total</p>
-                  </CardContent>
-                </Card>
-                {idx < pipelineData.length - 1 && (
-                  <div className="flex flex-col items-center mx-1 flex-shrink-0">
-                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-[10px] text-muted-foreground">{conversionRates[idx]?.rate}%</span>
+          {funnelStages.every(s => s.entered === 0) ? (
+            <Card className="border-0 shadow-md">
+              <CardContent className="p-6">
+                <DataEmptyState
+                  title="Not available yet"
+                  description="No applications have moved through the hiring pipeline yet, so there is nothing to draw a funnel from. This fills in as candidates are advanced through stages."
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Pipeline Stages */}
+              <div className="flex items-center gap-0 overflow-x-auto pb-2">
+                {funnelStages.map((stage, idx) => (
+                  <div key={stage.stageId} className="flex items-center">
+                    <Card className={cn("border-0 shadow-md min-w-[140px]")}>
+                      <CardContent className="p-4 text-center">
+                        <div className={cn("h-12 w-12 rounded-xl bg-gradient-to-br mx-auto flex items-center justify-center text-white font-bold text-lg mb-2", STAGE_GRADIENTS[idx % STAGE_GRADIENTS.length])}>
+                          {stage.entered}
+                        </div>
+                        <p className="text-sm font-semibold">{stage.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{stage.conversionFromStart}% of total</p>
+                      </CardContent>
+                    </Card>
+                    {idx < funnelStages.length - 1 && (
+                      <div className="flex flex-col items-center mx-1 flex-shrink-0">
+                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">{conversionPairs[idx]?.rate}%</span>
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
 
-          {/* Conversion Rates */}
-          <Card className="border-0 shadow-md">
-            <CardHeader><CardTitle className="text-lg">Stage Conversion Rates</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              {conversionRates.map(cr => (
-                <div key={cr.from}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span>{cr.from} → {cr.to}</span>
-                    <span className="font-bold">{cr.rate}%</span>
-                  </div>
-                  <Progress value={cr.rate} className="h-1.5" />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+              {/* Conversion Rates */}
+              <Card className="border-0 shadow-md">
+                <CardHeader><CardTitle className="text-lg">Stage Conversion Rates</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  {conversionPairs.map(cr => (
+                    <div key={`${cr.from}-${cr.to}`}>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>{cr.from} → {cr.to}</span>
+                        <span className="font-bold">{cr.rate}%</span>
+                      </div>
+                      <Progress value={cr.rate} className="h-1.5" />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="jobs" className="mt-4 space-y-4">
@@ -198,12 +259,18 @@ export default function ATSPage() {
             <Card className="border-0 shadow-md">
               <CardHeader><CardTitle className="text-lg">Source Analytics</CardTitle></CardHeader>
               <CardContent>
-                <div className="h-[250px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart><Pie data={sourceData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value">{sourceData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><RTooltip content={<CTooltip />} /></PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex flex-wrap gap-2 justify-center mt-2">{sourceData.map((s, i) => <Badge key={s.name} variant="outline" className="text-xs" style={{ borderColor: COLORS[i % COLORS.length] }}>{s.name}: {s.value}</Badge>)}</div>
+                {sourceReport.length === 0 ? (
+                  <DataEmptyState compact title="Not available yet" description="No application is tagged with a source yet, so there is no real channel split to show." />
+                ) : (
+                  <>
+                    <div className="h-[250px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart><Pie data={sourceReport} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="applications" nameKey="source">{sourceReport.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><RTooltip content={<CTooltip />} /></PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-center mt-2">{sourceReport.map((s, i) => <Badge key={s.source} variant="outline" className="text-xs" style={{ borderColor: COLORS[i % COLORS.length] }}>{s.source}: {s.applications} ({s.hireRate}% hired)</Badge>)}</div>
+                  </>
+                )}
               </CardContent>
             </Card>
             <Card className="border-0 shadow-md">

@@ -7,10 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  FileText, Download, Search, BarChart3, Users,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import {
+  FileText, Download, Search, Users,
   CalendarDays, DollarSign, Headphones, Clock, FileBarChart,
-  Target, TrendingUp, Award, Briefcase, Shield,
+  Target, TrendingUp, Briefcase, Shield, Loader2,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -29,20 +34,27 @@ import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/
 
 const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ec4899","#ef4444","#6366f1","#14b8a6"];
 
-const REPORT_TEMPLATES = [
-  { id: "headcount", name: "Headcount Summary", icon: Users, category: "HR" },
-  { id: "attrition", name: "Attrition Report", icon: BarChart3, category: "HR" },
-  { id: "leave-summary", name: "Leave Summary", icon: CalendarDays, category: "Leave" },
-  { id: "expense-report", name: "Expense Analysis", icon: DollarSign, category: "Finance" },
-  { id: "ticket-summary", name: "Helpdesk Summary", icon: Headphones, category: "IT" },
-  { id: "dept-distribution", name: "Department Distribution", icon: BarChart3, category: "HR" },
-  { id: "salary-report", name: "Compensation Report", icon: DollarSign, category: "Finance" },
-  { id: "monthly-attendance", name: "Monthly Attendance", icon: Clock, category: "Attendance" },
-  { id: "performance-review", name: "Performance Review", icon: Target, category: "HR" },
-  { id: "recruitment-funnel", name: "Recruitment Funnel", icon: Briefcase, category: "HR" },
-  { id: "training-completion", name: "Training Completion", icon: Award, category: "L&D" },
-  { id: "workforce-planning", name: "Workforce Planning", icon: TrendingUp, category: "Strategy" },
-];
+// This used to be a static list of twelve report names whose "Generate"
+// button only called toast.success — no request was ever sent, so every
+// report claimed to exist and none of them actually ran. The catalogue and
+// the run action below now come from /api/reports and /api/reports/run,
+// which execute real, permission-scoped queries against tenant data.
+interface ReportPreset {
+  id: string;
+  name: string;
+  description: string;
+  definition: { source: string; [key: string]: unknown };
+}
+
+interface ReportResult {
+  name: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+}
+
+// Keyed by the real `source` on each preset's definition, not invented per report.
+const SOURCE_ICONS: Record<string, LucideIcon> = { employees: Users, leave: CalendarDays, attendance: Clock };
 
 export default function ReportsPage() {
   const empStore = useEmployeeStore();
@@ -54,6 +66,12 @@ export default function ReportsPage() {
   const jobStore = useJobStore();
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("library");
+  const [presets, setPresets] = useState<ReportPreset[]>([]);
+  const [presetsLoading, setPresetsLoading] = useState(true);
+  const [sourceLabels, setSourceLabels] = useState<Record<string, string>>({});
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [result, setResult] = useState<ReportResult | null>(null);
+  const [recruitmentFunnel, setRecruitmentFunnel] = useState<{ stage: string; count: number }[]>([]);
 
   useEffect(() => {
     if (!empStore.initialized) startSync(COLLECTIONS.employees, empStore);
@@ -65,13 +83,60 @@ export default function ReportsPage() {
     if (!jobStore.initialized) startSync(COLLECTIONS.recruitment, jobStore);
   }, [empStore, leaveStore, expenseStore, ticketStore, attStore, goalStore, jobStore]);
 
-  const filteredTemplates = useMemo(() => {
-    if (!search) return REPORT_TEMPLATES;
+  // Stage counts used to come from applying fixed dropoff percentages (60%,
+  // 30%, 10%, 5%) to the total applicant count, so the chart always showed
+  // the same shape of funnel no matter how hiring was actually going. The
+  // real per-stage counts are tracked in the application event log, so they
+  // are fetched from there instead.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/ats/reports?report=funnel");
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(data.error || "Could not load the recruitment funnel");
+        type FunnelStageRow = { name: string; entered: number };
+        setRecruitmentFunnel((data.stages ?? []).map((s: FunnelStageRow) => ({ stage: s.name, count: s.entered })));
+      } catch {
+        if (!cancelled) setRecruitmentFunnel([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // The report catalogue is server-defined (role-gated presets, e.g. salary
+  // reports require payroll.view), so it is fetched rather than hardcoded here.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/reports");
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(data.error || "Could not load reports");
+        setPresets(data.presets ?? []);
+        const labels: Record<string, string> = {};
+        for (const s of data.sources ?? []) labels[s.key] = s.label;
+        setSourceLabels(labels);
+      } catch {
+        if (!cancelled) toast.error("Could not load the report catalogue");
+      } finally {
+        if (!cancelled) setPresetsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const filteredPresets = useMemo(() => {
+    if (!search) return presets;
     const q = search.toLowerCase();
-    return REPORT_TEMPLATES.filter(t =>
-      t.name.toLowerCase().includes(q) || t.category.toLowerCase().includes(q)
+    return presets.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.description.toLowerCase().includes(q) ||
+      (sourceLabels[p.definition.source] ?? "").toLowerCase().includes(q)
     );
-  }, [search]);
+  }, [search, presets, sourceLabels]);
 
   const deptData = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -133,21 +198,48 @@ export default function ReportsPage() {
     }));
   }, [goalStore.items]);
 
-  // Recruitment funnel
-  const recruitmentFunnel = useMemo(() => {
-    const total = jobStore.items.reduce((s, j) => s + (j.applicants || 0), 0);
-    return [
-      { stage: "Applied", count: total },
-      { stage: "Screening", count: Math.round(total * 0.6) },
-      { stage: "Interview", count: Math.round(total * 0.3) },
-      { stage: "Offer", count: Math.round(total * 0.1) },
-      { stage: "Hired", count: Math.round(total * 0.05) },
-    ];
-  }, [jobStore.items]);
-
-  const handleGenerate = useCallback((name: string) => {
-    toast.success(`Generating "${name}" report…`);
+  const handleGenerate = useCallback(async (preset: ReportPreset) => {
+    setRunningId(preset.id);
+    try {
+      const res = await fetch("/api/reports/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(preset.definition),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "The report could not be run");
+        return;
+      }
+      setResult({ name: preset.name, columns: data.columns, rows: data.rows, rowCount: data.rowCount });
+      toast.success(`"${preset.name}" ready — ${data.rowCount} row${data.rowCount === 1 ? "" : "s"}`);
+    } catch {
+      toast.error("The report could not be run");
+    } finally {
+      setRunningId(null);
+    }
   }, []);
+
+  // The dialog only ever renders rows the server just returned for this
+  // exact request, so a CSV built from them cannot drift from what's on screen.
+  const downloadCsv = useCallback(() => {
+    if (!result) return;
+    const escape = (v: unknown) => {
+      const s = v === null || v === undefined ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [
+      result.columns.join(","),
+      ...result.rows.map(row => result.columns.map(c => escape(row[c])).join(",")),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${result.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [result]);
 
   const isLoading = empStore.loading && !empStore.initialized;
   if (isLoading) return <DataLoadingSkeleton />;
@@ -204,28 +296,40 @@ export default function ReportsPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input placeholder="Search reports…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
           </div>
-          {filteredTemplates.length === 0 ? (
-            <DataEmptyState icon={FileBarChart} title="No matching reports" description="Try a different search term." />
+          {presetsLoading ? (
+            <DataLoadingSkeleton />
+          ) : filteredPresets.length === 0 ? (
+            <DataEmptyState
+              icon={FileBarChart}
+              title={presets.length === 0 ? "No reports available" : "No matching reports"}
+              description={presets.length === 0 ? "No report presets are configured for this account." : "Try a different search term."}
+            />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {filteredTemplates.map(t => (
-                <Card key={t.id} className="border-0 shadow-sm hover:shadow-md transition-shadow">
-                  <CardContent className="p-4 flex flex-col gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-                        <t.icon className="h-5 w-5 text-white" />
+              {filteredPresets.map(p => {
+                const Icon = SOURCE_ICONS[p.definition.source] ?? FileBarChart;
+                const isRunning = runningId === p.id;
+                return (
+                  <Card key={p.id} className="border-0 shadow-sm hover:shadow-md transition-shadow">
+                    <CardContent className="p-4 flex flex-col gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                          <Icon className="h-5 w-5 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{p.name}</p>
+                          <Badge variant="secondary" className="text-xs">{sourceLabels[p.definition.source] ?? p.definition.source}</Badge>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{t.name}</p>
-                        <Badge variant="secondary" className="text-xs">{t.category}</Badge>
-                      </div>
-                    </div>
-                    <Button size="sm" variant="outline" className="gap-2" onClick={() => handleGenerate(t.name)}>
-                      <Download className="h-3.5 w-3.5" /> Generate
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+                      <p className="text-xs text-muted-foreground line-clamp-2">{p.description}</p>
+                      <Button size="sm" variant="outline" className="gap-2" disabled={isRunning} onClick={() => handleGenerate(p)}>
+                        {isRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                        {isRunning ? "Running…" : "Generate"}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
@@ -434,6 +538,47 @@ export default function ReportsPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Every row shown here is what /api/reports/run just returned for this
+          exact request — nothing is cached or re-derived, so the CSV export
+          below can't drift from what's on screen. */}
+      <Dialog open={result !== null} onOpenChange={(open) => { if (!open) setResult(null); }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{result?.name ?? "Report"}</DialogTitle>
+            <DialogDescription>
+              {result?.rowCount ?? 0} row{(result?.rowCount ?? 0) === 1 ? "" : "s"} returned
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[50vh] overflow-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {(result?.columns ?? []).map(c => <TableHead key={c}>{c}</TableHead>)}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(result?.rows ?? []).length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={Math.max(result?.columns.length ?? 1, 1)} className="text-center text-muted-foreground">
+                      No rows matched this report.
+                    </TableCell>
+                  </TableRow>
+                ) : (result?.rows ?? []).map((row, i) => (
+                  <TableRow key={i}>
+                    {(result?.columns ?? []).map(c => <TableCell key={c}>{String(row[c] ?? "")}</TableCell>)}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="gap-2" disabled={!result || result.rows.length === 0} onClick={downloadCsv}>
+              <Download className="h-3.5 w-3.5" /> Download CSV
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

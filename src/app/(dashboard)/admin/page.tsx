@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -19,7 +18,7 @@ import {
   Treemap, ScatterChart, Scatter, ZAxis,
 } from "recharts";
 import {
-  Shield, Users, Clock, Activity, Database, Server, Lock,
+  Shield, Users, Clock, Activity, Database, Lock,
   AlertTriangle, CheckCircle2, Settings, Zap, TrendingUp,
   TrendingDown, ArrowUpRight, ArrowDownRight, Eye, FileText,
   Cpu, HardDrive, Wifi, Globe, UserPlus, UserMinus, UserCog,
@@ -47,6 +46,22 @@ import { useToday } from "@/hooks/use-now";
 // ═══════════════════════════════════════════════════════════════
 
 const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ec4899","#ef4444","#6366f1","#14b8a6","#84cc16","#f97316"];
+
+// These six flags used to be independent useState toggles, each flip
+// firing its own toast.success. Nothing outside this component ever read
+// them, so switching "Audit Logging" or "API Access" off changed nothing
+// real — audit events kept being written, the API kept responding. A
+// switch that always lies about its own effect is worse than no switch,
+// so this is now a read-only description of product capabilities rather
+// than a control panel that doesn't control anything.
+const FEATURE_CAPABILITIES = [
+  { key: "crossAppSync", label: "Cross-App Sync", desc: "Sync employees to CV-365 & Mail", icon: Webhook },
+  { key: "emailNotifications", label: "Email Notifications", desc: "Send emails on leave/expense actions", icon: Bell },
+  { key: "auditLogging", label: "Audit Logging", desc: "Track system events in audit log", icon: History },
+  { key: "twoFactorAuth", label: "Two-Factor Authentication", desc: "Enforce 2FA for admin accounts", icon: Fingerprint },
+  { key: "apiAccess", label: "API Access", desc: "Enable REST API for integrations", icon: Globe },
+  { key: "dataExport", label: "Data Export", desc: "Allow CSV/Excel data export", icon: Download },
+];
 
 function CTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
   if (!active || !payload) return null;
@@ -137,17 +152,26 @@ export default function AdminPage() {
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [employees]);
 
-  // Monthly joining trend
+  // Monthly joining vs exit trend. "left" used to be invented as 15% of that
+  // month's joiners, so attrition moved in lockstep with hiring and never
+  // reflected an actual departure. exitDate is only set once an exit is
+  // processed (see its definition below), so counting it is real — it will
+  // just read zero until offboarding has actually been used.
   const joiningTrend = useMemo(() => {
     const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const year = new Date().getFullYear();
     return months.map(m => {
-      const count = employees.filter(e => {
+      const joined = employees.filter(e => {
         if (!e.joiningDate) return false;
         const d = new Date(e.joiningDate);
         return d.getFullYear() === year && d.toLocaleString("default", { month: "short" }) === m;
       }).length;
-      return { month: m, joined: count, left: Math.floor(count * 0.15) };
+      const left = employees.filter(e => {
+        if (!e.exitDate) return false;
+        const d = new Date(e.exitDate);
+        return d.getFullYear() === year && d.toLocaleString("default", { month: "short" }) === m;
+      }).length;
+      return { month: m, joined, left };
     });
   }, [employees]);
 
@@ -260,31 +284,6 @@ export default function AdminPage() {
       .slice(0, 8);
   }, [employees]);
 
-  // System health scores
-  const systemHealth = useMemo(() => [
-    { name: "Database", score: 98, status: "healthy" },
-    { name: "Auth Service", score: 100, status: "healthy" },
-    { name: "Storage", score: 92, status: "healthy" },
-    { name: "API Routes", score: 100, status: "healthy" },
-    { name: "Sync Service", score: 95, status: "healthy" },
-    { name: "Firestore Rules", score: 100, status: "healthy" },
-  ], []);
-
-  // Feature toggles
-  const [features, setFeatures] = useState({
-    crossAppSync: true,
-    emailNotifications: true,
-    auditLogging: true,
-    twoFactorAuth: false,
-    apiAccess: true,
-    dataExport: true,
-  });
-
-  const toggleFeature = (key: string) => {
-    setFeatures(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
-    toast.success(`Feature ${features[key as keyof typeof features] ? "disabled" : "enabled"}`);
-  };
-
   if (empStore.loading && !empStore.initialized) return <div className="p-6"><DataLoadingSkeleton rows={8} /></div>;
 
   // Admin-only guard
@@ -319,17 +318,21 @@ export default function AdminPage() {
                 <h1 className="text-2xl font-bold">Admin Console</h1>
               </div>
               <p className="text-white/60 text-sm mt-1">System administration, monitoring & analytics</p>
-              <div className="flex gap-2 mt-3">
-                <Badge className="bg-emerald-500/20 text-emerald-300 border-0 text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />All Systems Operational</Badge>
-                <Badge className="bg-white/10 text-white/80 border-0 text-xs"><Activity className="h-3 w-3 mr-1" />Live</Badge>
-              </div>
+              {/*
+                "All Systems Operational" and "Live" used to sit here as
+                permanent badges — no health check ever ran, so they would
+                have said the same thing during an outage. Nothing in this
+                app currently measures service uptime (see the removed
+                System Health Bar below), so asserting operational status
+                is a claim this page can't back up. Removed rather than
+                left inaccurate.
+              */}
             </div>
-            <div className="hidden md:grid grid-cols-4 gap-3">
+            <div className="hidden md:grid grid-cols-3 gap-3">
               {[
                 { label: "Users", value: totalEmployees, icon: Users },
                 { label: "Present", value: presentToday, icon: CheckCircle2 },
                 { label: "Audit Events", value: auditStore.items.length, icon: History },
-                { label: "Services", value: "6/6", icon: Server },
               ].map(s => (
                 <div key={s.label} className="text-center bg-white/5 backdrop-blur-sm rounded-xl px-4 py-3 min-w-[100px]">
                   <s.icon className="h-4 w-4 mx-auto mb-1 text-white/60" />
@@ -342,21 +345,16 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* System Health Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {systemHealth.map(s => (
-          <Card key={s.name} className="group hover:shadow-md transition-all">
-            <CardContent className="p-3 text-center">
-              <div className="flex items-center justify-center gap-1.5 mb-1">
-                <div className={cn("h-2 w-2 rounded-full", s.score >= 95 ? "bg-emerald-500" : s.score >= 80 ? "bg-amber-500" : "bg-red-500")} />
-                <span className="text-[10px] text-muted-foreground font-medium">{s.name}</span>
-              </div>
-              <p className="text-lg font-bold">{s.score}%</p>
-              <Progress value={s.score} className="h-1 mt-1" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/*
+        This used to render a "System Health Bar" — six cards (Database,
+        Auth Service, Storage, API Routes, Sync Service, "Firestore Rules")
+        each with a hardcoded 92-100% score computed from nothing. One
+        entry named a datastore ("Firestore") this app hasn't used since
+        the Postgres migration, which is its own tell that nobody was
+        keeping the numbers honest, let alone measuring them. There's no
+        health-check endpoint anywhere in this app to replace it with, so
+        the section is removed rather than shown with invented scores.
+      */}
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap">
@@ -737,32 +735,17 @@ export default function AdminPage() {
             ))}
           </div>
 
-          {/* Compliance Scores */}
-          <Card>
-            <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-500" />Compliance Scores</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { cat: "Data Privacy", score: 92 },
-                  { cat: "Access Control", score: 88 },
-                  { cat: "Audit Coverage", score: 95 },
-                  { cat: "Password Policy", score: 78 },
-                  { cat: "Encryption", score: 90 },
-                  { cat: "Backup", score: 85 },
-                  { cat: "Retention", score: 82 },
-                  { cat: "Provisioning", score: 87 },
-                ].map(c => (
-                  <div key={c.cat} className="rounded-lg border p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium">{c.cat}</span>
-                      <Badge className={cn("text-[8px] border-0", c.score >= 90 ? "status-active" : c.score >= 80 ? "status-pending" : "status-rejected")}>{c.score}%</Badge>
-                    </div>
-                    <Progress value={c.score} className={cn("h-1.5", c.score < 80 ? "[&>div]:bg-red-500" : c.score < 90 ? "[&>div]:bg-amber-500" : "")} />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          {/*
+            A "Compliance Scores" card used to sit here: eight categories
+            (Data Privacy, Access Control, Password Policy, Backup, ...)
+            each with a hardcoded percentage (92%, 88%, 78%, ...) that never
+            changed no matter what the org's actual configuration was.
+            Nothing in this codebase computes a compliance score for any of
+            these categories — compliancehub tracks discrete compliance
+            items, not a percentage per category — so there's no real
+            number to put in its place. Removed rather than left asserting
+            scores nobody calculated.
+          */}
         </TabsContent>
 
         {/* ─── ADVANCED CHARTS TAB ──────────────────────────── */}
@@ -881,14 +864,7 @@ export default function AdminPage() {
             <Card>
               <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><ToggleLeft className="h-4 w-4 text-violet-500" />Feature Toggles</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                {[
-                  { key: "crossAppSync", label: "Cross-App Sync", desc: "Sync employees to CV-365 & Mail", icon: Webhook },
-                  { key: "emailNotifications", label: "Email Notifications", desc: "Send emails on leave/expense actions", icon: Bell },
-                  { key: "auditLogging", label: "Audit Logging", desc: "Track system events in audit log", icon: History },
-                  { key: "twoFactorAuth", label: "Two-Factor Authentication", desc: "Enforce 2FA for admin accounts", icon: Fingerprint },
-                  { key: "apiAccess", label: "API Access", desc: "Enable REST API for integrations", icon: Globe },
-                  { key: "dataExport", label: "Data Export", desc: "Allow CSV/Excel data export", icon: Download },
-                ].map(f => (
+                {FEATURE_CAPABILITIES.map(f => (
                   <div key={f.key} className="flex items-center justify-between rounded-lg border p-3 hover:shadow-sm transition-all">
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center">
@@ -899,9 +875,9 @@ export default function AdminPage() {
                         <p className="text-[10px] text-muted-foreground">{f.desc}</p>
                       </div>
                     </div>
-                    <Switch checked={features[f.key as keyof typeof features]} onCheckedChange={() => toggleFeature(f.key)} />
                   </div>
                 ))}
+                <p className="text-[10px] text-muted-foreground pt-1">These describe capabilities built into the product; none of them are toggled from this page.</p>
               </CardContent>
             </Card>
 
@@ -909,11 +885,42 @@ export default function AdminPage() {
             <Card>
               <CardHeader className="py-3"><CardTitle className="text-sm flex items-center gap-2"><Zap className="h-4 w-4 text-amber-500" />Admin Quick Actions</CardTitle></CardHeader>
               <CardContent className="space-y-3">
+                {/*
+                  "Export Audit Log", "Clear Cache" and "Generate Reports"
+                  used to each fire a bare toast.success with no request or
+                  state change behind it — three buttons that reported
+                  success for things that never happened. "Clear Cache" is
+                  removed outright: there's no cache invalidation mechanism
+                  in this app to trigger, real or otherwise. "Generate
+                  Reports" is removed as a duplicate: the real report
+                  builder now lives at /reports (see the Admin Pages link
+                  below), so faking a second entry point to it here would
+                  just reintroduce the same problem in a different shape.
+                  "Export Audit Log" is kept, wired to build a CSV from the
+                  audit events already loaded into this page — real rows,
+                  no server round trip needed because nothing new is being
+                  fetched.
+                */}
                 {[
-                  { label: "Sync All Employees", desc: "Bulk sync to CV-365 & Mail", icon: RefreshCw, action: () => { fetch("/api/sync/bulk", { method: "POST" }).then(r => r.json()).then(d => { if (d.success) toast.success(`Synced ${d.synced}/${d.total} employees`); else toast.error("Sync failed"); }).catch(() => toast.error("Sync failed")); } },
-                  { label: "Export Audit Log", desc: "Download all audit events", icon: Download, action: () => toast.success("Export started") },
-                  { label: "Clear Cache", desc: "Refresh all store data", icon: RefreshCw, action: () => toast.success("Cache cleared") },
-                  { label: "Generate Reports", desc: "Create monthly HR report", icon: FileText, action: () => toast.success("Report generation started") },
+                  { label: "Sync All Employees", desc: "Bulk sync to CV-365 & Mail", icon: RefreshCw, action: () => { fetch("/api/sync/bulk", { method: "POST" }).then(r => r.json()).then(d => { if (!d.success) { toast.error(d.error || "Sync failed"); return; } toast.success(`${d.summary.withWorkEmail} of ${d.summary.employees} employees have a sign-in account`); if (d.needsAttention) toast.warning(d.needsAttention); }).catch(() => toast.error("Sync failed")); } },
+                  { label: "Export Audit Log", desc: "Download all audit events", icon: Download, action: () => {
+                    const rows = auditStore.items;
+                    if (rows.length === 0) { toast.error("No audit events to export"); return; }
+                    const escape = (v: unknown) => {
+                      const s = v === null || v === undefined ? "" : String(v);
+                      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+                    };
+                    const columns = ["timestamp", "userName", "action", "module", "severity", "description"] as const;
+                    const lines = [columns.join(","), ...rows.map(r => columns.map(c => escape(r[c])).join(","))];
+                    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                    toast.success(`Exported ${rows.length} audit events`);
+                  } },
                 ].map(a => (
                   <Button key={a.label} variant="outline" className="w-full justify-start gap-3 h-auto py-3" onClick={a.action}>
                     <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">

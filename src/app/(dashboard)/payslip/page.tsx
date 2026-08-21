@@ -17,7 +17,6 @@ import {
   CreditCard, Wallet, ArrowDown, ArrowUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip as RTooltip,
@@ -199,11 +198,20 @@ export default function PayslipPage() {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">Payslip</h1>
           <p className="text-muted-foreground mt-1">View salary details, tax computation &amp; history</p>
         </div>
+        {/*
+          Both buttons used to report success on click with no request
+          behind them — "PDF download initiated" with no PDF ever generated,
+          "Payslip emailed" with no email ever sent. Document generation is
+          being built separately (lib/document-templates), so rather than
+          build a second, inconsistent PDF/email path here, these are
+          disabled and say so until that work lands and this page can call
+          the real thing.
+        */}
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2" onClick={() => toast.success("PDF download initiated")}>
+          <Button variant="outline" className="gap-2" disabled title="Not available yet">
             <Download className="h-4 w-4" /> Download PDF
           </Button>
-          <Button variant="outline" className="gap-2" onClick={() => toast.success("Payslip emailed")}>
+          <Button variant="outline" className="gap-2" disabled title="Not available yet">
             <Mail className="h-4 w-4" /> Email Payslip
           </Button>
         </div>

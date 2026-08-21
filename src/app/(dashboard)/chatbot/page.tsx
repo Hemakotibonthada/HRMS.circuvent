@@ -188,8 +188,11 @@ export default function ChatbotPage() {
   }, []);
 
   const giveFeedback = useCallback((msgId: string, type: "up" | "down") => {
+    // Highlighting the clicked thumb is real — it's just component state.
+    // The toast that used to follow ("Thanks for the feedback! ... We'll
+    // improve.") is not: nothing persists this anywhere, so it promised a
+    // human would read it and act on it when no one ever will.
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, feedback: type } : m));
-    toast.success(type === "up" ? "Thanks for the feedback!" : "Sorry about that. We'll improve.");
   }, []);
 
   const copyMessage = useCallback((content: string) => {
