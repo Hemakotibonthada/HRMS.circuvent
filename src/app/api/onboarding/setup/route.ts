@@ -14,7 +14,15 @@ import { randomUUID } from "crypto";
 import { eq, sql, and, isNull } from "drizzle-orm";
 
 import { withTenant } from "@/db/client";
-import { employees, applications, offers, departments, locations, documentTemplates } from "@/db/schema";
+import {
+  employees,
+  applications,
+  offers,
+  departments,
+  locations,
+  documentTemplates,
+  salaryStructures,
+} from "@/db/schema";
 import { NeonDocumentsRepository } from "@/db/repositories/documents.neon";
 import { NeonAssetsRepository } from "@/db/repositories/assets.neon";
 import { NeonLifecycleRepository } from "@/db/repositories/lifecycle.neon";
@@ -132,6 +140,8 @@ export async function POST(request: NextRequest) {
             isNull(employees.deletedAt)
           )
         )
+        .limit(1);
+
       const empType = (normaliseEmploymentType(data.employmentType) || "full_time") as
         | "full_time"
         | "part_time"
@@ -176,6 +186,26 @@ export async function POST(request: NextRequest) {
           joinDate: data.joiningDate,
           employmentType: empType,
           status: "active",
+        });
+      }
+
+      // Record initial salary structure if provided
+      if (data.salary && data.salary > 0) {
+        const ctcMinor = BigInt(Math.round(data.salary * 100));
+        const basicMinor = (ctcMinor * 50n) / 100n;
+        const hraMinor = (ctcMinor * 20n) / 100n;
+        const specialAllowanceMinor = ctcMinor - basicMinor - hraMinor;
+
+        await tx.insert(salaryStructures).values({
+          id: randomUUID(),
+          orgId: ctx.orgId,
+          employeeId,
+          effectiveFrom: data.joiningDate,
+          ctcMinor,
+          basicMinor,
+          hraMinor,
+          specialAllowanceMinor,
+          revisionReason: "hire",
         });
       }
 
