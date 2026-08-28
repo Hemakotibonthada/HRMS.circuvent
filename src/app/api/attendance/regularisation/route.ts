@@ -321,13 +321,19 @@ export async function PATCH(request: NextRequest) {
         .where(eq(attendanceRegularisations.id, body.id));
 
       if (body.status === "approved") {
-        const inTimeStr = existing.inTime || "09:30";
-        const outTimeStr = existing.outTime || "18:30";
-        const totalMinutes = workedMinutes(inTimeStr, outTimeStr) || 540;
-        const workDateStr = existing.attendanceDate;
+        const inTimeClean = existing.inTime ? String(existing.inTime).slice(0, 5) : "09:30";
+        const outTimeClean = existing.outTime ? String(existing.outTime).slice(0, 5) : "18:30";
+        const totalMinutes = workedMinutes(inTimeClean, outTimeClean) || 540;
 
-        const clockInDate = new Date(`${workDateStr}T${inTimeStr}:00`);
-        const clockOutDate = new Date(`${workDateStr}T${outTimeStr}:00`);
+        const attDate = existing.attendanceDate as unknown;
+        const workDateClean = typeof attDate === "string"
+          ? attDate.slice(0, 10)
+          : attDate instanceof Date
+          ? attDate.toISOString().slice(0, 10)
+          : String(attDate ?? "").slice(0, 10);
+
+        const clockInDate = new Date(`${workDateClean}T${inTimeClean}:00`);
+        const clockOutDate = new Date(`${workDateClean}T${outTimeClean}:00`);
 
         const [existingRecord] = await tx
           .select()
@@ -336,7 +342,7 @@ export async function PATCH(request: NextRequest) {
             and(
               eq(attendanceRecords.orgId, ctx.orgId),
               eq(attendanceRecords.employeeId, existing.employeeId),
-              eq(attendanceRecords.workDate, workDateStr)
+              eq(attendanceRecords.workDate, workDateClean)
             )
           )
           .limit(1);
@@ -364,7 +370,7 @@ export async function PATCH(request: NextRequest) {
           await tx.insert(attendanceRecords).values({
             orgId: ctx.orgId,
             employeeId: existing.employeeId,
-            workDate: workDateStr,
+            workDate: workDateClean,
             clockInAt: clockInDate,
             clockOutAt: clockOutDate,
             status: recStatus,

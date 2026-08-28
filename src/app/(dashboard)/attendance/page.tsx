@@ -380,7 +380,8 @@ export default function AttendancePage() {
       });
 
       if (!res.ok) {
-        toast.error(`Could not ${decision} request`);
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error || `Could not ${decision} request`);
         return;
       }
 
