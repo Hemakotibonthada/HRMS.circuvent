@@ -3,9 +3,9 @@
 // ═══════════════════════════════════════════════════════════════
 // Two tokens with different jobs:
 //
-//   access   short-lived (15 min) JWT carrying sub, org, role. Signed, so edge
-//            middleware can authorise a request without touching the database.
-//            Not revocable, which is why it expires quickly.
+//   access   day-long JWT carrying sub, org, role. Signed, so edge middleware
+//            can authorise a request without touching the database. Lifetime
+//            matches auth.circuvent.com (24h from sign-in, not activity-based).
 //   refresh  opaque, 30 days, stored only as a hash in identity.sessions.
 //            Revocable, and rotated on every use.
 //
@@ -21,7 +21,7 @@ import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
-export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 24;
 export const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export const ACCESS_COOKIE = "cv_access";
