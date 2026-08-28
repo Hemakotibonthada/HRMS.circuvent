@@ -866,6 +866,7 @@ export default function OnboardingPage() {
   const handleIssueLetter = async (emp: EmployeeItem) => {
     setActionLoading(true);
     try {
+      const targetEmail = emp.personalEmail || emp.workEmail || "employee@circuvent.com";
       const docRes = await fetch("/api/documents/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -875,11 +876,11 @@ export default function OnboardingPage() {
           title: `Appointment Letter - ${emp.firstName} ${emp.lastName}`.trim(),
           recipients: {
             employee: {
-              email: emp.workEmail || emp.personalEmail || "employee@circuvent.com",
+              email: targetEmail,
               name: `${emp.firstName} ${emp.lastName}`.trim(),
             },
             candidate: {
-              email: emp.workEmail || emp.personalEmail || "employee@circuvent.com",
+              email: targetEmail,
               name: `${emp.firstName} ${emp.lastName}`.trim(),
             },
             signatory: {
@@ -889,6 +890,8 @@ export default function OnboardingPage() {
           },
           extraValues: {
             candidate_name: `${emp.firstName} ${emp.lastName}`.trim(),
+            candidate_email: targetEmail,
+            personal_email: targetEmail,
             designation: emp.designation,
             join_date: emp.joiningDate,
           },
@@ -901,7 +904,7 @@ export default function OnboardingPage() {
         return;
       }
 
-      toast.success(`Appointment letter generated & dispatched to ${emp.workEmail}`);
+      toast.success(`Appointment letter generated & dispatched to ${targetEmail}`);
       loadData();
     } catch {
       toast.error("Could not generate appointment letter");

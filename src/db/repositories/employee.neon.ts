@@ -121,6 +121,7 @@ function toRecord(row: Row): EmployeeRecord {
     lastName: row.lastName,
     fullName: `${row.firstName} ${row.lastName}`.trim(),
     email: row.workEmail,
+    personalEmail: row.personalEmail ?? undefined,
     phone: row.phone ?? undefined,
     avatarUrl: row.avatarUrl ?? undefined,
     departmentId: row.departmentId ?? undefined,

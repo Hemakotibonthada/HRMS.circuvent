@@ -137,6 +137,7 @@ export interface EmployeeRecord {
   /** When `employeeCode` last changed because of a conversion. Undefined for anyone who has never converted. */
   codeChangedAt?: string;
   location?: string;
+  personalEmail?: string;
   /** Major currency units for display. Stored as minor units in Postgres. */
   salary?: number;
   currency: string;

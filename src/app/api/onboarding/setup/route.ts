@@ -388,6 +388,7 @@ export async function POST(request: NextRequest) {
           templates[0];
 
         if (template) {
+          const recipientEmail = data.personalEmail || data.workEmail;
           const doc = await docRepo.generate(
             {
               templateId: template.id,
@@ -395,7 +396,11 @@ export async function POST(request: NextRequest) {
               title: `Appointment Letter - ${data.firstName} ${data.lastName}`,
               recipients: {
                 employee: {
-                  email: data.workEmail,
+                  email: recipientEmail,
+                  name: `${data.firstName} ${data.lastName}`.trim(),
+                },
+                candidate: {
+                  email: recipientEmail,
                   name: `${data.firstName} ${data.lastName}`.trim(),
                 },
                 signatory: {
@@ -405,6 +410,8 @@ export async function POST(request: NextRequest) {
               },
               extraValues: {
                 candidate_name: `${data.firstName} ${data.lastName}`,
+                candidate_email: recipientEmail,
+                personal_email: recipientEmail,
                 designation: data.designation,
                 join_date: data.joiningDate,
                 ctc_annual: data.salary ? `₹${data.salary.toLocaleString("en-IN")}` : "As per offer",
@@ -525,6 +532,7 @@ export async function POST(request: NextRequest) {
     if (data.triggerMailboxInvite) {
       try {
         const invite = await sendMailboxInvite({
+          orgId: ctx.orgId,
           employeeId,
           candidateId: data.candidateId ?? null,
           employmentType: empType,
