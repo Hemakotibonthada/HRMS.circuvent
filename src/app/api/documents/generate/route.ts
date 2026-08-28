@@ -12,7 +12,8 @@ import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
 
 const bodySchema = z
-  .object({    templateId: z.string().uuid(),
+  .object({
+    templateId: z.string().uuid().optional(),
     employeeId: z.string().uuid().optional(),
     candidateId: z.string().uuid().optional(),
     title: z.string().trim().min(1).max(200).optional(),
@@ -106,7 +107,24 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const document = await new NeonDocumentsRepository(ctx).generate(parsed.data, ctx.userId);
+    const docRepo = new NeonDocumentsRepository(ctx);
+    let templateId = parsed.data.templateId;
+    if (!templateId) {
+      const templates = await docRepo.listTemplates();
+      const template =
+        templates.find((t) => t.name === "Appointment Letter") ||
+        templates.find((t) => t.name === "Joining Letter") ||
+        templates[0];
+      if (!template) {
+        return NextResponse.json({ error: "No document template available" }, { status: 400 });
+      }
+      templateId = template.id;
+    }
+
+    const document = await docRepo.generate(
+      { ...parsed.data, templateId },
+      ctx.userId
+    );
     return NextResponse.json(document, { status: 201 });
   } catch (error) {
     if (error instanceof NotFoundError) {

@@ -97,8 +97,10 @@ function toMajor(minor: bigint | null): number | undefined {
   return minor === null ? undefined : Number(minor) / 100;
 }
 
-function toMinor(major: number | undefined): bigint | undefined {
-  return major === undefined ? undefined : BigInt(Math.round(major * 100));
+function toMinor(major: number | null | undefined): bigint | null | undefined {
+  if (major === undefined) return undefined;
+  if (major === null) return null;
+  return BigInt(Math.round(major * 100));
 }
 
 type Row = typeof employees.$inferSelect & { departmentName?: string | null };

@@ -150,20 +150,20 @@ export interface EmployeeCreate {
   firstName: string;
   lastName: string;
   email: string;
-  phone?: string;
-  departmentId?: string;
+  phone?: string | null;
+  departmentId?: string | null;
   designation: string;
-  reportingToId?: string;
+  reportingToId?: string | null;
   employmentType?: string;
   status?: string;
   joinDate: string;
-  location?: string;
-  salary?: number;
+  location?: string | null;
+  salary?: number | null;
 }
 
 export type EmployeeUpdate = Partial<EmployeeCreate> & {
-  exitDate?: string;
-  exitReason?: string;
+  exitDate?: string | null;
+  exitReason?: string | null;
 };
 
 export interface EmployeeRepository

@@ -824,15 +824,24 @@ export default function OnboardingPage() {
     if (!editProfileEmployee) return;
     setActionLoading(true);
     try {
+      const reportingToId =
+        editForm.reportingToId && editForm.reportingToId !== "org" && editForm.reportingToId !== "none"
+          ? editForm.reportingToId
+          : null;
+      const departmentId =
+        editForm.departmentId && editForm.departmentId !== "none"
+          ? editForm.departmentId
+          : null;
+
       const res = await fetch(`/api/employees/${editProfileEmployee.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          departmentId: editForm.departmentId || undefined,
-          reportingToId: editForm.reportingToId || undefined,
-          designation: editForm.designation || undefined,
-          phone: editForm.phone || undefined,
+          departmentId,
+          reportingToId,
+          designation: editForm.designation.trim() || undefined,
+          phone: editForm.phone?.trim() || null,
         }),
       });
 
@@ -877,8 +886,7 @@ export default function OnboardingPage() {
         return;
       }
 
-      toast.success(`Appointment letter generated & sent to ${emp.workEmail}`);
-      setLetterModalEmployee(null);
+      toast.success(`Appointment letter generated & dispatched to ${emp.workEmail}`);
       loadData();
     } catch {
       toast.error("Could not generate appointment letter");
