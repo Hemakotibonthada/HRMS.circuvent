@@ -86,30 +86,28 @@ const setupSchema = z.object({
 });
 
 const STANDARD_ONBOARDING_TASKS = [
-  { phase: "pre", taskKey: "pre__offer_letter_signed", title: "Collect signed offer letter", mandatory: true, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__right_to_work", title: "Collect right-to-work documents (PAN / Aadhaar)", mandatory: true, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__background_check", title: "Complete background-and-reference checks", mandatory: true, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__payroll_bank_setup", title: "Set up payroll and bank details", mandatory: true, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__email_account_created", title: "Create email and directory account", mandatory: true, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__it_equipment_ordered", title: "Provision and image the laptop", mandatory: false, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__desk_assigned", title: "Assign a desk and notify reception", mandatory: false, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__buddy_assigned", title: "Assign an onboarding buddy", mandatory: false, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__welcome_kit_prepared", title: "Send the welcome and first-day packet", mandatory: false, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__offer_letter_signed", title: "Offer letter signed", mandatory: true, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__background_check", title: "Background check", mandatory: true, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__it_equipment_ordered", title: "IT equipment ordered", mandatory: false, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__email_account_created", title: "Email account created", mandatory: true, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__welcome_kit_prepared", title: "Welcome kit prepared", mandatory: false, phaseOrder: 0 },
 
-  { phase: "week1", taskKey: "week1__system_access_setup", title: "Grant system and application access", mandatory: true, phaseOrder: 1 },
-  { phase: "week1", taskKey: "week1__first_1_on_1_with_manager", title: "Manager welcome and first-week schedule", mandatory: false, phaseOrder: 1 },
-  { phase: "week1", taskKey: "week1__company_orientation", title: "Company orientation session", mandatory: false, phaseOrder: 1 },
-  { phase: "week1", taskKey: "week1__policy_acknowledgement", title: "Read and acknowledge company policies", mandatory: true, phaseOrder: 1 },
-  { phase: "week1", taskKey: "week1__security_training", title: "Complete security and data-privacy training", mandatory: true, phaseOrder: 1 },
-  { phase: "week1", taskKey: "week1__first_week_checkin", title: "First-week check-in", mandatory: false, phaseOrder: 1 },
+  { phase: "week1", taskKey: "week1__office_tour", title: "Office tour", mandatory: false, phaseOrder: 1 },
+  { phase: "week1", taskKey: "week1__team_introduction", title: "Team introduction", mandatory: false, phaseOrder: 1 },
+  { phase: "week1", taskKey: "week1__system_access_setup", title: "System access setup", mandatory: true, phaseOrder: 1 },
+  { phase: "week1", taskKey: "week1__policy_acknowledgement", title: "Policy acknowledgement", mandatory: true, phaseOrder: 1 },
+  { phase: "week1", taskKey: "week1__first_1_on_1_with_manager", title: "First 1-on-1 with manager", mandatory: false, phaseOrder: 1 },
 
   { phase: "month1", taskKey: "month1__department_orientation", title: "Department orientation", mandatory: false, phaseOrder: 2 },
   { phase: "month1", taskKey: "month1__role_specific_training", title: "Role-specific training", mandatory: false, phaseOrder: 2 },
-  { phase: "month1", taskKey: "month1__30_day_check_in", title: "30-day performance check-in", mandatory: false, phaseOrder: 2 },
+  { phase: "month1", taskKey: "month1__30_day_check_in", title: "30-day check-in", mandatory: false, phaseOrder: 2 },
   { phase: "month1", taskKey: "month1__benefits_enrollment", title: "Benefits enrollment", mandatory: false, phaseOrder: 2 },
+  { phase: "month1", taskKey: "month1__company_culture_session", title: "Company culture session", mandatory: false, phaseOrder: 2 },
 
   { phase: "month2_3", taskKey: "month2_3__60_day_performance_review", title: "60-day performance review", mandatory: false, phaseOrder: 3 },
   { phase: "month2_3", taskKey: "month2_3__cross_team_collaboration", title: "Cross-team collaboration", mandatory: false, phaseOrder: 3 },
+  { phase: "month2_3", taskKey: "month2_3__advanced_tool_training", title: "Advanced tool training", mandatory: false, phaseOrder: 3 },
+  { phase: "month2_3", taskKey: "month2_3__goals_setting", title: "Goals setting", mandatory: false, phaseOrder: 3 },
   { phase: "month2_3", taskKey: "month2_3__90_day_completion_review", title: "90-day completion review", mandatory: true, phaseOrder: 3 },
 ];
 

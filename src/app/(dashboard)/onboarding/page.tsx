@@ -507,9 +507,24 @@ export default function OnboardingPage() {
       if (!current) return prev;
       previousJourney = current;
 
-      const updatedTasks = current.tasks.map((t) =>
-        t.taskKey === key ? { ...t, completed: !t.completed } : t
-      );
+      const hasTask = current.tasks.some((t) => t.taskKey === key);
+      const updatedTasks = hasTask
+        ? current.tasks.map((t) => (t.taskKey === key ? { ...t, completed: !t.completed } : t))
+        : [
+            ...current.tasks,
+            {
+              id: key,
+              taskKey: key,
+              title: task,
+              phase,
+              phaseOrder: PHASES.findIndex((p) => p.key === phase),
+              mandatory: MANDATORY_TASKS.has(task),
+              completed: true,
+              dueOffsetDays: 0,
+              dueDate: new Date().toISOString().slice(0, 10),
+            },
+          ];
+
       const completedCount = updatedTasks.filter((t) => t.completed).length;
       const totalCount = updatedTasks.length || 1;
       const percent = Math.round((completedCount / totalCount) * 100);
@@ -529,32 +544,22 @@ export default function OnboardingPage() {
     });
 
     try {
-      const journey = await ensureJourney(emp);
-      if (!journey) {
-        if (previousJourney) {
-          setJourneys((prev) => ({ ...prev, [emp.id]: previousJourney! }));
-        }
-        return;
-      }
+      const currentTask = previousJourney?.tasks.find((t) => t.taskKey === key);
+      const targetCompleted = currentTask ? !currentTask.completed : true;
 
-      const existing = journey.tasks.find((t) => t.taskKey === key);
-      if (!existing) {
-        toast.error("That task is not on this checklist");
-        if (previousJourney) {
-          setJourneys((prev) => ({ ...prev, [emp.id]: previousJourney! }));
-        }
-        return;
-      }
-
-      const targetCompleted = previousJourney
-        ? !previousJourney.tasks.find((t) => t.taskKey === key)?.completed
-        : !existing.completed;
-
-      const response = await fetch(`/api/lifecycle/tasks/${existing.id}`, {
-        method: "PATCH",
+      const response = await fetch(`/api/lifecycle/tasks/toggle`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ completed: targetCompleted }),
+        body: JSON.stringify({
+          employeeId: emp.id,
+          taskKey: key,
+          title: task,
+          phase,
+          phaseOrder: PHASES.findIndex((p) => p.key === phase),
+          mandatory: MANDATORY_TASKS.has(task),
+          completed: targetCompleted,
+        }),
       });
 
       const body = (await response.json().catch(() => ({}))) as {

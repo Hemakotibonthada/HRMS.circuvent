@@ -17,6 +17,7 @@
 //     recorded as clean while access is still live is a wrong answer to the
 //     question an audit asks.
 
+import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
 import { employees, lifecycleJourneys, lifecycleTasks } from "@/db/schema/hrms";
@@ -374,6 +375,105 @@ export class NeonLifecycleRepository {
           notes: notes?.trim() || task.notes,
         })
         .where(eq(lifecycleTasks.id, taskId));
+
+      await tx
+        .update(lifecycleJourneys)
+        .set({ updatedAt: new Date() })
+        .where(eq(lifecycleJourneys.id, journey.id));
+
+      const updatedTasks = await tx
+        .select()
+        .from(lifecycleTasks)
+        .where(eq(lifecycleTasks.journeyId, journey.id))
+        .orderBy(asc(lifecycleTasks.phaseOrder), asc(lifecycleTasks.taskKey));
+
+      return toJourneyRecord(journey, updatedTasks);
+    });
+  }
+
+  /**
+   * Toggles a task by taskKey, automatically creating the task in the journey if it did not exist yet.
+   */
+  async toggleTaskByKey(input: {
+    employeeId: string;
+    kind?: LifecycleKind;
+    taskKey: string;
+    title: string;
+    phase: string;
+    phaseOrder?: number;
+    mandatory?: boolean;
+    completed: boolean;
+    actorId: string;
+    notes?: string;
+  }): Promise<LifecycleJourneyRecord> {
+    return withTenant(this.ctx, async (tx) => {
+      const kind = input.kind ?? "onboarding";
+      const journeyRows = await tx
+        .select()
+        .from(lifecycleJourneys)
+        .where(
+          and(
+            eq(lifecycleJourneys.employeeId, input.employeeId),
+            eq(lifecycleJourneys.kind, kind)
+          )
+        )
+        .limit(1);
+
+      let journey = journeyRows[0];
+      if (!journey) {
+        const [created] = await tx
+          .insert(lifecycleJourneys)
+          .values({
+            orgId: this.ctx.orgId,
+            employeeId: input.employeeId,
+            kind,
+            anchorDate: new Date().toISOString().slice(0, 10),
+            status: "in_progress",
+          })
+          .returning();
+        journey = created;
+      }
+
+      const existingTasks = await tx
+        .select()
+        .from(lifecycleTasks)
+        .where(
+          and(
+            eq(lifecycleTasks.journeyId, journey.id),
+            eq(lifecycleTasks.taskKey, input.taskKey)
+          )
+        )
+        .limit(1);
+
+      const existingTask = existingTasks[0];
+
+      if (existingTask) {
+        await tx
+          .update(lifecycleTasks)
+          .set({
+            completed: input.completed,
+            completedAt: input.completed ? new Date() : null,
+            completedById: input.completed ? input.actorId : null,
+            notes: input.notes?.trim() || existingTask.notes,
+          })
+          .where(eq(lifecycleTasks.id, existingTask.id));
+      } else {
+        await tx.insert(lifecycleTasks).values({
+          id: randomUUID(),
+          orgId: this.ctx.orgId,
+          journeyId: journey.id,
+          taskKey: input.taskKey,
+          title: input.title,
+          phase: input.phase,
+          phaseOrder: input.phaseOrder ?? 0,
+          mandatory: input.mandatory ?? false,
+          dueOffsetDays: 0,
+          completed: input.completed,
+          completedAt: input.completed ? new Date() : null,
+          completedById: input.completed ? input.actorId : null,
+          notes: input.notes?.trim() || null,
+        });
+      }
 
       await tx
         .update(lifecycleJourneys)
