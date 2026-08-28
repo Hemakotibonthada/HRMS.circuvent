@@ -87,7 +87,6 @@ export default function OnboardingPage() {
    * vanished on refresh with nothing said.
    */
   const [journeys, setJourneys] = useState<Record<string, LifecycleJourney>>({});
-  const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => { if (!initialized) startSync(COLLECTIONS.employees, store); }, [initialized, store]);
 
@@ -199,22 +198,63 @@ export default function OnboardingPage() {
 
   const toggleTask = async (emp: EmployeeDoc, phase: string, task: string) => {
     const key = taskKeyFor(phase, task);
-    setSaving(`${emp.id}:${key}`);
+    let previousJourney: LifecycleJourney | undefined;
+
+    // 1. Optimistic update: flip state immediately for instantaneous 0ms response
+    setJourneys((prev) => {
+      const current = prev[emp.id];
+      if (!current) return prev;
+      previousJourney = current;
+
+      const updatedTasks = current.tasks.map((t) =>
+        t.taskKey === key ? { ...t, completed: !t.completed } : t
+      );
+      const completedCount = updatedTasks.filter((t) => t.completed).length;
+      const totalCount = updatedTasks.length || 1;
+      const percent = Math.round((completedCount / totalCount) * 100);
+
+      return {
+        ...prev,
+        [emp.id]: {
+          ...current,
+          tasks: updatedTasks,
+          progress: {
+            ...current.progress,
+            completedTasks: completedCount,
+            percent,
+          },
+        },
+      };
+    });
+
     try {
       const journey = await ensureJourney(emp);
-      if (!journey) return;
+      if (!journey) {
+        if (previousJourney) {
+          setJourneys((prev) => ({ ...prev, [emp.id]: previousJourney! }));
+        }
+        return;
+      }
 
       const existing = journey.tasks.find((t) => t.taskKey === key);
       if (!existing) {
         toast.error("That task is not on this checklist");
+        if (previousJourney) {
+          setJourneys((prev) => ({ ...prev, [emp.id]: previousJourney! }));
+        }
         return;
       }
+
+      // Desired target completion state is the inverted value of previous state
+      const targetCompleted = previousJourney
+        ? !previousJourney.tasks.find((t) => t.taskKey === key)?.completed
+        : !existing.completed;
 
       const response = await fetch(`/api/lifecycle/tasks/${existing.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ completed: !existing.completed }),
+        body: JSON.stringify({ completed: targetCompleted }),
       });
 
       const body = (await response.json().catch(() => ({}))) as {
@@ -223,16 +263,20 @@ export default function OnboardingPage() {
       };
 
       if (!response.ok || !body.data) {
-        // The old version said nothing at all when a tick was lost.
         toast.error(body.error ?? "That task could not be saved");
+        if (previousJourney) {
+          setJourneys((prev) => ({ ...prev, [emp.id]: previousJourney! }));
+        }
         return;
       }
 
+      // Reconcile with canonical server state
       setJourneys((prev) => ({ ...prev, [emp.id]: body.data! }));
     } catch {
       toast.error("That task could not be saved");
-    } finally {
-      setSaving(null);
+      if (previousJourney) {
+        setJourneys((prev) => ({ ...prev, [emp.id]: previousJourney! }));
+      }
     }
   };
 
@@ -378,7 +422,6 @@ export default function OnboardingPage() {
                                   <div key={task} className="flex items-center gap-2 py-1">
                                     <Checkbox
                                       checked={isTaskDone(joiner.id, p.key, task)}
-                                      disabled={saving === `${joiner.id}:${taskKeyFor(p.key, task)}`}
                                       onCheckedChange={() => void toggleTask(joiner, p.key, task)}
                                       aria-label={task}
                                     />

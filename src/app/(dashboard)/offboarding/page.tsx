@@ -267,7 +267,6 @@ export default function OffboardingPage() {
    * this rewrite exists to remove.
    */
   const [journeys, setJourneys] = useState<Record<string, LifecycleJourney>>({});
-  const [saving, setSaving] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
   /** The last `ExitProcessingReport` fetched per resignation this session — see `accessState`/`documentState` for why "no report yet" is its own honest state rather than assumed-clean. */
@@ -427,22 +426,62 @@ export default function OffboardingPage() {
   );
 
   const toggleClearance = async (resignation: ResignationRecord, taskKey: string) => {
-    setSaving(`${resignation.employeeId}:${taskKey}`);
+    let previousJourney: LifecycleJourney | undefined;
+
+    // 1. Optimistic update: toggle completion state immediately in memory
+    setJourneys((prev) => {
+      const current = prev[resignation.employeeId];
+      if (!current) return prev;
+      previousJourney = current;
+
+      const updatedTasks = current.tasks.map((t) =>
+        t.taskKey === taskKey ? { ...t, completed: !t.completed } : t
+      );
+      const completedCount = updatedTasks.filter((t) => t.completed).length;
+      const totalCount = updatedTasks.length || 1;
+      const percent = Math.round((completedCount / totalCount) * 100);
+
+      return {
+        ...prev,
+        [resignation.employeeId]: {
+          ...current,
+          tasks: updatedTasks,
+          progress: {
+            ...current.progress,
+            completedTasks: completedCount,
+            percent,
+          },
+        },
+      };
+    });
+
     try {
       const journey = await ensureJourney(resignation);
-      if (!journey) return;
+      if (!journey) {
+        if (previousJourney) {
+          setJourneys((prev) => ({ ...prev, [resignation.employeeId]: previousJourney! }));
+        }
+        return;
+      }
 
       const task = journey.tasks.find((t) => t.taskKey === taskKey);
       if (!task) {
         toast.error("That task is not on this checklist");
+        if (previousJourney) {
+          setJourneys((prev) => ({ ...prev, [resignation.employeeId]: previousJourney! }));
+        }
         return;
       }
+
+      const targetCompleted = previousJourney
+        ? !previousJourney.tasks.find((t) => t.taskKey === taskKey)?.completed
+        : !task.completed;
 
       const response = await fetch(`/api/lifecycle/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ completed: !task.completed }),
+        body: JSON.stringify({ completed: targetCompleted }),
       });
 
       const body = (await response.json().catch(() => ({}))) as {
@@ -452,15 +491,19 @@ export default function OffboardingPage() {
 
       if (!response.ok || !body.data) {
         toast.error(body.error ?? "That task could not be saved");
+        if (previousJourney) {
+          setJourneys((prev) => ({ ...prev, [resignation.employeeId]: previousJourney! }));
+        }
         return;
       }
 
       setJourneys((prev) => ({ ...prev, [resignation.employeeId]: body.data! }));
-      toast.success(task.completed ? "Task reopened" : "Task completed");
+      toast.success(targetCompleted ? "Task completed" : "Task reopened");
     } catch {
       toast.error("That task could not be saved");
-    } finally {
-      setSaving(null);
+      if (previousJourney) {
+        setJourneys((prev) => ({ ...prev, [resignation.employeeId]: previousJourney! }));
+      }
     }
   };
 
@@ -735,12 +778,10 @@ export default function OffboardingPage() {
                                 <div className="space-y-1 ml-4">
                                   {s.tasks.map((task) => {
                                     const done = isTaskDone(resignation.employeeId, task.key);
-                                    const isBusy = saving === `${resignation.employeeId}:${task.key}`;
                                     return (
                                       <div key={task.key} className="flex items-center gap-3 p-2 rounded-lg border hover:bg-muted/50 transition-colors">
                                         <Checkbox
                                           checked={done}
-                                          disabled={isBusy}
                                           onCheckedChange={() => void toggleClearance(resignation, task.key)}
                                           aria-label={task.title}
                                         />
@@ -752,7 +793,7 @@ export default function OffboardingPage() {
                                         </div>
                                         <Badge variant="outline" className="text-xs">{task.assignee}</Badge>
                                         <Badge variant="outline" className={cn("text-xs", done ? "border-green-500 text-green-600" : "border-amber-500 text-amber-600")}>
-                                          {isBusy ? "Saving…" : done ? "Done" : "Pending"}
+                                          {done ? "Done" : "Pending"}
                                         </Badge>
                                       </div>
                                     );
