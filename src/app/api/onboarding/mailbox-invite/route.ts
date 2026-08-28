@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
 
     const recipient = (candRow.personal_email || candRow.email || "").trim();
     const invite = await sendMailboxInvite({
+      orgId: ctx.orgId,
       employeeId: "",
       candidateId: candRow.id,
       employmentType: "full_time",
@@ -116,6 +117,7 @@ export async function POST(request: NextRequest) {
   }
 
   const invite = await sendMailboxInvite({
+    orgId: ctx.orgId,
     employeeId: row.emp.id,
     candidateId: null,
     employmentType: row.emp.employmentType,

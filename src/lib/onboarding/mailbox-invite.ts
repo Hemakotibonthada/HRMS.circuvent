@@ -1,6 +1,7 @@
 import { mailboxInviteEmail } from "@/lib/document-mail";
 import { mailConfigured, sendMail } from "@/lib/mailer";
 import { issueOnboardingToken, mailboxClaimUrl } from "@/lib/onboarding/token";
+import { recordRecruitmentEmailLog } from "@/lib/recruitment-email-log";
 
 export interface MailboxInviteOutcome {
   status: "done" | "blocked" | "failed";
@@ -16,6 +17,7 @@ export function isInternEmploymentType(value: string | null | undefined): boolea
  * Idempotent per employee via a stable subject line — callers should not spam.
  */
 export async function sendMailboxInvite(args: {
+  orgId: string;
   employeeId: string;
   candidateId: string | null;
   employmentType: string | null;
@@ -66,6 +68,20 @@ export async function sendMailboxInvite(args: {
     subject: branded.subject,
     html: branded.html,
     text: branded.text,
+  });
+
+  const from =
+    process.env.EMAIL_FROM?.trim() ||
+    `Circuvent HR <${process.env.SMTP_USER?.trim() ?? "noreply@circuvent.com"}>`;
+
+  await recordRecruitmentEmailLog({
+    orgId: args.orgId,
+    to,
+    subject: branded.subject,
+    from,
+    status: sent ? "sent" : "failed",
+    source: "hrms-mailbox-invite",
+    lastError: sent ? null : "SMTP send failed",
   });
 
   if (!sent) {
