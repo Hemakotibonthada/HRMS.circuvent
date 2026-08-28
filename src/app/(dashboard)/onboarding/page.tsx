@@ -142,6 +142,44 @@ function formatRupeesMinor(minor?: string | null): string {
   return `₹${num.toLocaleString("en-IN")}`;
 }
 
+type MailboxRegistrationStatus = "none" | "pending" | "approved" | "rejected";
+
+interface MailboxRegistrationView {
+  status: MailboxRegistrationStatus;
+  email: string | null;
+}
+
+function pickSelectId(value: string | undefined, options: { id: string }[], fallback = "none") {
+  if (value && value !== "none" && options.some((o) => o.id === value)) return value;
+  return options[0]?.id ?? fallback;
+}
+
+function mailboxStatusLabel(status: MailboxRegistrationStatus, email?: string | null): string {
+  switch (status) {
+    case "pending":
+      return email ? `Pending HR approval (${email})` : "Pending HR approval";
+    case "approved":
+      return email ? `Mailbox active (${email})` : "Mailbox active";
+    case "rejected":
+      return "Mailbox request rejected";
+    default:
+      return "Awaiting mailbox claim";
+  }
+}
+
+function mailboxStatusBadgeClass(status: MailboxRegistrationStatus): string {
+  switch (status) {
+    case "approved":
+      return "bg-emerald-100 text-emerald-800 border-emerald-300";
+    case "pending":
+      return "bg-amber-100 text-amber-800 border-amber-300";
+    case "rejected":
+      return "bg-red-100 text-red-800 border-red-300";
+    default:
+      return "bg-slate-100 text-slate-700 border-slate-300";
+  }
+}
+
 export default function OnboardingPage() {
   const rbac = useRBAC();
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
@@ -149,6 +187,8 @@ export default function OnboardingPage() {
   const [pendingHires, setPendingHires] = useState<PendingHireItem[]>([]);
   const [availableAssets, setAvailableAssets] = useState<AssetItem[]>([]);
   const [journeys, setJourneys] = useState<Record<string, LifecycleJourney>>({});
+  const [mailboxByEmployee, setMailboxByEmployee] = useState<Record<string, MailboxRegistrationView>>({});
+  const [mailboxByCandidate, setMailboxByCandidate] = useState<Record<string, MailboxRegistrationView>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -232,16 +272,66 @@ export default function OnboardingPage() {
           employmentType: e.employmentType || e.employment_type || "full_time",
         }));
         setEmployees(list);
+
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        const joiners = list.filter((e: EmployeeItem) => {
+          if (!e.joiningDate) return false;
+          const jd = new Date(e.joiningDate);
+          return jd >= ninetyDaysAgo && (e.status === "active" || e.status === "probation");
+        });
+        const employeeMailbox: Record<string, MailboxRegistrationView> = {};
+        await Promise.all(
+          joiners.map(async (emp: EmployeeItem) => {
+            try {
+              const res = await fetch(`/api/onboarding/mailbox-status?employeeId=${emp.id}`, {
+                credentials: "include",
+              });
+              if (res.ok) {
+                const body = await res.json();
+                employeeMailbox[emp.id] = body.registration ?? { status: "none", email: null };
+              }
+            } catch {
+              /* optional enrichment */
+            }
+          })
+        );
+        setMailboxByEmployee(employeeMailbox);
       }
 
       if (deptRes.ok) {
         const data = await deptRes.json();
-        setDepartments(data.items || data.departments || data.data || []);
+        const list = (data.items || data.departments || data.data || []).map((d: { id: string; name?: string; code?: string }) => ({
+          id: String(d.id),
+          name: d.name || "Department",
+          code: d.code || "DEPT",
+        }));
+        setDepartments(list);
       }
 
       if (pendingRes.ok) {
         const data = await pendingRes.json();
-        setPendingHires(data.items || []);
+        const hires = data.items || [];
+        setPendingHires(hires);
+        const candidateMailbox: Record<string, MailboxRegistrationView> = {};
+        await Promise.all(
+          hires.map(async (hire: PendingHireItem) => {
+            try {
+              const res = await fetch(`/api/onboarding/mailbox-status?candidateId=${hire.candidateId}`, {
+                credentials: "include",
+              });
+              if (res.ok) {
+                const body = await res.json();
+                candidateMailbox[hire.candidateId] = body.registration ?? { status: "none", email: null };
+              }
+            } catch {
+              /* optional enrichment */
+            }
+          })
+        );
+        setMailboxByCandidate(candidateMailbox);
+      } else if (!pendingRes.ok) {
+        setPendingHires([]);
       }
 
       if (journeysRes.ok) {
@@ -253,7 +343,16 @@ export default function OnboardingPage() {
 
       if (assetsRes.ok) {
         const data = await assetsRes.json();
-        setAvailableAssets(data.items || data.assets || data.data || []);
+        const list = (data.items || data.assets || data.data || []).map(
+          (a: { id: string; name?: string; assetTag?: string; serialNumber?: string }) => ({
+            id: String(a.id),
+            name: a.name || "Asset",
+            assetTag: a.assetTag || a.serialNumber || "Asset",
+            category: "",
+            state: "in_stock",
+          })
+        );
+        setAvailableAssets(list);
       }
     } catch (err) {
       console.error("Failed to load onboarding data:", err);
@@ -445,6 +544,26 @@ export default function OnboardingPage() {
     }
   };
 
+  const departmentLabel = (id: string) => {
+    const match = departments.find((d) => d.id === id);
+    if (match) return `${match.name} (${match.code})`;
+    return id === "none" ? "General / Unassigned" : "Select department";
+  };
+
+  const employeeLabel = (id: string) => {
+    const match = employees.find((e) => e.id === id);
+    if (match) {
+      return `${match.firstName} ${match.lastName} (${match.designation || match.workEmail || "Admin"})`;
+    }
+    return id === "none" ? "Company Management (Direct)" : "Select reporting manager";
+  };
+
+  const assetLabel = (id: string) => {
+    const match = availableAssets.find((a) => a.id === id);
+    if (match) return `${match.name} (${match.assetTag})`;
+    return id === "none" ? "Assign Later (In Stock)" : "Choose hardware";
+  };
+
   // Filtered Joiners
   const filteredJoiners = useMemo(() => {
     let result = newJoiners;
@@ -480,16 +599,39 @@ export default function OnboardingPage() {
       personalEmail: hire.email,
       phone: hire.phone || "",
       designation: hire.designation || "Software Engineer",
-      departmentId: departments[0]?.id || "none",
-      reportingToId: employees[0]?.id || "none",
+      departmentId: pickSelectId(undefined, departments),
+      reportingToId: pickSelectId(undefined, employees),
       buddyId: "none",
       joiningDate: hire.proposedStartDate || new Date().toISOString().slice(0, 10),
       salary: annualSalaryNum.toString(),
       employmentType: "full_time",
       issueAppointmentLetter: true,
       triggerMailboxInvite: true,
-      assetId: availableAssets[0]?.id || "none",
+      assetId: pickSelectId(undefined, availableAssets),
     });
+  };
+
+  const resendMailboxInvite = async (employeeId: string) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/onboarding/mailbox-invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ employeeId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(body.error || "Could not resend mailbox invitation");
+        return;
+      }
+      toast.success(body.detail || "Mailbox invitation sent");
+      loadData();
+    } catch {
+      toast.error("Could not resend mailbox invitation");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   // Submit Setup Modal (Convert ATS Hire to HRMS Employee)
@@ -528,12 +670,17 @@ export default function OnboardingPage() {
       });
 
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        toast.error(body.error || "Failed to complete employee onboarding");
+        const errBody = await res.json().catch(() => ({}));
+        toast.error(errBody.error || "Failed to complete employee onboarding");
         return;
       }
 
-      toast.success("Employee onboarded! Manager assigned & appointment pack dispatched.");
+      const body = (await res.json().catch(() => ({}))) as { mailboxInviteDetail?: string };
+      toast.success(
+        body.mailboxInviteDetail
+          ? `Employee onboarded. ${body.mailboxInviteDetail}`
+          : "Employee onboarded! Manager assigned & appointment pack dispatched."
+      );
       setSetupModalHire(null);
       loadData();
     } catch {
@@ -844,6 +991,17 @@ export default function OnboardingPage() {
                               <span className="flex items-center gap-1">
                                 <Calendar className="h-3.5 w-3.5" /> Joined {joiner.joiningDate}
                               </span>
+                              {mailboxByEmployee[joiner.id] && (
+                                <>
+                                  <span>•</span>
+                                  <Badge
+                                    variant="outline"
+                                    className={cn("text-[10px] font-medium", mailboxStatusBadgeClass(mailboxByEmployee[joiner.id].status))}
+                                  >
+                                    {mailboxStatusLabel(mailboxByEmployee[joiner.id].status, mailboxByEmployee[joiner.id].email)}
+                                  </Badge>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -900,11 +1058,7 @@ export default function OnboardingPage() {
                                 <Package className="h-4 w-4 mr-2 text-emerald-600" /> Allocate IT Equipment
                               </DropdownMenuItem>
 
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  toast.success(`Mailbox claim invite dispatched to ${joiner.workEmail}`);
-                                }}
-                              >
+                              <DropdownMenuItem onClick={() => void resendMailboxInvite(joiner.id)}>
                                 <Mail className="h-4 w-4 mr-2 text-amber-500" /> Resend Mailbox Invite
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -1017,7 +1171,8 @@ export default function OnboardingPage() {
                         <TableHead>Designation</TableHead>
                         <TableHead>Proposed Start Date</TableHead>
                         <TableHead>Annual CTC</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead>Offer</TableHead>
+                        <TableHead>Mailbox</TableHead>
                         <TableHead className="text-right">Action</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1047,6 +1202,16 @@ export default function OnboardingPage() {
                             <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs">
                               Offer Accepted
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const mailbox = mailboxByCandidate[hire.candidateId] ?? { status: "none" as const, email: null };
+                              return (
+                                <Badge variant="outline" className={cn("text-xs", mailboxStatusBadgeClass(mailbox.status))}>
+                                  {mailboxStatusLabel(mailbox.status, mailbox.email)}
+                                </Badge>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell className="text-right">
                             <Button
@@ -1115,14 +1280,16 @@ export default function OnboardingPage() {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Department / Team *</Label>
               <Select
                 value={setupForm.departmentId || "none"}
                 onValueChange={(val) => setSetupForm({ ...setupForm, departmentId: val })}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select department">
+                    {departmentLabel(setupForm.departmentId || "none")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {departments.length === 0 ? (
@@ -1138,14 +1305,16 @@ export default function OnboardingPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Reporting Manager *</Label>
               <Select
                 value={setupForm.reportingToId || "none"}
                 onValueChange={(val) => setSetupForm({ ...setupForm, reportingToId: val })}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select reporting manager" />
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select reporting manager">
+                    {employeeLabel(setupForm.reportingToId || "none")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {employees.length === 0 ? (
@@ -1161,14 +1330,18 @@ export default function OnboardingPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               <Label>Onboarding Buddy (Optional)</Label>
               <Select
                 value={setupForm.buddyId || "none"}
                 onValueChange={(val) => setSetupForm({ ...setupForm, buddyId: val })}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Assign a peer buddy..." />
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Assign a peer buddy...">
+                    {setupForm.buddyId === "none" || !setupForm.buddyId
+                      ? "No Buddy Assigned"
+                      : employeeLabel(setupForm.buddyId)}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No Buddy Assigned</SelectItem>
@@ -1199,14 +1372,16 @@ export default function OnboardingPage() {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0 md:col-span-2">
               <Label>Allocate IT Equipment</Label>
               <Select
                 value={setupForm.assetId || "none"}
                 onValueChange={(val) => setSetupForm({ ...setupForm, assetId: val })}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose hardware..." />
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Choose hardware...">
+                    {assetLabel(setupForm.assetId || "none")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Assign Later (In Stock)</SelectItem>

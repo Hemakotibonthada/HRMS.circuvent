@@ -30,8 +30,7 @@ import { loadOrgLetterDefaults } from "@/db/repositories/org-identity";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
 import { normaliseEmploymentType } from "@/lib/employee-rules";
-import { offerAcceptedEmail } from "@/lib/document-mail";
-import { mailConfigured, sendMail } from "@/lib/mailer";
+import { sendMailboxInvite } from "@/lib/onboarding/mailbox-invite";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -199,6 +198,31 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      if (data.candidateId) {
+        await tx.execute(
+          sql`UPDATE hrms.employees
+                 SET candidate_id = ${data.candidateId}::uuid,
+                     application_id = COALESCE(application_id, ${data.applicationId ?? null}::uuid),
+                     updated_at = now()
+               WHERE id = ${employeeId}::uuid`
+        );
+      } else if (data.applicationId) {
+        await tx.execute(
+          sql`UPDATE hrms.employees
+                 SET application_id = ${data.applicationId}::uuid,
+                     updated_at = now()
+               WHERE id = ${employeeId}::uuid`
+        );
+      }
+
+      const [departmentRow] = data.departmentId
+        ? await tx
+            .select({ name: departments.name })
+            .from(departments)
+            .where(eq(departments.id, data.departmentId))
+            .limit(1)
+        : [];
+
       // Record initial salary structure if provided
       if (data.salary && data.salary > 0) {
         const ctcMinor = BigInt(Math.round(data.salary * 100));
@@ -317,34 +341,33 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 4. Trigger Mailbox Invite / Setup
+      let mailboxInvitePayload:
+        | {
+            employeeId: string;
+            candidateId: string | null;
+            employmentType: string;
+            personalEmail: string | null;
+            candidateName: string;
+            jobTitle: string;
+            startDate: string;
+            employeeCode: string;
+            department: string | null;
+          }
+        | undefined;
+
+      // 4. Queue mailbox invite (sent after the transaction commits)
       if (data.triggerMailboxInvite) {
-        try {
-          const task = journey.tasks.find((t) => t.taskKey === "pre__email_account_created");
-          if (task) {
-            journey = await lifecycleRepo.setTaskCompletion(task.id, true, ctx.userId);
-          }
-
-          const targetEmail = data.personalEmail || data.workEmail;
-          if (targetEmail && mailConfigured()) {
-            const claimUrl = process.env.MAIL_REGISTER_URL || "https://mail.circuvent.com/register";
-            const emailBody = offerAcceptedEmail({
-              recipientName: `${data.firstName} ${data.lastName}`.trim(),
-              companyName: "Circuvent Technologies",
-              positionTitle: data.designation,
-              claimUrl,
-            });
-
-            await sendMail({
-              to: targetEmail,
-              subject: emailBody.subject,
-              html: emailBody.html,
-              text: emailBody.text,
-            });
-          }
-        } catch (mailErr) {
-          console.error("Mailbox setup task tick / send failed:", mailErr);
-        }
+        mailboxInvitePayload = {
+          employeeId,
+          candidateId: data.candidateId ?? null,
+          employmentType: empType,
+          personalEmail: data.personalEmail ?? null,
+          candidateName: `${data.firstName} ${data.lastName}`.trim(),
+          jobTitle: data.designation,
+          startDate: data.joiningDate,
+          employeeCode: code,
+          department: departmentRow?.name ?? null,
+        };
       }
 
       // 5. Allocate IT Asset (if assetId provided)
@@ -367,10 +390,18 @@ export async function POST(request: NextRequest) {
         employeeCode: code,
         journey,
         documentId,
+        mailboxInvitePayload,
       };
     });
 
-    return NextResponse.json({ success: true, ...result }, { status: 201 });
+    let mailboxInviteDetail: string | undefined;
+    if (result.mailboxInvitePayload) {
+      const invite = await sendMailboxInvite(result.mailboxInvitePayload);
+      mailboxInviteDetail = invite.detail;
+    }
+
+    const { mailboxInvitePayload: _payload, ...rest } = result;
+    return NextResponse.json({ success: true, ...rest, mailboxInviteDetail }, { status: 201 });
   } catch (error) {
     console.error("Onboarding setup failed:", error);
     return NextResponse.json(

@@ -80,6 +80,7 @@ const PUBLIC_PREFIXES = [
   // before the handler runs, and every mailbox request is refused with a
   // message about a session that nobody involved was ever going to have.
   "/api/mailbox-eligibility",
+  "/api/service/mailbox-approved",
   // The scheduled sweep is called by Vercel's cron infrastructure, which has
   // no cookie and no session. It authenticates itself: the handler compares
   // `Authorization: Bearer $CRON_SECRET` in constant time and refuses every

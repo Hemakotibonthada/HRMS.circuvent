@@ -267,6 +267,51 @@ export function offerAcceptedEmail(ctx: OfferMailContext): EmailBody {
   };
 }
 
+/** Signed-link invitation to create a company mailbox after offer acceptance. */
+export function mailboxInviteEmail(input: {
+  candidateName: string;
+  jobTitle?: string | null;
+  startDate?: string | null;
+  claimUrl: string;
+  isIntern?: boolean;
+  expiresInDays?: number;
+}): EmailBody {
+  const name = escapeHtml(greet(input.candidateName));
+  const position = input.jobTitle ? escapeHtml(input.jobTitle) : null;
+  const days = input.expiresInDays ?? 14;
+  const formatNote = input.isIntern
+    ? "cvi-&lt;your id&gt;@circuvent.com"
+    : "&lt;your name&gt;@circuvent.com";
+
+  return {
+    subject: "Set up your Circuvent email address",
+    html:
+      WRAPPER_OPEN("Your company email") +
+      paragraph(`Hi ${name},`) +
+      paragraph(
+        `Thank you for accepting your offer. Before your first day, please set up your company email address — it is how you sign in to mail, HRMS, and the rest of the suite.`
+      ) +
+      (position ? paragraph(`<strong>Role:</strong> ${position}`) : "") +
+      (input.startDate ? paragraph(`<strong>Start date:</strong> ${escapeHtml(input.startDate)}`) : "") +
+      paragraph(`<strong>Address format:</strong> ${formatNote}`) +
+      button(input.claimUrl, "Create your company email") +
+      paragraph(
+        `Your request goes to HR for approval, so the mailbox will not work the moment you submit it. You will hear from us once it is active.`
+      ) +
+      footNote(`This link is personal to you and expires in ${days} days. Please do not forward it.`) +
+      WRAPPER_CLOSE,
+    text:
+      `Hi ${greet(input.candidateName)},\n\n` +
+      `Thank you for accepting your offer. Before your first day, please set up your company email address.\n\n` +
+      (input.jobTitle ? `Role: ${input.jobTitle}\n` : "") +
+      (input.startDate ? `Start date: ${input.startDate}\n` : "") +
+      `Address format: ${input.isIntern ? "cvi-<your id>@circuvent.com" : "<your name>@circuvent.com"}\n\n` +
+      `Create your company email:\n${input.claimUrl}\n\n` +
+      `Your request goes to HR for approval before the mailbox is activated.\n\n` +
+      `This link is personal to you and expires in ${days} days.`,
+  };
+}
+
 /**
  * Told to the internal team, not the candidate.
  *
