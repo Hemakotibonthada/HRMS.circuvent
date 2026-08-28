@@ -55,8 +55,13 @@ export default function DepartmentsPage() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("grid");
   const [createOpen, setCreateOpen] = useState(false);
+  const [editDept, setEditDept] = useState<DepartmentDoc | null>(null);
   const [detailDept, setDetailDept] = useState<DepartmentDoc | null>(null);
   const [form, setForm] = useState({
+    name: "", code: "", head: "", headEmail: "", description: "",
+    budget: "", location: "", status: "active",
+  });
+  const [editForm, setEditForm] = useState({
     name: "", code: "", head: "", headEmail: "", description: "",
     budget: "", location: "", status: "active",
   });
@@ -105,6 +110,20 @@ export default function DepartmentsPage() {
 
   const resetForm = () => setForm({ name: "", code: "", head: "", headEmail: "", description: "", budget: "", location: "", status: "active" });
 
+  const openEditModal = (dept: DepartmentDoc) => {
+    setEditDept(dept);
+    setEditForm({
+      name: dept.name || "",
+      code: dept.code || "",
+      head: dept.head || "",
+      headEmail: dept.headEmail || "",
+      description: dept.description || "",
+      budget: dept.budget !== undefined && dept.budget !== null ? String(dept.budget) : "",
+      location: dept.location || "",
+      status: dept.status || (dept.isActive ? "active" : "inactive"),
+    });
+  };
+
   const handleCreate = async () => {
     if (!form.name || !form.code) { toast.error("Name and code are required"); return; }
     try {
@@ -113,7 +132,40 @@ export default function DepartmentsPage() {
       });
       toast.success(`Department "${form.name}" created!`);
       setCreateOpen(false); resetForm();
+      startSync(COLLECTIONS.departments, deptStore);
     } catch { toast.error("Failed to create department"); }
+  };
+
+  const handleUpdate = async () => {
+    if (!editDept) return;
+    if (!editForm.name || !editForm.code) {
+      toast.error("Name and code are required");
+      return;
+    }
+
+    try {
+      const budgetNum = editForm.budget ? parseFloat(editForm.budget) : 0;
+      const updatePayload = {
+        ...editForm,
+        budget: budgetNum,
+      };
+      await genericService(COLLECTIONS.departments).update(editDept.id, updatePayload);
+      deptStore.updateItem(editDept.id, {
+        ...editDept,
+        ...updatePayload,
+      });
+      toast.success(`Department "${editForm.name}" updated successfully!`);
+      setEditDept(null);
+      if (detailDept && detailDept.id === editDept.id) {
+        setDetailDept({
+          ...detailDept,
+          ...updatePayload,
+        });
+      }
+    } catch (err) {
+      console.error("Department update failed:", err);
+      toast.error("Failed to update department");
+    }
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -239,9 +291,16 @@ export default function DepartmentsPage() {
                         <Button size="sm" variant="outline" className="flex-1 gap-1" onClick={e => { e.stopPropagation(); setDetailDept(dept); }}>
                           <Eye className="h-3 w-3" /> View
                         </Button>
-                        <Button size="sm" variant="outline" className="gap-1 text-destructive" onClick={e => { e.stopPropagation(); handleDelete(dept.id, dept.name); }}>
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        {rbac.can("departments.manage") && (
+                          <Button size="sm" variant="outline" className="flex-1 gap-1" onClick={e => { e.stopPropagation(); openEditModal(dept); }}>
+                            <Edit className="h-3 w-3" /> Edit
+                          </Button>
+                        )}
+                        {rbac.can("departments.manage") && (
+                          <Button size="sm" variant="outline" className="gap-1 text-destructive" onClick={e => { e.stopPropagation(); handleDelete(dept.id, dept.name); }}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -380,16 +439,98 @@ export default function DepartmentsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Department Dialog */}
+      <Dialog open={!!editDept} onOpenChange={() => setEditDept(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="h-5 w-5 text-violet-500" />
+              Edit Department: {editDept?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Department Name *</Label>
+                <Input placeholder="e.g. Engineering" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Code *</Label>
+                <Input placeholder="e.g. ENG" value={editForm.code} onChange={e => setEditForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Department Head</Label>
+                <Input placeholder="Head name" value={editForm.head} onChange={e => setEditForm(f => ({ ...f, head: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Head Email</Label>
+                <Input type="email" placeholder="head@company.com" value={editForm.headEmail} onChange={e => setEditForm(f => ({ ...f, headEmail: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea placeholder="Department description..." value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} rows={3} />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label>Budget ($)</Label>
+                <Input type="number" placeholder="e.g. 500000" value={editForm.budget} onChange={e => setEditForm(f => ({ ...f, budget: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Location</Label>
+                <Select value={editForm.location} onValueChange={v => setEditForm(f => ({ ...f, location: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select location" /></SelectTrigger>
+                  <SelectContent>
+                    {LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select value={editForm.status} onValueChange={v => setEditForm(f => ({ ...f, status: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="restructuring">Restructuring</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDept(null)}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleUpdate}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Department Detail Dialog */}
       <Dialog open={!!detailDept} onOpenChange={() => setDetailDept(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-                <Building2 className="h-5 w-5 text-white" />
-              </div>
-              {detailDept?.name}
-            </DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                  <Building2 className="h-5 w-5 text-white" />
+                </div>
+                {detailDept?.name}
+              </DialogTitle>
+              {rbac.can("departments.manage") && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => {
+                    if (detailDept) openEditModal(detailDept);
+                  }}
+                >
+                  <Edit className="h-3.5 w-3.5" /> Edit Department
+                </Button>
+              )}
+            </div>
           </DialogHeader>
           {detailDept && (
             <div className="space-y-4 py-2">

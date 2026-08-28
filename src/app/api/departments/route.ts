@@ -34,6 +34,7 @@ const createSchema = z.object({
   headId: z.string().uuid().optional(),
   parentId: z.string().uuid().optional(),
   costCenter: z.string().trim().max(64).optional(),
+  budget: z.coerce.number().min(0).optional(),
 });
 
 /** `Customer Success` → `CUSTOMER_SUCCESS`, trimmed to fit the column. */
@@ -81,6 +82,7 @@ export async function GET(request: NextRequest) {
           description: departments.description,
           headId: departments.headId,
           parentId: departments.parentId,
+          budgetMinor: departments.budgetMinor,
           costCenter: departments.costCenter,
           isActive: departments.isActive,
           headcount: sql<number>`(
@@ -119,6 +121,7 @@ export async function GET(request: NextRequest) {
             description: departments.description,
             headId: departments.headId,
             parentId: departments.parentId,
+            budgetMinor: departments.budgetMinor,
             costCenter: departments.costCenter,
             isActive: departments.isActive,
             headcount: sql<number>`0`,
@@ -128,7 +131,11 @@ export async function GET(request: NextRequest) {
           .orderBy(asc(departments.name));
       }
 
-      return fetched;
+      return fetched.map((r) => ({
+        ...r,
+        budget: r.budgetMinor ? Number(r.budgetMinor) / 100 : 0,
+        employees: Number(r.headcount || 0),
+      }));
     });
 
     return NextResponse.json({ items: rows, data: rows, count: rows.length });
@@ -181,7 +188,16 @@ export async function POST(request: NextRequest) {
         .where(eq(departments.code, code))
         .limit(1);
 
-      if (existing[0]) return existing[0];
+      if (existing[0]) {
+        return {
+          ...existing[0],
+          budget: existing[0].budgetMinor ? Number(existing[0].budgetMinor) / 100 : 0,
+        };
+      }
+
+      const budgetMinor = parsed.data.budget
+        ? BigInt(Math.round(parsed.data.budget * 100))
+        : null;
 
       const [row] = await tx
         .insert(departments)
@@ -193,10 +209,14 @@ export async function POST(request: NextRequest) {
           headId: parsed.data.headId ?? null,
           parentId: parsed.data.parentId ?? null,
           costCenter: parsed.data.costCenter ?? null,
+          budgetMinor,
         })
         .returning();
 
-      return row;
+      return {
+        ...row,
+        budget: row.budgetMinor ? Number(row.budgetMinor) / 100 : 0,
+      };
     });
 
     return NextResponse.json(created, { status: 201 });
