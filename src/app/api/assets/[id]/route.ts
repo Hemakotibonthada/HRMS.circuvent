@@ -132,3 +132,126 @@ export async function POST(
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+const updateAssetSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(200).optional(),
+  category: z.string().trim().min(1).max(100).optional(),
+  categoryId: z.string().uuid().optional().nullable(),
+  assetTag: z.string().trim().max(100).optional(),
+  serialNumber: z.string().trim().max(100).optional().nullable(),
+  manufacturer: z.string().trim().max(100).optional().nullable(),
+  model: z.string().trim().max(100).optional().nullable(),
+  purchaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  purchaseCostMinor: z.union([z.string(), z.number()]).optional().nullable(),
+  warrantyExpiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  supplier: z.string().trim().max(120).optional().nullable(),
+  invoiceNumber: z.string().trim().max(120).optional().nullable(),
+  depreciationMethod: z.enum(["straight_line", "declining_balance", "double_declining", "none"]).optional(),
+  usefulLifeMonths: z.number().int().positive().optional(),
+  salvageValueMinor: z.union([z.string(), z.number()]).optional().nullable(),
+  condition: z.enum(["new", "good", "fair", "poor", "damaged"]).optional(),
+  locationId: z.string().uuid().optional().nullable(),
+  notes: z.string().trim().max(2000).optional().nullable(),
+});
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  let ctx;
+  try {
+    ctx = await requireApiContext(request);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
+
+  const canManage = ["owner", "admin", "hr", "manager"].includes(ctx.role);
+  if (!canManage) {
+    return NextResponse.json({ error: "You cannot modify assets" }, { status: 403 });
+  }
+
+  const { id } = await params;
+
+  let raw: unknown;
+  try {
+    raw = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Request body is not valid JSON" }, { status: 400 });
+  }
+
+  const parsed = updateAssetSchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid asset update" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const record = await new NeonAssetsRepository(ctx).update(
+      id,
+      {
+        ...parsed.data,
+        categoryId: parsed.data.categoryId ?? undefined,
+        serialNumber: parsed.data.serialNumber ?? undefined,
+        manufacturer: parsed.data.manufacturer ?? undefined,
+        model: parsed.data.model ?? undefined,
+        purchaseDate: parsed.data.purchaseDate ?? undefined,
+        purchaseCostMinor: parsed.data.purchaseCostMinor?.toString(),
+        warrantyExpiresOn: parsed.data.warrantyExpiresOn ?? undefined,
+        supplier: parsed.data.supplier ?? undefined,
+        invoiceNumber: parsed.data.invoiceNumber ?? undefined,
+        salvageValueMinor: parsed.data.salvageValueMinor?.toString(),
+        locationId: parsed.data.locationId ?? undefined,
+        notes: parsed.data.notes ?? undefined,
+      },
+      ctx.userId
+    );
+
+    return NextResponse.json({ asset: record });
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+    if (error instanceof RepositoryError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Asset update failed:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  let ctx;
+  try {
+    ctx = await requireApiContext(request);
+  } catch (e) {
+    const { body, status } = authErrorResponse(e);
+    return NextResponse.json(body, { status });
+  }
+
+  const canDelete = ["owner", "admin", "hr"].includes(ctx.role);
+  if (!canDelete) {
+    return NextResponse.json({ error: "You cannot delete assets" }, { status: 403 });
+  }
+
+  const { id } = await params;
+
+  try {
+    await new NeonAssetsRepository(ctx).delete(id, ctx.userId);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+    if (error instanceof RepositoryError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Asset deletion failed:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

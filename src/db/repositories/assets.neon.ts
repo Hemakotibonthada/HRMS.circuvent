@@ -33,12 +33,73 @@ import {
 } from "@/lib/assets";
 import { NotFoundError, RepositoryError } from "./types";
 
+export interface AssetCategoryRecord {
+  id: string;
+  name: string;
+  code: string;
+  defaultUsefulLifeMonths: number;
+  defaultMethod: "straight_line" | "declining_balance" | "double_declining" | "none";
+  defaultSalvagePercent: number;
+  maxPerEmployee: number;
+  serviceIntervalMonths: number;
+  requiresAcceptance: boolean;
+  isActive: boolean;
+}
+
+export interface AssetCreateInput {
+  name: string;
+  category: string;
+  categoryId?: string;
+  assetTag?: string;
+  serialNumber?: string;
+  manufacturer?: string;
+  model?: string;
+  purchaseDate?: string;
+  purchaseCostMinor?: string | bigint;
+  currency?: string;
+  warrantyExpiresOn?: string;
+  supplier?: string;
+  invoiceNumber?: string;
+  depreciationMethod?: "straight_line" | "declining_balance" | "double_declining" | "none";
+  usefulLifeMonths?: number;
+  salvageValueMinor?: string | bigint;
+  condition?: string;
+  state?: AssetState;
+  locationId?: string;
+  assignedToId?: string;
+  notes?: string;
+}
+
+export interface AssetUpdateInput {
+  name?: string;
+  category?: string;
+  categoryId?: string;
+  assetTag?: string;
+  serialNumber?: string;
+  manufacturer?: string;
+  model?: string;
+  purchaseDate?: string;
+  purchaseCostMinor?: string | bigint;
+  warrantyExpiresOn?: string;
+  supplier?: string;
+  invoiceNumber?: string;
+  depreciationMethod?: "straight_line" | "declining_balance" | "double_declining" | "none";
+  usefulLifeMonths?: number;
+  salvageValueMinor?: string | bigint;
+  condition?: string;
+  locationId?: string;
+  notes?: string;
+}
+
 export interface AssetRecord {
   id: string;
   assetTag: string;
   name: string;
   category: string;
+  categoryId?: string;
   serialNumber?: string;
+  manufacturer?: string;
+  model?: string;
   state: AssetState;
   condition: string;
   assignedToId?: string;
@@ -50,6 +111,11 @@ export interface AssetRecord {
   isUnderWarranty?: boolean;
   warrantyExpiringSoon?: boolean;
   nextServiceDue?: string;
+  depreciationMethod?: string;
+  usefulLifeMonths?: number;
+  salvageValueMinor?: string;
+  locationId?: string;
+  notes?: string;
 }
 
 function toDepreciable(row: typeof assets.$inferSelect): DepreciableAsset | null {
@@ -102,7 +168,10 @@ export class NeonAssetsRepository {
           assetTag: a.assetTag,
           name: a.name,
           category: a.category,
+          categoryId: a.categoryId ?? undefined,
           serialNumber: a.serialNumber ?? undefined,
+          manufacturer: a.manufacturer ?? undefined,
+          model: a.model ?? undefined,
           state: a.state,
           condition: a.condition,
           assignedToId: a.assignedToId ?? undefined,
@@ -119,6 +188,11 @@ export class NeonAssetsRepository {
             a.purchaseDate && interval > 0
               ? (nextServiceDue(a.lastServicedOn, interval, a.purchaseDate) ?? undefined)
               : undefined,
+          depreciationMethod: a.depreciationMethod ?? undefined,
+          usefulLifeMonths: a.usefulLifeMonths ?? undefined,
+          salvageValueMinor: a.salvageValueMinor?.toString(),
+          locationId: a.locationId ?? undefined,
+          notes: a.notes ?? undefined,
         };
       });
     });
@@ -539,6 +613,174 @@ export class NeonAssetsRepository {
     });
   }
 
+  /** Lists all active asset categories. */
+  async listCategories(): Promise<AssetCategoryRecord[]> {
+    return withTenant(this.ctx, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(assetCategories)
+        .where(eq(assetCategories.isActive, true))
+        .orderBy(asc(assetCategories.name));
+
+      return rows.map((c) => ({
+        id: c.id,
+        name: c.name,
+        code: c.code,
+        defaultUsefulLifeMonths: c.defaultUsefulLifeMonths,
+        defaultMethod: c.defaultMethod,
+        defaultSalvagePercent: c.defaultSalvagePercent,
+        maxPerEmployee: c.maxPerEmployee,
+        serviceIntervalMonths: c.serviceIntervalMonths,
+        requiresAcceptance: c.requiresAcceptance,
+        isActive: c.isActive,
+      }));
+    });
+  }
+
+  /** Provisions a new asset into company inventory. */
+  async create(input: AssetCreateInput, actorId: string): Promise<AssetRecord> {
+    return withTenant(this.ctx, async (tx) => {
+      let tag = input.assetTag?.trim();
+      if (!tag) {
+        const count = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(assets);
+        const nextNum = (count[0]?.count ?? 0) + 1;
+        tag = `CIR-AST-${String(nextNum).padStart(4, "0")}`;
+      }
+
+      const costMinor = input.purchaseCostMinor !== undefined && input.purchaseCostMinor !== null
+        ? BigInt(input.purchaseCostMinor.toString())
+        : null;
+
+      const salvageMinor = input.salvageValueMinor !== undefined && input.salvageValueMinor !== null
+        ? BigInt(input.salvageValueMinor.toString())
+        : 0n;
+
+      const [row] = await tx
+        .insert(assets)
+        .values({
+          orgId: this.ctx.orgId,
+          assetTag: tag,
+          name: input.name,
+          category: input.category,
+          categoryId: input.categoryId || null,
+          serialNumber: input.serialNumber || null,
+          manufacturer: input.manufacturer || null,
+          model: input.model || null,
+          purchaseDate: input.purchaseDate || null,
+          purchaseCostMinor: costMinor,
+          currency: input.currency || "INR",
+          warrantyExpiresOn: input.warrantyExpiresOn || null,
+          supplier: input.supplier || null,
+          invoiceNumber: input.invoiceNumber || null,
+          depreciationMethod: input.depreciationMethod || "straight_line",
+          usefulLifeMonths: input.usefulLifeMonths || 36,
+          salvageValueMinor: salvageMinor,
+          condition: input.condition || "new",
+          state: input.state || "in_stock",
+          status: input.state === "assigned" ? "assigned" : (input.state === "in_repair" ? "in_repair" : "available"),
+          locationId: input.locationId || null,
+          assignedToId: input.assignedToId || null,
+          assignedAt: input.assignedToId ? new Date() : null,
+          notes: input.notes || null,
+        })
+        .returning();
+
+      await this.log(tx, row.id, "create", "in_stock", row.state, {
+        actorId,
+        employeeId: input.assignedToId,
+        detail: "Asset created and registered",
+      });
+
+      if (input.assignedToId) {
+        await tx.insert(assetAssignments).values({
+          orgId: this.ctx.orgId,
+          assetId: row.id,
+          employeeId: input.assignedToId,
+          issuedById: actorId,
+          conditionOnIssue: input.condition || "new",
+          bookValueOnIssueMinor: costMinor,
+        });
+      }
+
+      return this.toRecord(row);
+    });
+  }
+
+  /** Updates asset properties and metadata. */
+  async update(id: string, input: AssetUpdateInput, actorId: string): Promise<AssetRecord> {
+    return withTenant(this.ctx, async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(assets)
+        .where(eq(assets.id, id))
+        .for("update")
+        .limit(1);
+
+      if (!existing) throw new NotFoundError("Asset", id);
+
+      const updates: Partial<typeof assets.$inferInsert> = {
+        updatedAt: new Date(),
+      };
+
+      if (input.name !== undefined) updates.name = input.name;
+      if (input.category !== undefined) updates.category = input.category;
+      if (input.categoryId !== undefined) updates.categoryId = input.categoryId || null;
+      if (input.assetTag !== undefined) updates.assetTag = input.assetTag;
+      if (input.serialNumber !== undefined) updates.serialNumber = input.serialNumber || null;
+      if (input.manufacturer !== undefined) updates.manufacturer = input.manufacturer || null;
+      if (input.model !== undefined) updates.model = input.model || null;
+      if (input.purchaseDate !== undefined) updates.purchaseDate = input.purchaseDate || null;
+      if (input.purchaseCostMinor !== undefined) {
+        updates.purchaseCostMinor = input.purchaseCostMinor !== null ? BigInt(input.purchaseCostMinor.toString()) : null;
+      }
+      if (input.warrantyExpiresOn !== undefined) updates.warrantyExpiresOn = input.warrantyExpiresOn || null;
+      if (input.supplier !== undefined) updates.supplier = input.supplier || null;
+      if (input.invoiceNumber !== undefined) updates.invoiceNumber = input.invoiceNumber || null;
+      if (input.depreciationMethod !== undefined) updates.depreciationMethod = input.depreciationMethod;
+      if (input.usefulLifeMonths !== undefined) updates.usefulLifeMonths = input.usefulLifeMonths;
+      if (input.salvageValueMinor !== undefined) {
+        updates.salvageValueMinor = input.salvageValueMinor !== null ? BigInt(input.salvageValueMinor.toString()) : 0n;
+      }
+      if (input.condition !== undefined) updates.condition = input.condition;
+      if (input.locationId !== undefined) updates.locationId = input.locationId || null;
+      if (input.notes !== undefined) updates.notes = input.notes || null;
+
+      const [updated] = await tx
+        .update(assets)
+        .set(updates)
+        .where(eq(assets.id, id))
+        .returning();
+
+      await this.log(tx, id, "update", existing.state, updated.state, {
+        actorId,
+        detail: "Asset properties modified",
+      });
+
+      return this.toRecord(updated);
+    });
+  }
+
+  /** Deletes an unassigned / disposed / retired asset. */
+  async delete(id: string, actorId: string): Promise<void> {
+    return withTenant(this.ctx, async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(assets)
+        .where(eq(assets.id, id))
+        .limit(1);
+
+      if (!existing) throw new NotFoundError("Asset", id);
+
+      if (existing.state === "assigned") {
+        throw new RepositoryError("Cannot delete an asset that is currently assigned to an employee", 400);
+      }
+
+      await tx.delete(assets).where(eq(assets.id, id));
+    });
+  }
+
   // ─── Internals ─────────────────────────────────────────────
 
   private async log(
@@ -571,7 +813,10 @@ export class NeonAssetsRepository {
       assetTag: row.assetTag,
       name: row.name,
       category: row.category,
+      categoryId: row.categoryId ?? undefined,
       serialNumber: row.serialNumber ?? undefined,
+      manufacturer: row.manufacturer ?? undefined,
+      model: row.model ?? undefined,
       state: row.state,
       condition: row.condition,
       assignedToId: row.assignedToId ?? undefined,
@@ -583,6 +828,11 @@ export class NeonAssetsRepository {
       warrantyExpiresOn: row.warrantyExpiresOn ?? undefined,
       isUnderWarranty: warranty.isUnderWarranty,
       warrantyExpiringSoon: warranty.expiringSoon,
+      depreciationMethod: row.depreciationMethod ?? undefined,
+      usefulLifeMonths: row.usefulLifeMonths ?? undefined,
+      salvageValueMinor: row.salvageValueMinor?.toString(),
+      locationId: row.locationId ?? undefined,
+      notes: row.notes ?? undefined,
     };
   }
 }
