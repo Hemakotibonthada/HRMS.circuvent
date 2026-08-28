@@ -253,6 +253,8 @@ export interface LeaveRepository
 export interface AttendanceRecordDto {
   id: string;
   employeeId: string;
+  employeeName?: string;
+  employeeCode?: string;
   workDate: string;
   clockInAt?: string;
   clockOutAt?: string;

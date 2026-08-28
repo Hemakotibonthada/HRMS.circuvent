@@ -1166,7 +1166,7 @@ export default function OnboardingPage() {
                           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/60 border text-xs">
                             <UserCheck className="h-3.5 w-3.5 text-blue-500" />
                             <span className="text-muted-foreground">Manager:</span>
-                            <span className="font-semibold">{joiner.reportingManager || "Vema Naidu (CEO)"}</span>
+                            <span className="font-semibold">{joiner.reportingManager || "Direct (Leadership)"}</span>
                           </div>
 
                           {joiner.buddyName && (

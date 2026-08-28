@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
 
   const queue = new URL(request.url).searchParams.get("queue") === "1";
   if (queue && !APPROVERS.includes(ctx.role)) {
-    return NextResponse.json({ error: "Not permitted" }, { status: 403 });
+    return NextResponse.json({ requests: [], policy: DEFAULT_POLICY });
   }
 
   try {

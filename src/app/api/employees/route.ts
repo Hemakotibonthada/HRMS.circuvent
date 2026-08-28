@@ -111,7 +111,7 @@ function errorResponse(error: unknown) {
 export async function GET(request: NextRequest) {
   let ctx;
   try {
-    ctx = await requireApiContext(request, ["owner", "admin", "hr", "manager"]);
+    ctx = await requireApiContext(request, ["owner", "admin", "hr", "manager", "employee"]);
   } catch (e) {
     const { body, status } = authErrorResponse(e);
     return NextResponse.json(body, { status });

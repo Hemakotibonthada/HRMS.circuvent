@@ -133,8 +133,14 @@ export class NeonAttendanceRepository implements AttendanceRepository {
       const where = rangeConditions.length ? and(...rangeConditions) : undefined;
 
       const rows = await tx
-        .select()
+        .select({
+          record: attendanceRecords,
+          employeeFirstName: employees.firstName,
+          employeeLastName: employees.lastName,
+          employeeCode: employees.employeeCode,
+        })
         .from(attendanceRecords)
+        .leftJoin(employees, eq(employees.id, attendanceRecords.employeeId))
         .where(where)
         .orderBy(desc(attendanceRecords.workDate), asc(attendanceRecords.employeeId))
         .limit(pageSize)
@@ -146,7 +152,13 @@ export class NeonAttendanceRepository implements AttendanceRepository {
         .where(where);
 
       return {
-        items: rows.map(toRecord),
+        items: rows.map((r) => ({
+          ...toRecord(r.record),
+          employeeName: r.employeeFirstName
+            ? `${r.employeeFirstName} ${r.employeeLastName ?? ""}`.trim()
+            : undefined,
+          employeeCode: r.employeeCode ?? undefined,
+        })),
         total,
         page,
         pageSize,
@@ -158,11 +170,24 @@ export class NeonAttendanceRepository implements AttendanceRepository {
   async getById(id: string): Promise<AttendanceRecordDto | null> {
     return withTenant(this.ctx, async (tx) => {
       const rows = await tx
-        .select()
+        .select({
+          record: attendanceRecords,
+          employeeFirstName: employees.firstName,
+          employeeLastName: employees.lastName,
+          employeeCode: employees.employeeCode,
+        })
         .from(attendanceRecords)
+        .leftJoin(employees, eq(employees.id, attendanceRecords.employeeId))
         .where(eq(attendanceRecords.id, id))
         .limit(1);
-      return rows[0] ? toRecord(rows[0]) : null;
+      if (!rows[0]) return null;
+      return {
+        ...toRecord(rows[0].record),
+        employeeName: rows[0].employeeFirstName
+          ? `${rows[0].employeeFirstName} ${rows[0].employeeLastName ?? ""}`.trim()
+          : undefined,
+        employeeCode: rows[0].employeeCode ?? undefined,
+      };
     });
   }
 

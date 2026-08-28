@@ -25,7 +25,7 @@ import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
 
-const READ_ROLES = ["owner", "admin", "hr", "manager"] as const;
+const READ_ROLES = ["owner", "admin", "hr", "manager", "employee"] as const;
 const WRITE_ROLES = ["owner", "admin", "hr"] as const;
 
 function fail(error: unknown) {

@@ -441,12 +441,12 @@ export default function AttendancePage() {
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* LIVE PUNCH & TERMINAL CONSOLE CARD                              */}
       {/* ═══════════════════════════════════════════════════════════════ */}
-      <Card className="border-0 shadow-lg bg-gradient-to-br from-violet-900 via-indigo-900 to-slate-900 text-white overflow-hidden relative">
-        <div className="absolute top-0 right-0 p-6 opacity-10">
-          <Clock className="w-64 h-64" />
+      <div className="rounded-2xl shadow-xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white border border-slate-800/80 overflow-hidden relative p-6">
+        <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
+          <Clock className="w-64 h-64 text-indigo-200" />
         </div>
 
-        <CardContent className="p-6 relative z-10">
+        <div className="relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
             {/* Left: Live Time & Status */}
             <div className="lg:col-span-5 space-y-3">
@@ -463,7 +463,7 @@ export default function AttendancePage() {
               </div>
 
               <div className="flex items-baseline gap-3">
-                <h2 className="text-4xl sm:text-5xl font-black font-mono tracking-tight text-white">
+                <h2 className="text-4xl sm:text-5xl font-black font-mono tracking-tight text-white drop-shadow-sm">
                   {currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })}
                 </h2>
               </div>
@@ -492,7 +492,7 @@ export default function AttendancePage() {
             </div>
 
             {/* Middle: Shift & Work Policy */}
-            <div className="lg:col-span-3 space-y-2 border-y lg:border-y-0 lg:border-x border-white/10 py-4 lg:py-0 lg:px-6">
+            <div className="lg:col-span-3 space-y-2 border-y lg:border-y-0 lg:border-x border-white/15 py-4 lg:py-0 lg:px-6">
               <div className="text-xs text-slate-300 uppercase tracking-wider font-semibold">Standard Shift</div>
               <p className="text-lg font-bold text-white">09:30 AM – 06:30 PM</p>
               <p className="text-xs text-slate-300">General Day Shift (8.0h working + 1.0h break)</p>
@@ -510,7 +510,7 @@ export default function AttendancePage() {
                 onClick={handleClockToggle}
                 disabled={actionLoading}
                 className={cn(
-                  "h-14 font-bold text-base shadow-xl gap-2 transition-all border-0",
+                  "h-14 font-bold text-base shadow-xl gap-2 transition-all border-0 cursor-pointer",
                   isClockedIn
                     ? "bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white"
                     : "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white"
@@ -525,7 +525,7 @@ export default function AttendancePage() {
                   variant="outline"
                   size="sm"
                   onClick={() => setSmartcardModalOpen(true)}
-                  className="flex-1 bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs gap-1.5 h-10"
+                  className="flex-1 bg-white/10 hover:bg-white/20 text-white border-white/20 hover:border-white/30 text-xs gap-1.5 h-10 cursor-pointer"
                 >
                   <CreditCard className="h-4 w-4 text-cyan-300" />
                   Smartcard / NFC Tap
@@ -535,7 +535,7 @@ export default function AttendancePage() {
                   variant="outline"
                   size="sm"
                   onClick={() => setRegularizeOpen(true)}
-                  className="flex-1 bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs gap-1.5 h-10"
+                  className="flex-1 bg-white/10 hover:bg-white/20 text-white border-white/20 hover:border-white/30 text-xs gap-1.5 h-10 cursor-pointer"
                 >
                   <FileEdit className="h-4 w-4 text-purple-300" />
                   Regularize Day
@@ -543,8 +543,8 @@ export default function AttendancePage() {
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* KPI METRIC TILES                                                */}
@@ -688,8 +688,8 @@ export default function AttendancePage() {
                           <TableRow key={rec.id} className="hover:bg-muted/40">
                             <TableCell>
                               <div>
-                                <p className="font-bold text-sm">{rec.employeeName || user?.displayName || user?.email || "Vema Naidu"}</p>
-                                <p className="font-mono text-[11px] text-muted-foreground">{rec.employeeCode || "EMP-0002"}</p>
+                                <p className="font-bold text-sm">{rec.employeeName || user?.displayName || user?.email || "Employee"}</p>
+                                <p className="font-mono text-[11px] text-muted-foreground">{rec.employeeCode || "—"}</p>
                               </div>
                             </TableCell>
                             <TableCell className="font-mono text-xs font-medium">
@@ -855,7 +855,7 @@ export default function AttendancePage() {
               <div className="mt-8 flex justify-between items-end">
                 <div>
                   <p className="text-[10px] text-cyan-200 uppercase">Cardholder</p>
-                  <p className="font-bold text-sm">{user?.displayName || user?.email || "Vema Naidu"}</p>
+                  <p className="font-bold text-sm">{user?.displayName || user?.email || "Employee"}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] text-cyan-200 uppercase">Badge ID</p>
