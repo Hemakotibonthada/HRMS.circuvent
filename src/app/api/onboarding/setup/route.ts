@@ -14,9 +14,7 @@ import { randomUUID } from "crypto";
 import { eq, sql, and, isNull } from "drizzle-orm";
 
 import { withTenant } from "@/db/client";
-import { employees, applications, offers, departments, locations } from "@/db/schema/hrms";
-import { documentTemplates } from "@/db/schema/talent";
-import { salaryStructures } from "@/db/schema/payroll";
+import { employees, applications, offers, departments, locations, documentTemplates } from "@/db/schema";
 import { NeonDocumentsRepository } from "@/db/repositories/documents.neon";
 import { NeonAssetsRepository } from "@/db/repositories/assets.neon";
 import { NeonLifecycleRepository } from "@/db/repositories/lifecycle.neon";
@@ -134,9 +132,12 @@ export async function POST(request: NextRequest) {
             isNull(employees.deletedAt)
           )
         )
-        .limit(1);
-
-      const empType = normaliseEmploymentType(data.employmentType);
+      const empType = (normaliseEmploymentType(data.employmentType) || "full_time") as
+        | "full_time"
+        | "part_time"
+        | "contract"
+        | "intern"
+        | "freelance";
 
       if (existing[0]) {
         employeeId = existing[0].id;
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
             departmentId: data.departmentId || null,
             reportingToId: data.reportingToId || null,
             locationId: data.locationId || null,
-            joiningDate: data.joiningDate,
+            joinDate: data.joiningDate,
             employmentType: empType,
             status: "active",
             updatedAt: new Date(),
@@ -172,7 +173,7 @@ export async function POST(request: NextRequest) {
           departmentId: data.departmentId || null,
           reportingToId: data.reportingToId || null,
           locationId: data.locationId || null,
-          joiningDate: data.joiningDate,
+          joinDate: data.joiningDate,
           employmentType: empType,
           status: "active",
         });
@@ -268,7 +269,7 @@ export async function POST(request: NextRequest) {
             // Mark task done
             const task = journey.tasks.find((t) => t.taskKey === "pre__offer_letter_signed");
             if (task) {
-              journey = await lifecycleRepo.toggleTask(task.id, true);
+              journey = await lifecycleRepo.setTaskCompletion(task.id, true, ctx.userId);
             }
           }
         } catch (docErr) {
@@ -281,7 +282,7 @@ export async function POST(request: NextRequest) {
         try {
           const task = journey.tasks.find((t) => t.taskKey === "pre__email_account_created");
           if (task) {
-            journey = await lifecycleRepo.toggleTask(task.id, true);
+            journey = await lifecycleRepo.setTaskCompletion(task.id, true, ctx.userId);
           }
         } catch (mailErr) {
           console.error("Mailbox setup task tick failed:", mailErr);
@@ -296,7 +297,7 @@ export async function POST(request: NextRequest) {
 
           const task = journey.tasks.find((t) => t.taskKey === "pre__it_equipment_ordered");
           if (task) {
-            journey = await lifecycleRepo.toggleTask(task.id, true);
+            journey = await lifecycleRepo.setTaskCompletion(task.id, true, ctx.userId);
           }
         } catch (assetErr) {
           console.error("Asset allocation failed:", assetErr);
