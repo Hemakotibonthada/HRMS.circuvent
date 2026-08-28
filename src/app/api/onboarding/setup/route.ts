@@ -347,9 +347,21 @@ export async function POST(request: NextRequest) {
           .where(eq(offers.id, data.offerId));
       }
 
-      // 2. Initialize 90-Day Lifecycle Journey & Tasks
-      const lifecycleRepo = new NeonLifecycleRepository(ctx);
-      let journey = await lifecycleRepo.start({
+      return {
+        employeeId,
+        employeeCode: code,
+        empType,
+        departmentName: departmentRow?.name ?? null,
+      };
+    });
+
+    const { employeeId, employeeCode, empType, departmentName } = result;
+
+    // 2. Initialize 90-Day Lifecycle Journey & Tasks (Post-commit)
+    const lifecycleRepo = new NeonLifecycleRepository(ctx);
+    let journey: any = null;
+    try {
+      journey = await lifecycleRepo.start({
         employeeId,
         kind: "onboarding",
         anchorDate: data.joiningDate,
@@ -361,71 +373,68 @@ export async function POST(request: NextRequest) {
           mandatory: t.mandatory,
         })),
       });
+    } catch (lifecycleErr) {
+      console.error("Lifecycle journey initialization failed:", lifecycleErr);
+    }
 
-      // 3. Issue Appointment Letter
-      let documentId: string | null = null;
-      if (data.issueAppointmentLetter) {
-        try {
-          const templates = await tx
-            .select({ id: documentTemplates.id, name: documentTemplates.name })
-            .from(documentTemplates)
-            .where(
-              and(
-                eq(documentTemplates.orgId, ctx.orgId),
-                eq(documentTemplates.isActive, true)
-              )
-            );
+    // 3. Issue Appointment Letter
+    let documentId: string | null = null;
+    if (data.issueAppointmentLetter) {
+      try {
+        const defaults = (await loadOrgLetterDefaults(ctx)) ?? {};
+        const docRepo = new NeonDocumentsRepository(ctx);
+        const templates = await docRepo.listTemplates();
+        const template =
+          templates.find((t) => t.name === "Appointment Letter") ||
+          templates.find((t) => t.name === "Joining Letter") ||
+          templates[0];
 
-          const template =
-            templates.find((t) => t.name === "Appointment Letter") ||
-            templates.find((t) => t.name === "Joining Letter") ||
-            templates[0];
-
-          if (template) {
-            const defaults = (await loadOrgLetterDefaults(ctx)) ?? {};
-            const docRepo = new NeonDocumentsRepository(ctx);
-
-            const doc = await docRepo.generate(
-              {
-                templateId: template.id,
-                employeeId,
-                title: `Appointment Letter - ${data.firstName} ${data.lastName}`,
-                recipients: {
-                  employee: {
-                    email: data.workEmail,
-                    name: `${data.firstName} ${data.lastName}`.trim(),
-                  },
-                  signatory: {
-                    email: defaults.hrContactEmail || "hr@circuvent.com",
-                    name: defaults.signatoryName || "Authorised Signatory",
-                  },
+        if (template) {
+          const doc = await docRepo.generate(
+            {
+              templateId: template.id,
+              employeeId,
+              title: `Appointment Letter - ${data.firstName} ${data.lastName}`,
+              recipients: {
+                employee: {
+                  email: data.workEmail,
+                  name: `${data.firstName} ${data.lastName}`.trim(),
                 },
-                extraValues: {
-                  candidate_name: `${data.firstName} ${data.lastName}`,
-                  designation: data.designation,
-                  join_date: data.joiningDate,
-                  ctc_annual: data.salary ? `₹${data.salary.toLocaleString("en-IN")}` : "As per offer",
+                signatory: {
+                  email: defaults.hrContactEmail || "hr@circuvent.com",
+                  name: defaults.signatoryName || "Authorised Signatory",
                 },
               },
-              ctx.userId
-            );
+              extraValues: {
+                candidate_name: `${data.firstName} ${data.lastName}`,
+                designation: data.designation,
+                join_date: data.joiningDate,
+                ctc_annual: data.salary ? `₹${data.salary.toLocaleString("en-IN")}` : "As per offer",
+              },
+            },
+            ctx.userId
+          );
 
-            documentId = doc.id;
+          documentId = doc.id;
 
-            // Mark task done for offer/appointment letter
-            const task = journey.tasks.find((t) => t.taskKey === "pre__offer_letter_signed");
+          // Mark task done for offer/appointment letter
+          if (journey) {
+            const task = journey.tasks.find((t: any) => t.taskKey === "pre__offer_letter_signed");
             if (task) {
               journey = await lifecycleRepo.setTaskCompletion(task.id, true, ctx.userId);
             }
           }
-        } catch (docErr) {
-          console.error("Appointment letter generation failed:", docErr);
         }
+      } catch (docErr) {
+        console.error("Appointment letter generation failed:", docErr);
       }
+    }
 
+    // Update completed checklist tasks
+    if (journey) {
       // Mark right-to-work documents collected if provided
       if (data.rightToWorkCollected || data.panNumber || data.aadhaarNumber) {
-        const rtwTask = journey.tasks.find((t) => t.taskKey === "pre__right_to_work");
+        const rtwTask = journey.tasks.find((t: any) => t.taskKey === "pre__right_to_work");
         if (rtwTask) {
           try {
             journey = await lifecycleRepo.setTaskCompletion(rtwTask.id, true, ctx.userId);
@@ -437,7 +446,7 @@ export async function POST(request: NextRequest) {
 
       // Mark background check done if verified
       if (data.backgroundCheckStatus === "verified") {
-        const bgTask = journey.tasks.find((t) => t.taskKey === "pre__background_check");
+        const bgTask = journey.tasks.find((t: any) => t.taskKey === "pre__background_check");
         if (bgTask) {
           try {
             journey = await lifecycleRepo.setTaskCompletion(bgTask.id, true, ctx.userId);
@@ -449,7 +458,7 @@ export async function POST(request: NextRequest) {
 
       // Mark payroll and bank setup done if bank details given
       if (data.bankName || data.accountNumber) {
-        const bankTask = journey.tasks.find((t) => t.taskKey === "pre__payroll_bank_setup");
+        const bankTask = journey.tasks.find((t: any) => t.taskKey === "pre__payroll_bank_setup");
         if (bankTask) {
           try {
             journey = await lifecycleRepo.setTaskCompletion(bankTask.id, true, ctx.userId);
@@ -461,7 +470,7 @@ export async function POST(request: NextRequest) {
 
       // Mark desk assigned if specified
       if (data.workstationDesk) {
-        const deskTask = journey.tasks.find((t) => t.taskKey === "pre__desk_assigned");
+        const deskTask = journey.tasks.find((t: any) => t.taskKey === "pre__desk_assigned");
         if (deskTask) {
           try {
             journey = await lifecycleRepo.setTaskCompletion(deskTask.id, true, ctx.userId);
@@ -473,7 +482,7 @@ export async function POST(request: NextRequest) {
 
       // Mark buddy assigned if chosen
       if (data.buddyId && data.buddyId !== "none") {
-        const buddyTask = journey.tasks.find((t) => t.taskKey === "pre__buddy_assigned");
+        const buddyTask = journey.tasks.find((t: any) => t.taskKey === "pre__buddy_assigned");
         if (buddyTask) {
           try {
             journey = await lifecycleRepo.setTaskCompletion(buddyTask.id, true, ctx.userId);
@@ -485,7 +494,7 @@ export async function POST(request: NextRequest) {
 
       // Mark email created if invite triggered
       if (data.triggerMailboxInvite) {
-        const mailTask = journey.tasks.find((t) => t.taskKey === "pre__email_account_created");
+        const mailTask = journey.tasks.find((t: any) => t.taskKey === "pre__email_account_created");
         if (mailTask) {
           try {
             journey = await lifecycleRepo.setTaskCompletion(mailTask.id, true, ctx.userId);
@@ -494,24 +503,30 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+    }
 
-      let mailboxInvitePayload:
-        | {
-            employeeId: string;
-            candidateId: string | null;
-            employmentType: string;
-            personalEmail: string | null;
-            candidateName: string;
-            jobTitle: string;
-            startDate: string;
-            employeeCode: string;
-            department: string | null;
+    // 4. Allocate IT Asset (if assetId provided)
+    if (data.assetId) {
+      try {
+        const assetsRepo = new NeonAssetsRepository(ctx);
+        await assetsRepo.issue(data.assetId, employeeId, ctx.userId, "good");
+
+        if (journey) {
+          const task = journey.tasks.find((t: any) => t.taskKey === "pre__it_equipment_ordered");
+          if (task) {
+            journey = await lifecycleRepo.setTaskCompletion(task.id, true, ctx.userId);
           }
-        | undefined;
+        }
+      } catch (assetErr) {
+        console.error("Asset allocation failed:", assetErr);
+      }
+    }
 
-      // 4. Queue mailbox invite (sent after the transaction commits)
-      if (data.triggerMailboxInvite) {
-        mailboxInvitePayload = {
+    // 5. Send Mailbox invite
+    let mailboxInviteDetail: string | undefined;
+    if (data.triggerMailboxInvite) {
+      try {
+        const invite = await sendMailboxInvite({
           employeeId,
           candidateId: data.candidateId ?? null,
           employmentType: empType,
@@ -519,43 +534,26 @@ export async function POST(request: NextRequest) {
           candidateName: `${data.firstName} ${data.lastName}`.trim(),
           jobTitle: data.designation,
           startDate: data.joiningDate,
-          employeeCode: code,
-          department: departmentRow?.name ?? null,
-        };
+          employeeCode,
+          department: departmentName,
+        });
+        mailboxInviteDetail = invite.detail;
+      } catch (mailErr) {
+        console.error("Mailbox invite dispatch failed:", mailErr);
       }
-
-      // 5. Allocate IT Asset (if assetId provided)
-      if (data.assetId) {
-        try {
-          const assetsRepo = new NeonAssetsRepository(ctx);
-          await assetsRepo.issue(data.assetId, employeeId, ctx.userId, "good");
-
-          const task = journey.tasks.find((t) => t.taskKey === "pre__it_equipment_ordered");
-          if (task) {
-            journey = await lifecycleRepo.setTaskCompletion(task.id, true, ctx.userId);
-          }
-        } catch (assetErr) {
-          console.error("Asset allocation failed:", assetErr);
-        }
-      }
-
-      return {
-        employeeId,
-        employeeCode: code,
-        journey,
-        documentId,
-        mailboxInvitePayload,
-      };
-    });
-
-    let mailboxInviteDetail: string | undefined;
-    if (result.mailboxInvitePayload) {
-      const invite = await sendMailboxInvite(result.mailboxInvitePayload);
-      mailboxInviteDetail = invite.detail;
     }
 
-    const { mailboxInvitePayload: _payload, ...rest } = result;
-    return NextResponse.json({ success: true, ...rest, mailboxInviteDetail }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        employeeId,
+        employeeCode,
+        journey,
+        documentId,
+        mailboxInviteDetail,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("Onboarding setup failed:", error);
     return NextResponse.json(
