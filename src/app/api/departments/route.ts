@@ -47,6 +47,16 @@ export function codeFrom(name: string): string {
   return code || "DEPT";
 }
 
+const DEFAULT_DEPARTMENTS = [
+  { name: "Executive Management", code: "EXEC", description: "Executive Leadership & Board" },
+  { name: "Engineering", code: "ENG", description: "Software Engineering, Architecture & DevOps" },
+  { name: "Product & Design", code: "PROD", description: "Product Management, UI/UX & Research" },
+  { name: "Operations & Logistics", code: "OPS", description: "Operations, Facility & Logistics" },
+  { name: "Human Resources", code: "HR", description: "People Operations, Talent & Culture" },
+  { name: "Sales & Marketing", code: "SALES", description: "Revenue, Growth & Marketing" },
+  { name: "Finance & Accounts", code: "FIN", description: "Finance, Accounts & Compliance" },
+];
+
 export async function GET(request: NextRequest) {
   let ctx;
   try {
@@ -80,9 +90,45 @@ export async function GET(request: NextRequest) {
         })
         .from(departments);
 
-      return includeInactive
+      let fetched = await (includeInactive
         ? query.orderBy(asc(departments.name))
-        : query.where(eq(departments.isActive, true)).orderBy(asc(departments.name));
+        : query.where(eq(departments.isActive, true)).orderBy(asc(departments.name)));
+
+      if (fetched.length === 0) {
+        for (const def of DEFAULT_DEPARTMENTS) {
+          try {
+            await tx
+              .insert(departments)
+              .values({
+                orgId: ctx.orgId,
+                name: def.name,
+                code: def.code,
+                description: def.description,
+                isActive: true,
+              });
+          } catch {
+            // ignore uniqueness conflict if any
+          }
+        }
+
+        fetched = await tx
+          .select({
+            id: departments.id,
+            name: departments.name,
+            code: departments.code,
+            description: departments.description,
+            headId: departments.headId,
+            parentId: departments.parentId,
+            costCenter: departments.costCenter,
+            isActive: departments.isActive,
+            headcount: sql<number>`0`,
+          })
+          .from(departments)
+          .where(eq(departments.isActive, true))
+          .orderBy(asc(departments.name));
+      }
+
+      return fetched;
     });
 
     return NextResponse.json({ items: rows, data: rows, count: rows.length });

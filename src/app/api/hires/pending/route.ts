@@ -41,10 +41,29 @@ export interface PendingHire {
   lastName: string;
   email: string;
   phone: string | null;
+  personalEmail: string | null;
+  gender: string | null;
+  dateOfBirth: string | null;
+  bloodGroup: string | null;
+  panNumber: string | null;
+  aadhaarNumber: string | null;
+  uanNumber: string | null;
+  emergencyContactName: string | null;
+  emergencyContactRelationship: string | null;
+  emergencyContactPhone: string | null;
   designation: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
   offerStatus: string | null;
   annualCtcMinor: string | null;
   proposedStartDate: string | null;
+  noticePeriodDays: number | null;
+  bankName: string | null;
+  accountHolderName: string | null;
+  accountNumber: string | null;
+  ifsc: string | null;
+  accountType: string | null;
+  consentBackgroundVerification: boolean | null;
   registrationSubmittedAt: string | null;
   ready: boolean;
   /** Empty when ready; otherwise what HR has to resolve first. */
@@ -81,10 +100,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const items = await withTenant({ orgId: ctx.orgId, userId: ctx.userId }, async (tx) => {
-      // Everyone with an offer that has gone somewhere, newest first. The
-      // status filter is deliberately wide — `checkHireProvenance` decides
-      // what counts, and duplicating that decision in SQL is how the two
-      // would drift apart.
+      // Everyone with an offer that has gone somewhere, newest first.
       const rows = await tx
         .select({
           offerId: offers.id,
@@ -120,10 +136,7 @@ export async function GET(request: NextRequest) {
 
       if (rows.length === 0) return [] as PendingHire[];
 
-      // Collapsed to one entry per candidate, keeping their most advanced
-      // offer rather than their newest: a withdrawn revision must not hide an
-      // acceptance. Same comparator `loadHireProvenance` uses, imported rather
-      // than rewritten.
+      // Collapsed to one entry per candidate, keeping their most advanced offer
       const byCandidate = new Map<string, typeof rows>();
       for (const row of rows) {
         const list = byCandidate.get(row.candidateId) ?? [];
@@ -133,12 +146,7 @@ export async function GET(request: NextRequest) {
 
       const candidateIds = [...byCandidate.keys()];
 
-      // `hrms.employees.candidate_id` comes from ATS's migration 010 and is
-      // not in this app's Drizzle schema, so it is read as raw SQL.
-      //
-      // `sql.param` around the array is load-bearing: interpolating a JS array
-      // directly expands it to a tuple — `ANY(($1, $2)::uuid[])` — which
-      // Postgres rejects. Bound as one parameter it is a real array.
+      // Check if already an active employee
       const hired = await tx.execute(
         sql`SELECT candidate_id::text AS candidate_id
               FROM hrms.employees
@@ -151,21 +159,81 @@ export async function GET(request: NextRequest) {
         )
       );
 
-      const registrations = await tx.execute(
-        sql`SELECT candidate_id::text AS candidate_id, submitted_at
-              FROM hrms.candidate_registration
-             WHERE candidate_id = ANY(${sql.param(candidateIds)}::uuid[])`
+      // Fetch full registration profile from candidate_registration
+      const regRowsRes = await tx.execute(
+        sql`SELECT 
+              candidate_id::text AS candidate_id, 
+              submitted_at,
+              full_legal_name,
+              date_of_birth::text AS date_of_birth,
+              gender,
+              blood_group,
+              personal_email,
+              mobile,
+              emergency_contact_name,
+              emergency_contact_relationship,
+              emergency_contact_phone,
+              pan_masked,
+              aadhaar_masked,
+              uan_masked,
+              expected_ctc_minor::text AS expected_ctc_minor,
+              current_ctc_minor::text AS current_ctc_minor,
+              notice_period_days,
+              earliest_joining_date::text AS earliest_joining_date,
+              consent_background_verification
+            FROM hrms.candidate_registration
+           WHERE candidate_id = ANY(${sql.param(candidateIds)}::uuid[])`
       );
-      const submittedAt = new Map<string, string | null>();
+
+      interface RegData {
+        candidate_id: string;
+        submitted_at: string | Date | null;
+        full_legal_name?: string | null;
+        date_of_birth?: string | null;
+        gender?: string | null;
+        blood_group?: string | null;
+        personal_email?: string | null;
+        mobile?: string | null;
+        emergency_contact_name?: string | null;
+        emergency_contact_relationship?: string | null;
+        emergency_contact_phone?: string | null;
+        pan_masked?: string | null;
+        aadhaar_masked?: string | null;
+        uan_masked?: string | null;
+        expected_ctc_minor?: string | null;
+        current_ctc_minor?: string | null;
+        notice_period_days?: number | null;
+        earliest_joining_date?: string | null;
+        consent_background_verification?: boolean | null;
+      }
+
+      const regMap = new Map<string, RegData>();
+      for (const row of ((regRowsRes as unknown as { rows?: RegData[] }).rows ?? [])) {
+        regMap.set(String(row.candidate_id), row);
+      }
+
+      // Fetch department from job_postings via applications
+      const deptRes = await tx.execute(
+        sql`SELECT 
+              app.candidate_id::text AS candidate_id,
+              jp.department_id::text AS department_id,
+              dept.name AS department_name
+            FROM hrms.applications app
+            LEFT JOIN hrms.job_postings jp ON jp.id = app.job_id
+            LEFT JOIN hrms.departments dept ON dept.id = jp.department_id
+           WHERE app.candidate_id = ANY(${sql.param(candidateIds)}::uuid[])`
+      );
+
+      const deptMap = new Map<string, { departmentId: string | null; departmentName: string | null }>();
       for (const row of (
-        registrations as unknown as {
-          rows?: Array<{ candidate_id: string; submitted_at: string | Date | null }>;
-        }
+        deptRes as unknown as { rows?: Array<{ candidate_id: string; department_id: string | null; department_name: string | null }> }
       ).rows ?? []) {
-        submittedAt.set(
-          String(row.candidate_id),
-          row.submitted_at ? new Date(row.submitted_at).toISOString() : null
-        );
+        if (row.department_id) {
+          deptMap.set(String(row.candidate_id), {
+            departmentId: row.department_id,
+            departmentName: row.department_name,
+          });
+        }
       }
 
       const results: PendingHire[] = [];
@@ -174,14 +242,19 @@ export async function GET(request: NextRequest) {
 
         const best = mostAdvanced(group.map((row) => String(row.offerStatus)));
         const primary = group.find((row) => String(row.offerStatus) === best) ?? group[0];
-        const registration = submittedAt.get(candidateId) ?? null;
+        const reg = regMap.get(candidateId);
+        const registrationSubmittedAt = reg?.submitted_at
+          ? new Date(reg.submitted_at).toISOString()
+          : null;
 
         const verdict = checkHireProvenance({
           candidateId,
           applicationId: primary.applicationId ?? null,
           offerStatus: best,
-          registrationSubmittedAt: registration,
+          registrationSubmittedAt,
         });
+
+        const deptInfo = deptMap.get(candidateId);
 
         results.push({
           candidateId,
@@ -191,19 +264,37 @@ export async function GET(request: NextRequest) {
           firstName: primary.firstName ?? "",
           lastName: primary.lastName ?? "",
           email: primary.email ?? "",
-          phone: primary.phone ?? null,
+          phone: reg?.mobile || primary.phone || null,
+          personalEmail: reg?.personal_email || primary.email || null,
+          gender: reg?.gender || null,
+          dateOfBirth: reg?.date_of_birth || null,
+          bloodGroup: reg?.blood_group || null,
+          panNumber: reg?.pan_masked || null,
+          aadhaarNumber: reg?.aadhaar_masked || null,
+          uanNumber: reg?.uan_masked || null,
+          emergencyContactName: reg?.emergency_contact_name || null,
+          emergencyContactRelationship: reg?.emergency_contact_relationship || null,
+          emergencyContactPhone: reg?.emergency_contact_phone || null,
           designation: primary.offerDesignation || primary.designation || null,
+          departmentId: deptInfo?.departmentId || null,
+          departmentName: deptInfo?.departmentName || null,
           offerStatus: best,
-          annualCtcMinor: primary.annualCtcMinor?.toString() ?? null,
-          proposedStartDate: primary.proposedStartDate ?? null,
-          registrationSubmittedAt: registration,
+          annualCtcMinor: primary.annualCtcMinor?.toString() || reg?.expected_ctc_minor || reg?.current_ctc_minor || null,
+          proposedStartDate: primary.proposedStartDate || reg?.earliest_joining_date || null,
+          noticePeriodDays: reg?.notice_period_days || null,
+          bankName: null,
+          accountHolderName: `${primary.firstName ?? ""} ${primary.lastName ?? ""}`.trim(),
+          accountNumber: null,
+          ifsc: null,
+          accountType: "savings",
+          consentBackgroundVerification: reg?.consent_background_verification ?? true,
+          registrationSubmittedAt,
           ready: verdict.ok,
           blockers: verdict.ok ? [] : verdict.issues.map((issue) => issue.message),
         });
       }
 
-      // Ready first, then alphabetically. HR's ordinary case is "add the
-      // person who just accepted", not "read a list".
+      // Ready first, then alphabetically.
       results.sort((a, b) =>
         a.ready === b.ready ? a.name.localeCompare(b.name) : a.ready ? -1 : 1
       );

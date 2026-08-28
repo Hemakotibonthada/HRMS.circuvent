@@ -112,10 +112,29 @@ export interface PendingHireItem {
   lastName: string;
   email: string;
   phone: string | null;
+  personalEmail: string | null;
+  gender: string | null;
+  dateOfBirth: string | null;
+  bloodGroup: string | null;
+  panNumber: string | null;
+  aadhaarNumber: string | null;
+  uanNumber: string | null;
+  emergencyContactName: string | null;
+  emergencyContactRelationship: string | null;
+  emergencyContactPhone: string | null;
   designation: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
   offerStatus: string | null;
   annualCtcMinor: string | null;
   proposedStartDate: string | null;
+  noticePeriodDays: number | null;
+  bankName: string | null;
+  accountHolderName: string | null;
+  accountNumber: string | null;
+  ifsc: string | null;
+  accountType: string | null;
+  consentBackgroundVerification: boolean | null;
   registrationSubmittedAt: string | null;
   ready: boolean;
   blockers: string[];
@@ -223,7 +242,7 @@ export default function OnboardingPage() {
     departmentId: "none",
     locationId: "none",
     workstationDesk: "",
-    reportingToId: "none",
+    reportingToId: "org",
     buddyId: "none",
     joiningDate: new Date().toISOString().slice(0, 10),
     probationMonths: "3",
@@ -564,24 +583,31 @@ export default function OnboardingPage() {
     }
   };
 
-  const departmentLabel = (id: string) => {
+  const departmentLabel = (id?: string | null) => {
+    if (!id || id === "none") return "General / Unassigned";
     const match = departments.find((d) => d.id === id);
-    if (match) return `${match.name} (${match.code})`;
-    return id === "none" ? "General / Unassigned" : "Select department";
+    if (match) return `${match.name} (${match.code || "DEPT"})`;
+    const nameMatch = departments.find((d) => d.name.toLowerCase() === id.toLowerCase());
+    if (nameMatch) return `${nameMatch.name} (${nameMatch.code || "DEPT"})`;
+    if (setupModalHire?.departmentName) return setupModalHire.departmentName;
+    if (departments.length > 0) return `${departments[0].name} (${departments[0].code || "DEPT"})`;
+    return "General / Unassigned";
   };
 
-  const employeeLabel = (id: string) => {
+  const employeeLabel = (id?: string | null) => {
+    if (!id || id === "none" || id === "org") return "Organization Direct (CEO / Leadership)";
     const match = employees.find((e) => e.id === id);
     if (match) {
-      return `${match.firstName} ${match.lastName} (${match.designation || match.workEmail || "Admin"})`;
+      return `${match.firstName} ${match.lastName} (${match.designation || match.employeeCode || "Admin"})`;
     }
-    return id === "none" ? "Company Management (Direct)" : "Select reporting manager";
+    return "Organization Direct (CEO / Leadership)";
   };
 
-  const assetLabel = (id: string) => {
+  const assetLabel = (id?: string | null) => {
+    if (!id || id === "none") return "Assign Later (In Stock)";
     const match = availableAssets.find((a) => a.id === id);
-    if (match) return `${match.name} (${match.assetTag})`;
-    return id === "none" ? "Assign Later (In Stock)" : "Choose hardware";
+    if (match) return `${match.name} (${match.assetTag || (match as any).serialNumber || "Asset"})`;
+    return "Assign Later (In Stock)";
   };
 
   // Filtered Joiners
@@ -622,12 +648,22 @@ export default function OnboardingPage() {
     }
     const nextCode = `CV-${String(maxNum + 1).padStart(3, "0")}`;
 
-    let matchedDeptId = "none";
-    if (hire.designation) {
+    let resolvedDeptId = "none";
+    if (hire.departmentId && departments.some((d) => d.id === hire.departmentId)) {
+      resolvedDeptId = hire.departmentId;
+    } else if (hire.departmentName) {
+      const match = departments.find(
+        (d) => d.name.toLowerCase() === hire.departmentName?.toLowerCase()
+      );
+      if (match) resolvedDeptId = match.id;
+    } else if (hire.designation) {
       const match = departments.find((d) =>
         hire.designation?.toLowerCase().includes(d.name.toLowerCase())
       );
-      if (match) matchedDeptId = match.id;
+      if (match) resolvedDeptId = match.id;
+    }
+    if (resolvedDeptId === "none" && departments.length > 0) {
+      resolvedDeptId = departments[0].id;
     }
 
     setSetupForm({
@@ -635,33 +671,33 @@ export default function OnboardingPage() {
       firstName: hire.firstName,
       lastName: hire.lastName,
       workEmail: suggestedEmail,
-      personalEmail: hire.email,
+      personalEmail: hire.personalEmail || hire.email || "",
       phone: hire.phone || "",
-      gender: "prefer_not_to_say",
-      dateOfBirth: "",
-      bloodGroup: "",
-      panNumber: "",
-      aadhaarNumber: "",
+      gender: hire.gender || "prefer_not_to_say",
+      dateOfBirth: hire.dateOfBirth || "",
+      bloodGroup: hire.bloodGroup || "",
+      panNumber: hire.panNumber || "",
+      aadhaarNumber: hire.aadhaarNumber || "",
       designation: hire.designation || "Software Engineer",
-      departmentId: matchedDeptId !== "none" ? matchedDeptId : (departments[0]?.id || "none"),
+      departmentId: resolvedDeptId,
       locationId: "none",
       workstationDesk: "",
-      reportingToId: employees[0]?.id || "none",
+      reportingToId: "org",
       buddyId: "none",
       joiningDate: hire.proposedStartDate || new Date().toISOString().slice(0, 10),
       probationMonths: "3",
-      salary: annualSalaryNum.toString(),
+      salary: annualSalaryNum ? annualSalaryNum.toString() : "",
       employmentType: "full_time",
-      bankName: "",
-      accountHolderName: `${hire.firstName} ${hire.lastName}`.trim(),
-      accountNumber: "",
-      ifsc: "",
-      accountType: "savings",
-      emergencyContactName: "",
-      emergencyContactRelation: "",
-      emergencyContactPhone: "",
+      bankName: hire.bankName || "",
+      accountHolderName: hire.accountHolderName || `${hire.firstName} ${hire.lastName}`.trim(),
+      accountNumber: hire.accountNumber || "",
+      ifsc: hire.ifsc || "",
+      accountType: (hire.accountType as "savings" | "current") || "savings",
+      emergencyContactName: hire.emergencyContactName || "",
+      emergencyContactRelation: hire.emergencyContactRelationship || "",
+      emergencyContactPhone: hire.emergencyContactPhone || "",
       rightToWorkCollected: true,
-      backgroundCheckStatus: "verified",
+      backgroundCheckStatus: hire.consentBackgroundVerification === false ? "in_progress" : "verified",
       issueAppointmentLetter: true,
       triggerMailboxInvite: true,
       assetId: availableAssets[0]?.id || "none",
@@ -723,7 +759,10 @@ export default function OnboardingPage() {
           departmentId: setupForm.departmentId && setupForm.departmentId !== "none" ? setupForm.departmentId : undefined,
           locationId: setupForm.locationId && setupForm.locationId !== "none" ? setupForm.locationId : undefined,
           workstationDesk: setupForm.workstationDesk || undefined,
-          reportingToId: setupForm.reportingToId && setupForm.reportingToId !== "none" ? setupForm.reportingToId : undefined,
+          reportingToId:
+            setupForm.reportingToId && setupForm.reportingToId !== "none" && setupForm.reportingToId !== "org"
+              ? setupForm.reportingToId
+              : undefined,
           buddyId: setupForm.buddyId && setupForm.buddyId !== "none" ? setupForm.buddyId : undefined,
           joiningDate: setupForm.joiningDate,
           probationMonths: setupForm.probationMonths ? Number(setupForm.probationMonths) : undefined,
@@ -1446,14 +1485,14 @@ export default function OnboardingPage() {
                     placeholder="Software Engineer"
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <Label className="text-xs">Department / Team *</Label>
                   <Select
                     value={setupForm.departmentId}
                     onValueChange={(val) => setSetupForm({ ...setupForm, departmentId: val })}
                   >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select department" />
+                    <SelectTrigger className="w-full truncate">
+                      <SelectValue>{departmentLabel(setupForm.departmentId)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">General / Unassigned</SelectItem>
@@ -1465,45 +1504,49 @@ export default function OnboardingPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <Label className="text-xs">Reporting Manager *</Label>
                   <Select
                     value={setupForm.reportingToId}
                     onValueChange={(val) => setSetupForm({ ...setupForm, reportingToId: val })}
                   >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select reporting manager" />
+                    <SelectTrigger className="w-full truncate">
+                      <SelectValue>{employeeLabel(setupForm.reportingToId)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Company Management (Direct)</SelectItem>
+                      <SelectItem value="org">Organization Direct (CEO / Leadership)</SelectItem>
                       {employees.map((e) => (
                         <SelectItem key={e.id} value={e.id}>
-                          {e.firstName} {e.lastName} ({e.designation || e.workEmail || "Admin"})
+                          {e.firstName} {e.lastName} ({e.designation || e.employeeCode || "Admin"})
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <Label className="text-xs">Onboarding Peer Buddy</Label>
                   <Select
                     value={setupForm.buddyId}
                     onValueChange={(val) => setSetupForm({ ...setupForm, buddyId: val })}
                   >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Assign a peer buddy..." />
+                    <SelectTrigger className="w-full truncate">
+                      <SelectValue>
+                        {setupForm.buddyId === "none" || !setupForm.buddyId
+                          ? "No Buddy Assigned"
+                          : employeeLabel(setupForm.buddyId)}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No Buddy Assigned</SelectItem>
                       {employees.map((e) => (
                         <SelectItem key={e.id} value={e.id}>
-                          {e.firstName} {e.lastName} ({e.designation || e.workEmail})
+                          {e.firstName} {e.lastName} ({e.designation || e.employeeCode})
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <Label className="text-xs">Employment Type</Label>
                   <Select
                     value={setupForm.employmentType}
@@ -1528,7 +1571,7 @@ export default function OnboardingPage() {
                     onChange={(e) => setSetupForm({ ...setupForm, joiningDate: e.target.value })}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <Label className="text-xs">Probation Period</Label>
                   <Select
                     value={setupForm.probationMonths}
@@ -1554,7 +1597,7 @@ export default function OnboardingPage() {
                 <span>3. Workplace, Desk &amp; IT Hardware Allocation</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <Label className="text-xs">Campus / Work Location</Label>
                   <Select
                     value={setupForm.locationId}
@@ -1579,14 +1622,14 @@ export default function OnboardingPage() {
                     placeholder="e.g. Desk #4B / Bay 2 - Seat 14"
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <Label className="text-xs">Allocate IT Hardware / Laptop</Label>
                   <Select
                     value={setupForm.assetId}
                     onValueChange={(val) => setSetupForm({ ...setupForm, assetId: val })}
                   >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Choose hardware..." />
+                    <SelectTrigger className="w-full truncate">
+                      <SelectValue>{assetLabel(setupForm.assetId)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Assign Later (In Stock)</SelectItem>
@@ -1824,24 +1867,21 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <Label>Reporting Manager</Label>
               <Select
-                value={editForm.reportingToId || "none"}
+                value={editForm.reportingToId || "org"}
                 onValueChange={(val) => setEditForm({ ...editForm, reportingToId: val })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select manager" />
+                  <SelectValue>{employeeLabel(editForm.reportingToId)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {employees.filter((e) => e.id !== editProfileEmployee?.id).length === 0 ? (
-                    <SelectItem value="none">Company Management (Direct)</SelectItem>
-                  ) : (
-                    employees
-                      .filter((e) => e.id !== editProfileEmployee?.id)
-                      .map((e) => (
-                        <SelectItem key={e.id} value={e.id}>
-                          {e.firstName} {e.lastName} ({e.designation || e.workEmail || "Admin"})
-                        </SelectItem>
-                      ))
-                  )}
+                  <SelectItem value="org">Organization Direct (CEO / Leadership)</SelectItem>
+                  {employees
+                    .filter((e) => e.id !== editProfileEmployee?.id)
+                    .map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.firstName} {e.lastName} ({e.designation || e.employeeCode || "Admin"})
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1853,18 +1893,15 @@ export default function OnboardingPage() {
                 onValueChange={(val) => setEditForm({ ...editForm, departmentId: val })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
+                  <SelectValue>{departmentLabel(editForm.departmentId)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {departments.length === 0 ? (
-                    <SelectItem value="none">General / Unassigned</SelectItem>
-                  ) : (
-                    departments.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name} ({d.code || "DEPT"})
-                      </SelectItem>
-                    ))
-                  )}
+                  <SelectItem value="none">General / Unassigned</SelectItem>
+                  {departments.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name} ({d.code || "DEPT"})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
