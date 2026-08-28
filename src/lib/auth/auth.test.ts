@@ -22,6 +22,7 @@ import {
 } from "@/lib/auth/password";
 import {
   ACCESS_COOKIE,
+  ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_COOKIE,
   cookieOptions,
   hashRefreshToken,
@@ -163,7 +164,7 @@ describe("access tokens", () => {
   it("sets an expiry within the access-token lifetime", async () => {
     const verified = await verifyAccessToken(await signAccessToken(claims));
     const ttl = verified!.exp! - verified!.iat!;
-    expect(ttl).toBe(15 * 60);
+    expect(ttl).toBe(ACCESS_TOKEN_TTL_SECONDS);
   });
 });
 
