@@ -200,24 +200,25 @@ export default function OnboardingPage() {
     try {
       setRefreshing(true);
       const [empRes, deptRes, pendingRes, journeysRes, assetsRes] = await Promise.all([
-        fetch("/api/employees?limit=200", { credentials: "include" }),
+        fetch("/api/employees?pageSize=200", { credentials: "include" }),
         fetch("/api/departments", { credentials: "include" }),
         fetch("/api/hires/pending", { credentials: "include" }),
-        fetch("/api/lifecycle?kind=onboarding&limit=200", { credentials: "include" }),
-        fetch("/api/assets?state=in_stock", { credentials: "include" }),
+        fetch("/api/lifecycle?kind=onboarding&pageSize=200", { credentials: "include" }),
+        fetch("/api/assets?state=in_stock&pageSize=100", { credentials: "include" }),
       ]);
 
       if (empRes.ok) {
         const data = await empRes.json();
-        const list = (data.employees || data.data || []).map((e: any) => ({
+        const rawEmps = data.items || data.employees || data.data || [];
+        const list = rawEmps.map((e: any) => ({
           id: e.id,
-          employeeCode: e.employeeCode || e.employee_code,
-          firstName: e.firstName || e.first_name || "",
-          lastName: e.lastName || e.last_name || "",
-          workEmail: e.workEmail || e.work_email || "",
+          employeeCode: e.employeeCode || e.employee_code || "",
+          firstName: e.firstName || e.first_name || (e.name ? e.name.split(" ")[0] : "Admin"),
+          lastName: e.lastName || e.last_name || (e.name ? e.name.split(" ").slice(1).join(" ") : ""),
+          workEmail: e.workEmail || e.work_email || e.email || "",
           personalEmail: e.personalEmail || e.personal_email || "",
           phone: e.phone || "",
-          designation: e.designation || "",
+          designation: e.designation || "Administrator",
           departmentId: e.departmentId || e.department_id || "",
           departmentName: e.departmentName || e.department_name || e.department || "",
           reportingToId: e.reportingToId || e.reporting_to_id || "",
@@ -226,7 +227,7 @@ export default function OnboardingPage() {
           buddyName: e.buddyName || "",
           locationId: e.locationId || e.location_id || "",
           locationName: e.locationName || e.location_name || "",
-          joiningDate: e.joiningDate || e.joining_date || "",
+          joiningDate: e.joiningDate || e.joining_date || e.joinDate || "",
           status: e.status || "active",
           employmentType: e.employmentType || e.employment_type || "full_time",
         }));
@@ -235,7 +236,7 @@ export default function OnboardingPage() {
 
       if (deptRes.ok) {
         const data = await deptRes.json();
-        setDepartments(data.departments || []);
+        setDepartments(data.items || data.departments || data.data || []);
       }
 
       if (pendingRes.ok) {
@@ -252,7 +253,7 @@ export default function OnboardingPage() {
 
       if (assetsRes.ok) {
         const data = await assetsRes.json();
-        setAvailableAssets(data.assets || []);
+        setAvailableAssets(data.items || data.assets || data.data || []);
       }
     } catch (err) {
       console.error("Failed to load onboarding data:", err);
@@ -479,15 +480,15 @@ export default function OnboardingPage() {
       personalEmail: hire.email,
       phone: hire.phone || "",
       designation: hire.designation || "Software Engineer",
-      departmentId: departments[0]?.id || "",
-      reportingToId: employees[0]?.id || "",
-      buddyId: "",
+      departmentId: departments[0]?.id || "none",
+      reportingToId: employees[0]?.id || "none",
+      buddyId: "none",
       joiningDate: hire.proposedStartDate || new Date().toISOString().slice(0, 10),
       salary: annualSalaryNum.toString(),
       employmentType: "full_time",
       issueAppointmentLetter: true,
       triggerMailboxInvite: true,
-      assetId: availableAssets[0]?.id || "",
+      assetId: availableAssets[0]?.id || "none",
     });
   };
 
@@ -514,15 +515,15 @@ export default function OnboardingPage() {
           personalEmail: setupForm.personalEmail || undefined,
           phone: setupForm.phone || undefined,
           designation: setupForm.designation,
-          departmentId: setupForm.departmentId || undefined,
-          reportingToId: setupForm.reportingToId || undefined,
-          buddyId: setupForm.buddyId || undefined,
+          departmentId: setupForm.departmentId && setupForm.departmentId !== "none" ? setupForm.departmentId : undefined,
+          reportingToId: setupForm.reportingToId && setupForm.reportingToId !== "none" ? setupForm.reportingToId : undefined,
+          buddyId: setupForm.buddyId && setupForm.buddyId !== "none" ? setupForm.buddyId : undefined,
           joiningDate: setupForm.joiningDate,
           salary: setupForm.salary ? Number(setupForm.salary) : undefined,
           employmentType: setupForm.employmentType,
           issueAppointmentLetter: setupForm.issueAppointmentLetter,
           triggerMailboxInvite: setupForm.triggerMailboxInvite,
-          assetId: setupForm.assetId || undefined,
+          assetId: setupForm.assetId && setupForm.assetId !== "none" ? setupForm.assetId : undefined,
         }),
       });
 
@@ -1117,18 +1118,22 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <Label>Department / Team *</Label>
               <Select
-                value={setupForm.departmentId}
+                value={setupForm.departmentId || "none"}
                 onValueChange={(val) => setSetupForm({ ...setupForm, departmentId: val })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
-                  {departments.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name} ({d.code})
-                    </SelectItem>
-                  ))}
+                  {departments.length === 0 ? (
+                    <SelectItem value="none">General / Unassigned</SelectItem>
+                  ) : (
+                    departments.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name} ({d.code || "DEPT"})
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -1136,18 +1141,22 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <Label>Reporting Manager *</Label>
               <Select
-                value={setupForm.reportingToId}
+                value={setupForm.reportingToId || "none"}
                 onValueChange={(val) => setSetupForm({ ...setupForm, reportingToId: val })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select reporting manager" />
                 </SelectTrigger>
                 <SelectContent>
-                  {employees.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {e.firstName} {e.lastName} ({e.designation || e.workEmail})
-                    </SelectItem>
-                  ))}
+                  {employees.length === 0 ? (
+                    <SelectItem value="none">Company Management (Direct)</SelectItem>
+                  ) : (
+                    employees.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.firstName} {e.lastName} ({e.designation || e.workEmail || "Admin"})
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -1155,17 +1164,17 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <Label>Onboarding Buddy (Optional)</Label>
               <Select
-                value={setupForm.buddyId}
+                value={setupForm.buddyId || "none"}
                 onValueChange={(val) => setSetupForm({ ...setupForm, buddyId: val })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Assign a peer buddy..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No Buddy Assigned</SelectItem>
+                  <SelectItem value="none">No Buddy Assigned</SelectItem>
                   {employees.map((e) => (
                     <SelectItem key={e.id} value={e.id}>
-                      {e.firstName} {e.lastName}
+                      {e.firstName} {e.lastName} ({e.designation || e.workEmail})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1193,17 +1202,17 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <Label>Allocate IT Equipment</Label>
               <Select
-                value={setupForm.assetId}
+                value={setupForm.assetId || "none"}
                 onValueChange={(val) => setSetupForm({ ...setupForm, assetId: val })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Choose hardware..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Assign Later</SelectItem>
+                  <SelectItem value="none">Assign Later (In Stock)</SelectItem>
                   {availableAssets.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
-                      {a.name} ({a.assetTag})
+                      {a.name} ({a.assetTag || (a as any).serialNumber || "Asset"})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1221,11 +1230,11 @@ export default function OnboardingPage() {
                   id="chk-letter"
                   checked={setupForm.issueAppointmentLetter}
                   onCheckedChange={(checked) =>
-                    setSetupForm({ ...setupForm, issueAppointmentLetter: !!checked })
+                    setSetupForm({ ...setupForm, issueAppointmentLetter: Boolean(checked) })
                   }
                 />
                 <label htmlFor="chk-letter" className="text-xs font-medium cursor-pointer">
-                  Generate &amp; Dispatch formal Appointment Letter PDF to candidate
+                  Generate official Appointment Letter PDF &amp; log into Documents Repository
                 </label>
               </div>
 
@@ -1234,7 +1243,7 @@ export default function OnboardingPage() {
                   id="chk-mailbox"
                   checked={setupForm.triggerMailboxInvite}
                   onCheckedChange={(checked) =>
-                    setSetupForm({ ...setupForm, triggerMailboxInvite: !!checked })
+                    setSetupForm({ ...setupForm, triggerMailboxInvite: Boolean(checked) })
                   }
                 />
                 <label htmlFor="chk-mailbox" className="text-xs font-medium cursor-pointer">
@@ -1276,20 +1285,24 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <Label>Reporting Manager</Label>
               <Select
-                value={editForm.reportingToId}
+                value={editForm.reportingToId || "none"}
                 onValueChange={(val) => setEditForm({ ...editForm, reportingToId: val })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select manager" />
                 </SelectTrigger>
                 <SelectContent>
-                  {employees
-                    .filter((e) => e.id !== editProfileEmployee?.id)
-                    .map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.firstName} {e.lastName} ({e.designation || e.workEmail})
-                      </SelectItem>
-                    ))}
+                  {employees.filter((e) => e.id !== editProfileEmployee?.id).length === 0 ? (
+                    <SelectItem value="none">Company Management (Direct)</SelectItem>
+                  ) : (
+                    employees
+                      .filter((e) => e.id !== editProfileEmployee?.id)
+                      .map((e) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.firstName} {e.lastName} ({e.designation || e.workEmail || "Admin"})
+                        </SelectItem>
+                      ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -1297,18 +1310,22 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <Label>Department</Label>
               <Select
-                value={editForm.departmentId}
+                value={editForm.departmentId || "none"}
                 onValueChange={(val) => setEditForm({ ...editForm, departmentId: val })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
-                  {departments.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name} ({d.code})
-                    </SelectItem>
-                  ))}
+                  {departments.length === 0 ? (
+                    <SelectItem value="none">General / Unassigned</SelectItem>
+                  ) : (
+                    departments.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name} ({d.code || "DEPT"})
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
