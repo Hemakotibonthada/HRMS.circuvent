@@ -144,7 +144,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       if (parsed.data.budget !== undefined) {
         updateData.budgetMinor =
           parsed.data.budget !== null
-            ? BigInt(Math.round(parsed.data.budget * 100))
+            ? Math.round(parsed.data.budget * 100)
             : null;
       }
 

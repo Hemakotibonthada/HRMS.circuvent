@@ -195,8 +195,8 @@ export async function POST(request: NextRequest) {
         };
       }
 
-      const budgetMinor = parsed.data.budget
-        ? BigInt(Math.round(parsed.data.budget * 100))
+      const budgetMinor = parsed.data.budget !== undefined && parsed.data.budget !== null
+        ? Math.round(parsed.data.budget * 100)
         : null;
 
       const [row] = await tx

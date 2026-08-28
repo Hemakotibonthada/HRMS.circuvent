@@ -160,7 +160,7 @@ export const departments = hrms.table(
     description: text("description"),
     headId: uuid("head_id"),
     parentId: uuid("parent_id"),
-    budgetMinor: bigint("budget_minor", { mode: "bigint" }),
+    budgetMinor: bigint("budget_minor", { mode: "number" }),
     costCenter: text("cost_center"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -423,12 +423,7 @@ export default function DepartmentsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Location</Label>
-                <Select value={form.location} onValueChange={v => setForm(f => ({ ...f, location: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select location" /></SelectTrigger>
-                  <SelectContent>
-                    {LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Input placeholder="e.g. Hyderabad, India or Remote" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
               </div>
             </div>
           </div>
@@ -480,12 +475,7 @@ export default function DepartmentsPage() {
               </div>
               <div className="space-y-2">
                 <Label>Location</Label>
-                <Select value={editForm.location} onValueChange={v => setEditForm(f => ({ ...f, location: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select location" /></SelectTrigger>
-                  <SelectContent>
-                    {LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Input placeholder="e.g. Hyderabad, India" value={editForm.location} onChange={e => setEditForm(f => ({ ...f, location: e.target.value }))} />
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>
