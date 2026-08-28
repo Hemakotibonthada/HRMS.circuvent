@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from "react";
 
 export interface AuthUser {
   uid: string;
+  employeeId: string | null;
   email: string | null;
   displayName: string | null;
   orgId: string;
@@ -32,12 +33,14 @@ interface MeResponse {
     email?: string;
     displayName?: string;
     mfaVerified?: boolean;
+    employeeId?: string | null;
   };
 }
 
 function toUser(body: MeResponse): AuthUser {
   return {
     uid: body.user.id,
+    employeeId: body.user.employeeId ?? null,
     email: body.user.email ?? null,
     displayName: body.user.displayName ?? null,
     orgId: body.user.orgId,

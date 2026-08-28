@@ -140,9 +140,15 @@ export class NeonAssetsRepository {
   ): Promise<AssetRecord[]> {
     return withTenant(this.ctx, async (tx) => {
       const rows = await tx
-        .select({ a: assets, first: employees.firstName, last: employees.lastName })
+        .select({
+          a: assets,
+          first: employees.firstName,
+          last: employees.lastName,
+          catName: assetCategories.name,
+        })
         .from(assets)
         .leftJoin(employees, eq(employees.id, assets.assignedToId))
+        .leftJoin(assetCategories, eq(assetCategories.id, assets.categoryId))
         .where(
           and(
             options.state ? eq(assets.state, options.state) : undefined,
@@ -156,7 +162,7 @@ export class NeonAssetsRepository {
       const categories = await tx.select().from(assetCategories);
       const byCategory = new Map(categories.map((c) => [c.id, c]));
 
-      return rows.map(({ a, first, last }) => {
+      return rows.map(({ a, first, last, catName }) => {
         const depreciable = toDepreciable(a);
         const warranty = warrantyPosition(a.warrantyExpiresOn, asOf);
         const interval = a.categoryId
@@ -167,7 +173,7 @@ export class NeonAssetsRepository {
           id: a.id,
           assetTag: a.assetTag,
           name: a.name,
-          category: a.category,
+          category: catName ?? a.category,
           categoryId: a.categoryId ?? undefined,
           serialNumber: a.serialNumber ?? undefined,
           manufacturer: a.manufacturer ?? undefined,
@@ -210,7 +216,7 @@ export class NeonAssetsRepository {
   async issue(
     assetId: string,
     employeeId: string,
-    actorId: string,
+    actorId: string | null,
     condition = "good"
   ): Promise<AssetRecord> {
     return withTenant(this.ctx, async (tx) => {
@@ -266,7 +272,7 @@ export class NeonAssetsRepository {
         orgId: this.ctx.orgId,
         assetId,
         employeeId,
-        issuedById: actorId,
+        issuedById: await this.resolveActorId(tx, actorId),
         conditionOnIssue: condition,
         // Frozen so a later loss is costed at the value when it was handed
         // over, not at whatever the schedule says on the day of the argument.
@@ -297,7 +303,7 @@ export class NeonAssetsRepository {
   /** Takes an asset back, closing the open assignment. */
   async returnAsset(
     assetId: string,
-    actorId: string,
+    actorId: string | null,
     condition = "good",
     notes?: string
   ): Promise<AssetRecord> {
@@ -357,7 +363,7 @@ export class NeonAssetsRepository {
   async transition(
     assetId: string,
     action: AssetAction,
-    actorId: string,
+    actorId: string | null,
     detail?: string
   ): Promise<AssetRecord> {
     if (action === "issue" || action === "return") {
@@ -423,7 +429,7 @@ export class NeonAssetsRepository {
   async reportFault(input: {
     assetId: string;
     description: string;
-    reportedById: string;
+    reportedById?: string;
     kind?: string;
     vendor?: string;
   }): Promise<{ id: string; underWarranty: boolean }> {
@@ -449,7 +455,7 @@ export class NeonAssetsRepository {
           assetId: input.assetId,
           kind: input.kind ?? "repair",
           description: input.description,
-          reportedById: input.reportedById,
+          reportedById: input.reportedById ?? null,
           vendor: input.vendor,
           underWarranty: isUnderWarranty,
         })
@@ -638,7 +644,7 @@ export class NeonAssetsRepository {
   }
 
   /** Provisions a new asset into company inventory. */
-  async create(input: AssetCreateInput, actorId: string): Promise<AssetRecord> {
+  async create(input: AssetCreateInput, actorId: string | null): Promise<AssetRecord> {
     return withTenant(this.ctx, async (tx) => {
       let tag = input.assetTag?.trim();
       if (!tag) {
@@ -657,14 +663,24 @@ export class NeonAssetsRepository {
         ? BigInt(input.salvageValueMinor.toString())
         : 0n;
 
+      if (costMinor !== null && salvageMinor > costMinor) {
+        throw new RepositoryError("Salvage value cannot exceed purchase cost", 400);
+      }
+
+      const resolvedCategory = await this.resolveCategory(
+        tx,
+        input.categoryId,
+        input.category
+      );
+
       const [row] = await tx
         .insert(assets)
         .values({
           orgId: this.ctx.orgId,
           assetTag: tag,
           name: input.name,
-          category: input.category,
-          categoryId: input.categoryId || null,
+          category: resolvedCategory.category,
+          categoryId: resolvedCategory.categoryId,
           serialNumber: input.serialNumber || null,
           manufacturer: input.manufacturer || null,
           model: input.model || null,
@@ -694,11 +710,12 @@ export class NeonAssetsRepository {
       });
 
       if (input.assignedToId) {
+        const issuedBy = await this.resolveActorId(tx, actorId);
         await tx.insert(assetAssignments).values({
           orgId: this.ctx.orgId,
           assetId: row.id,
           employeeId: input.assignedToId,
-          issuedById: actorId,
+          issuedById: issuedBy,
           conditionOnIssue: input.condition || "new",
           bookValueOnIssueMinor: costMinor,
         });
@@ -709,7 +726,7 @@ export class NeonAssetsRepository {
   }
 
   /** Updates asset properties and metadata. */
-  async update(id: string, input: AssetUpdateInput, actorId: string): Promise<AssetRecord> {
+  async update(id: string, input: AssetUpdateInput, actorId: string | null): Promise<AssetRecord> {
     return withTenant(this.ctx, async (tx) => {
       const [existing] = await tx
         .select()
@@ -725,8 +742,15 @@ export class NeonAssetsRepository {
       };
 
       if (input.name !== undefined) updates.name = input.name;
-      if (input.category !== undefined) updates.category = input.category;
-      if (input.categoryId !== undefined) updates.categoryId = input.categoryId || null;
+      if (input.category !== undefined || input.categoryId !== undefined) {
+        const resolved = await this.resolveCategory(
+          tx,
+          input.categoryId ?? existing.categoryId,
+          input.category ?? existing.category
+        );
+        updates.category = resolved.category;
+        updates.categoryId = resolved.categoryId;
+      }
       if (input.assetTag !== undefined) updates.assetTag = input.assetTag;
       if (input.serialNumber !== undefined) updates.serialNumber = input.serialNumber || null;
       if (input.manufacturer !== undefined) updates.manufacturer = input.manufacturer || null;
@@ -747,11 +771,25 @@ export class NeonAssetsRepository {
       if (input.locationId !== undefined) updates.locationId = input.locationId || null;
       if (input.notes !== undefined) updates.notes = input.notes || null;
 
+      const nextCost =
+        updates.purchaseCostMinor !== undefined
+          ? updates.purchaseCostMinor
+          : existing.purchaseCostMinor;
+      const nextSalvage =
+        updates.salvageValueMinor !== undefined
+          ? updates.salvageValueMinor
+          : existing.salvageValueMinor;
+      if (nextCost !== null && nextSalvage > nextCost) {
+        throw new RepositoryError("Salvage value cannot exceed purchase cost", 400);
+      }
+
       const [updated] = await tx
         .update(assets)
         .set(updates)
         .where(eq(assets.id, id))
         .returning();
+
+      if (!updated) throw new NotFoundError("Asset", id);
 
       await this.log(tx, id, "update", existing.state, updated.state, {
         actorId,
@@ -783,14 +821,48 @@ export class NeonAssetsRepository {
 
   // ─── Internals ─────────────────────────────────────────────
 
+  /** FK-safe: only a real employee id is written to audit rows. */
+  private async resolveActorId(
+    tx: Parameters<Parameters<typeof withTenant>[1]>[0],
+    actorId?: string | null
+  ): Promise<string | null> {
+    if (!actorId) return null;
+    const [row] = await tx
+      .select({ id: employees.id })
+      .from(employees)
+      .where(eq(employees.id, actorId))
+      .limit(1);
+    return row?.id ?? null;
+  }
+
+  private async resolveCategory(
+    tx: Parameters<Parameters<typeof withTenant>[1]>[0],
+    categoryId?: string | null,
+    categoryName?: string
+  ): Promise<{ categoryId: string | null; category: string }> {
+    if (!categoryId) {
+      return { categoryId: null, category: categoryName?.trim() || "General" };
+    }
+    const [cat] = await tx
+      .select({ id: assetCategories.id, name: assetCategories.name })
+      .from(assetCategories)
+      .where(and(eq(assetCategories.id, categoryId), eq(assetCategories.orgId, this.ctx.orgId)))
+      .limit(1);
+    if (!cat) {
+      return { categoryId: null, category: categoryName?.trim() || "General" };
+    }
+    return { categoryId: cat.id, category: categoryName?.trim() || cat.name };
+  }
+
   private async log(
     tx: Parameters<Parameters<typeof withTenant>[1]>[0],
     assetId: string,
     action: string,
     from: AssetState,
     to: AssetState,
-    context: { employeeId?: string; actorId?: string; detail?: string }
+    context: { employeeId?: string; actorId?: string | null; detail?: string }
   ): Promise<void> {
+    const actorId = await this.resolveActorId(tx, context.actorId);
     await tx.insert(assetEvents).values({
       orgId: this.ctx.orgId,
       assetId,
@@ -798,7 +870,7 @@ export class NeonAssetsRepository {
       fromState: from,
       toState: to,
       employeeId: context.employeeId,
-      actorId: context.actorId,
+      actorId,
       detail: context.detail,
     });
   }

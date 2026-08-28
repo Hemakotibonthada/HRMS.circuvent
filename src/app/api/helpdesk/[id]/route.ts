@@ -10,6 +10,7 @@ import { NeonHelpdeskRepository } from "@/db/repositories/helpdesk.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { helpdeskViewerId, requireHelpdeskViewerId } from "@/lib/helpdesk-actor";
 
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -46,7 +47,8 @@ export async function GET(
   const { id } = await params;
 
   try {
-    const result = await new NeonHelpdeskRepository(ctx).getTicket(id, ctx.userId, ctx.role);
+    const viewerId = (await helpdeskViewerId(ctx)) ?? "";
+    const result = await new NeonHelpdeskRepository(ctx).getTicket(id, viewerId, ctx.role);
     return NextResponse.json({
       ...result,
       sla: {
@@ -105,21 +107,18 @@ export async function PATCH(
   const isAgent = ["owner", "admin", "hr", "manager"].includes(ctx.role);
 
   try {
-    // Reading it first applies the same visibility rules as GET, so an
-    // unauthorised caller cannot change a ticket they cannot see.
-    const { ticket } = await repo.getTicket(id, ctx.userId, ctx.role);
+    const viewerId = await requireHelpdeskViewerId(ctx);
+    const { ticket } = await repo.getTicket(id, viewerId, ctx.role);
 
     if (parsed.data.action === "assign") {
       if (!isAgent) {
         return NextResponse.json({ error: "You cannot assign tickets" }, { status: 403 });
       }
-      return NextResponse.json(await repo.assign(id, parsed.data.assigneeId, ctx.userId));
+      return NextResponse.json(await repo.assign(id, parsed.data.assigneeId, viewerId));
     }
 
     if (parsed.data.action === "rate") {
-      // Satisfaction is the requester's judgement. An agent rating their own
-      // work would make the metric meaningless.
-      if (ticket.requesterId !== ctx.userId) {
+      if (ticket.requesterId !== viewerId) {
         return NextResponse.json(
           { error: "Only the person who raised the ticket can rate it" },
           { status: 403 }
@@ -143,7 +142,7 @@ export async function PATCH(
       return NextResponse.json({ error: "You cannot make that change" }, { status: 403 });
     }
 
-    return NextResponse.json(await repo.transition(id, parsed.data.state, ctx.userId));
+    return NextResponse.json(await repo.transition(id, parsed.data.state, viewerId));
   } catch (error) {
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });

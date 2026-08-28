@@ -6,8 +6,33 @@ import { NeonAssetsRepository } from "@/db/repositories/assets.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { assetActorId } from "@/lib/asset-actor";
+import { ensureAssetCategories } from "@/lib/asset-bootstrap";
 import { currentEmployeeId } from "@/lib/current-employee";
 import type { AssetState } from "@/lib/assets";
+
+function mapAssetDbError(error: unknown): RepositoryError | null {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String((error as { code: string }).code)
+      : "";
+  if (code === "23503") {
+    return new RepositoryError(
+      "A related record is missing or invalid (category, employee, or location). Refresh and try again.",
+      400
+    );
+  }
+  if (code === "23514") {
+    return new RepositoryError(
+      "Those values break an asset register rule (for example salvage above cost, or assignment state). Check the form and try again.",
+      400
+    );
+  }
+  if (code === "23505") {
+    return new RepositoryError("An asset with that tag already exists.", 409);
+  }
+  return null;
+}
 
 const STATES: AssetState[] = [
   "in_stock",
@@ -71,6 +96,10 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    const mapped = mapAssetDbError(error);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+    }
     if (error instanceof RepositoryError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
@@ -133,6 +162,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    await ensureAssetCategories(ctx);
+    const actorId = await assetActorId(ctx);
     const record = await new NeonAssetsRepository(ctx).create(
       {
         ...parsed.data,
@@ -150,11 +181,15 @@ export async function POST(request: NextRequest) {
         assignedToId: parsed.data.assignedToId ?? undefined,
         notes: parsed.data.notes ?? undefined,
       },
-      ctx.userId
+      actorId
     );
 
     return NextResponse.json({ asset: record }, { status: 201 });
   } catch (error) {
+    const mapped = mapAssetDbError(error);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+    }
     if (error instanceof RepositoryError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

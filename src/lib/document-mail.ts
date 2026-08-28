@@ -63,6 +63,8 @@ export interface OfferMailContext {
   /** Person to reply to with questions. */
   contactName?: string;
   contactEmail?: string;
+  /** True when a PDF copy of the letter is attached to this message. */
+  pdfAttached?: boolean;
 }
 
 /** Greeting that reads correctly when the name is missing. */
@@ -158,6 +160,16 @@ export function offerIssuedEmail(ctx: OfferMailContext): EmailBody {
     ? `, on a ${ctx.engagementLabel.trim().toLowerCase()} basis`
     : "";
 
+  const attachmentNote = ctx.pdfAttached
+    ? paragraph(
+        "A PDF copy of the letter is attached to this email. You can also read and sign it online using the link below."
+      )
+    : paragraph("The full terms are in the letter linked below. Please read it before signing.");
+
+  const attachmentText = ctx.pdfAttached
+    ? "\n\nA PDF copy of the letter is attached to this email. You can also read and sign it online using the link below."
+    : "\n\nThe full terms are in the letter linked below. Please read it before signing.";
+
   return {
     subject: `Your offer from ${ctx.companyName} — ${ctx.positionTitle}`,
     html:
@@ -166,7 +178,7 @@ export function offerIssuedEmail(ctx: OfferMailContext): EmailBody {
       paragraph(
         `We are pleased to offer you the position of <strong>${position}</strong> at ${company}${escapeHtml(basis)}.`
       ) +
-      paragraph("The full terms are in the letter linked below. Please read it before signing.") +
+      attachmentNote +
       linkHtml +
       expiryHtml +
       contact.html +
@@ -174,8 +186,8 @@ export function offerIssuedEmail(ctx: OfferMailContext): EmailBody {
     text:
       `Hi ${greet(ctx.recipientName)},\n\n` +
       `We are pleased to offer you the position of ${ctx.positionTitle} at ${ctx.companyName}` +
-      `${basis}.\n\n` +
-      `The full terms are in the letter linked below. Please read it before signing.` +
+      `${basis}.` +
+      attachmentText +
       linkText +
       expiryText +
       contact.text,

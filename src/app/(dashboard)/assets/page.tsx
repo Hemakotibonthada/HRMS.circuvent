@@ -1357,7 +1357,14 @@ export default function AssetsPage() {
 
             <div className="space-y-2">
               <Label>Category *</Label>
-              <Select value={form.categoryId || form.category} onValueChange={handleCategorySelect}>
+              <Select
+                value={
+                  form.categoryId && categories.some((c) => c.id === form.categoryId)
+                    ? form.categoryId
+                    : categories.find((c) => c.name === form.category)?.id ?? ""
+                }
+                onValueChange={handleCategorySelect}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>

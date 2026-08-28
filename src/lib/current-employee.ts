@@ -169,3 +169,21 @@ export async function currentEmployeeIdentity(
 
   return tx ? run(tx) : withTenant(ctx, run);
 }
+
+/**
+ * Which employment record a privileged lookup should use.
+ *
+ * Admin screens used to pass `identity.users.id` as `employeeId`, which is not
+ * the same as `hrms.employees.id` — benefits and payslips then 404 with
+ * "Employee {accountUuid} not found".
+ */
+export function resolveScopedEmployeeId(
+  ctx: EmployeeLookupContext,
+  self: string | null,
+  requested: string | undefined,
+  privileged: boolean
+): string | null {
+  if (!privileged || !requested) return self;
+  if (requested === ctx.userId) return self;
+  return requested;
+}

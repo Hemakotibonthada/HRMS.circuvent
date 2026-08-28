@@ -289,14 +289,20 @@ export interface ViewedEmployee {
  */
 export function resolveViewedEmployeeId(
   role: string,
-  selfId: string,
+  selfAccountId: string,
+  selfEmployeeId: string | null,
   requestedId?: string
 ): ViewedEmployee {
   const privileged = PRIVILEGED_ROLES.includes(role);
-  if (privileged && requestedId && requestedId !== selfId) {
+  if (
+    privileged &&
+    requestedId &&
+    requestedId !== selfAccountId &&
+    requestedId !== (selfEmployeeId ?? "")
+  ) {
     return { employeeId: requestedId, isSelf: false };
   }
-  return { employeeId: selfId, isSelf: true };
+  return { employeeId: selfEmployeeId ?? "", isSelf: true };
 }
 
 const LABEL_OVERRIDES: Record<string, string> = {

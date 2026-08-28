@@ -10,13 +10,14 @@ import { useMemo, useCallback, useState, useEffect } from "react";
 import {
   useEmployeeStore, useLeaveStore, useAttendanceStore,
   usePayrollStore, useExpenseStore, useGoalStore,
-  useTicketStore, useJobStore, useCourseStore,
+  useJobStore, useCourseStore,
   useAnnouncementStore, useTeamStore, useAssetStore,
   startSync,
   type EmployeeDoc, type LeaveDoc, type AttendanceDoc,
   type PayrollDoc, type ExpenseDoc, type GoalDoc,
 } from "@/stores/unified-store";
 import { COLLECTIONS } from "@/lib/collection-service";
+import { listTickets } from "@/lib/helpdesk-client";
 
 // ─── Workforce Metrics Hook ──────────────────────────────────
 
@@ -278,29 +279,52 @@ export function usePerformanceMetrics() {
 // ─── Helpdesk Metrics Hook ───────────────────────────────────
 
 export function useHelpdeskMetrics() {
-  const ticketStore = useTicketStore();
+  const [items, setItems] = useState<
+    Awaited<ReturnType<typeof listTickets>>["tickets"]
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    if (!ticketStore.initialized) startSync(COLLECTIONS.helpdesk, ticketStore);
-  }, [ticketStore]);
+    let cancelled = false;
+    void listTickets()
+      .then((data) => {
+        if (!cancelled) {
+          setItems(data.tickets);
+          setInitialized(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setInitialized(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return useMemo(() => {
-    const items = ticketStore.items;
+    const open = items.filter((t) => t.state === "new" || t.state === "open").length;
+    const inProgress = items.filter((t) => t.state.startsWith("pending_")).length;
+    const resolved = items.filter((t) => t.state === "resolved").length;
+    const closed = items.filter((t) => t.state === "closed").length;
 
-    const open = items.filter(t => t.status === "open").length;
-    const inProgress = items.filter(t => t.status === "in_progress").length;
-    const resolved = items.filter(t => t.status === "resolved").length;
-    const closed = items.filter(t => t.status === "closed").length;
-
-    // Priority breakdown
     const priorities: Record<string, number> = {};
-    items.forEach(t => { priorities[t.priority || "medium"] = (priorities[t.priority || "medium"] || 0) + 1; });
+    items.forEach((t) => {
+      priorities[t.priority] = (priorities[t.priority] || 0) + 1;
+    });
 
-    // Category breakdown
     const categories: Record<string, number> = {};
-    items.forEach(t => { categories[t.category || "Other"] = (categories[t.category || "Other"] || 0) + 1; });
+    items.forEach((t) => {
+      const key = t.tags[0] || "General";
+      categories[key] = (categories[key] || 0) + 1;
+    });
 
-    const categoryBreakdown = Object.entries(categories).map(([category, count]) => ({ category, count })).sort((a, b) => b.count - a.count);
+    const categoryBreakdown = Object.entries(categories)
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count);
 
     return {
       total: items.length,
@@ -311,11 +335,12 @@ export function useHelpdeskMetrics() {
       openAndInProgress: open + inProgress,
       priorityBreakdown: priorities,
       categoryBreakdown,
-      resolutionRate: items.length > 0 ? Math.round(((resolved + closed) / items.length) * 100) : 0,
-      loading: ticketStore.loading,
-      initialized: ticketStore.initialized,
+      resolutionRate:
+        items.length > 0 ? Math.round(((resolved + closed) / items.length) * 100) : 0,
+      loading,
+      initialized,
     };
-  }, [ticketStore.items, ticketStore.loading, ticketStore.initialized]);
+  }, [items, loading, initialized]);
 }
 
 // ─── Recruitment Metrics Hook ────────────────────────────────

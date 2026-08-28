@@ -10,7 +10,7 @@ import { NeonBenefitsRepository } from "@/db/repositories/benefits.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
-import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
+import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId, resolveScopedEmployeeId } from "@/lib/current-employee";
 
 const electSchema = z.object({
   action: z.literal("elect"),
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     // ctx.userId is the signing-in account, not the employment record
     // benefits enrolments are keyed by — see lib/current-employee.ts.
     const self = await currentEmployeeId(ctx);
-    const employeeId = privileged && requested ? requested : self;
+    const employeeId = resolveScopedEmployeeId(ctx, self, requested, privileged);
 
     if (!employeeId) {
       return NextResponse.json({ employeeId: null, enrolments: [] });

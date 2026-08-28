@@ -53,19 +53,18 @@ export default function BenefitsPage() {
   const { user } = useAuth();
   const rbac = useRBAC();
   const privileged = rbac.isAdmin || rbac.isHR;
-  const selfId = user?.uid ?? "";
+  const selfAccountId = user?.uid ?? "";
+  const selfEmployeeId = user?.employeeId ?? null;
 
   // The id an admin/HR caller has asked to look up. Empty means "nobody
   // asked, show my own" — `resolveViewedEmployeeId` below turns that into
-  // `selfId` either way, so a non-privileged caller typing here (they can't,
-  // the input is not rendered for them, but the function does not trust that)
-  // still only ever gets their own id back.
+  // the employment record id, not the login account id.
   const [lookupInput, setLookupInput] = useState("");
   const [requestedId, setRequestedId] = useState("");
 
   const viewed = useMemo(
-    () => resolveViewedEmployeeId(rbac.role, selfId, requestedId || undefined),
-    [rbac.role, selfId, requestedId]
+    () => resolveViewedEmployeeId(rbac.role, selfAccountId, selfEmployeeId, requestedId || undefined),
+    [rbac.role, selfAccountId, selfEmployeeId, requestedId]
   );
 
   const [plans, setPlans] = useState<PlanRecord[]>([]);
@@ -80,9 +79,9 @@ export default function BenefitsPage() {
     setLoading(true);
     try {
       const [planList, enrolmentsResult, claimsPage] = await Promise.all([
-        listPlans(viewed.employeeId),
-        listEnrolments({ employeeId: viewed.employeeId }),
-        listClaims({ employeeId: viewed.employeeId, pageSize: 50 }),
+        listPlans(viewed.isSelf ? undefined : viewed.employeeId),
+        listEnrolments(viewed.isSelf ? {} : { employeeId: viewed.employeeId }),
+        listClaims(viewed.isSelf ? { pageSize: 50 } : { employeeId: viewed.employeeId, pageSize: 50 }),
       ]);
 
       // `/api/benefits/dependants` reads `ctx.userId` unconditionally — it has
@@ -106,9 +105,9 @@ export default function BenefitsPage() {
   }, [viewed.employeeId, viewed.isSelf]);
 
   useEffect(() => {
-    if (!viewed.employeeId) return; // waiting on the session to resolve `selfId`
+    if (!selfAccountId && !selfEmployeeId) return;
     void reload();
-  }, [viewed.employeeId, reload]);
+  }, [viewed.employeeId, viewed.isSelf, selfAccountId, selfEmployeeId, reload]);
 
   const openWindowCount = plans.filter((p) => p.enrolmentWindow).length;
   const activeEnrolmentCount = enrolments.filter(

@@ -21,7 +21,7 @@ import { z } from "zod";
 import { requireApiContext } from "@/lib/api-context";
 import { authErrorResponse } from "@/lib/server-auth";
 import { describeIssues, toFieldIssues } from "@/lib/validation-response";
-import { defaultSyncRange, resolveSiteId, syncDeviceAttendanceForOrg } from "@/lib/attendance/device-sync";
+import { defaultSyncRange, resolveSiteIdForOrg, syncDeviceAttendanceForOrg } from "@/lib/attendance/device-sync";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const siteId = resolveSiteId(ctx.orgId, parsed.data.siteId ?? null);
+  const siteId = await resolveSiteIdForOrg(ctx.orgId, parsed.data.siteId ?? null);
   if (siteId === null) {
     return NextResponse.json(
       {

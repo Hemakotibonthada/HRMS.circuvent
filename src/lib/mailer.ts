@@ -50,6 +50,11 @@ export async function sendMail(options: {
   subject: string;
   html: string;
   text?: string;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer | string;
+    contentType?: string;
+  }>;
 }): Promise<boolean> {
   const t = getTransport();
   if (!t) {
@@ -77,6 +82,7 @@ export async function sendMail(options: {
       subject: options.subject,
       html: options.html,
       text: options.text,
+      attachments: options.attachments,
     });
     return true;
   } catch (e) {

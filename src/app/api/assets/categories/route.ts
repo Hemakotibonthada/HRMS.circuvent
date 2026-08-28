@@ -5,6 +5,7 @@ import { NeonAssetsRepository } from "@/db/repositories/assets.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
+import { ensureAssetCategories } from "@/lib/asset-bootstrap";
 
 export async function GET(request: NextRequest) {
   let ctx;
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    await ensureAssetCategories(ctx);
     const categories = await new NeonAssetsRepository(ctx).listCategories();
     return NextResponse.json({ categories });
   } catch (error) {

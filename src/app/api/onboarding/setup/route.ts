@@ -28,6 +28,7 @@ import { NeonAssetsRepository } from "@/db/repositories/assets.neon";
 import { NeonLifecycleRepository } from "@/db/repositories/lifecycle.neon";
 import { loadOrgLetterDefaults } from "@/db/repositories/org-identity";
 import { authErrorResponse } from "@/lib/server-auth";
+import { issueDocumentAndEmail } from "@/lib/issue-document";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
 import { normaliseEmploymentType } from "@/lib/employee-rules";
 import { sendMailboxInvite } from "@/lib/onboarding/mailbox-invite";
@@ -421,6 +422,12 @@ export async function POST(request: NextRequest) {
           );
 
           documentId = doc.id;
+
+          try {
+            await issueDocumentAndEmail(ctx, doc.id, new URL(request.url).origin);
+          } catch (sendErr) {
+            console.error("Appointment letter dispatch failed:", sendErr);
+          }
 
           // Mark task done for offer/appointment letter
           if (journey) {

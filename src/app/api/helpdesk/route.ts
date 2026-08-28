@@ -14,7 +14,8 @@ import { NeonHelpdeskRepository } from "@/db/repositories/helpdesk.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
-import { currentEmployeeId } from "@/lib/current-employee";
+import { helpdeskViewerId, requireHelpdeskViewerId } from "@/lib/helpdesk-actor";
+import { ensureHelpdeskDefaults } from "@/lib/helpdesk-bootstrap";
 
 const states = [
   "new",
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest) {
     // Without an employment record there is nothing of one's own to see, and
     // an empty string can never equal a uuid — so confidential tickets stay
     // hidden rather than being widened by a null.
-    const viewerId = (await currentEmployeeId(ctx)) ?? "";
+    const viewerId = (await helpdeskViewerId(ctx)) ?? "";
     const items = await new NeonHelpdeskRepository(ctx).listVisible(viewerId, ctx.role, {
       state: (state as (typeof states)[number]) ?? undefined,
       assignedToMe: searchParams.get("assignedToMe") === "true",
@@ -114,20 +115,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const onBehalf = parsed.data.requesterId && parsed.data.requesterId !== ctx.userId;
-  if (onBehalf && !["owner", "admin", "hr"].includes(ctx.role)) {
-    return NextResponse.json(
-      { error: "You cannot raise a ticket for someone else" },
-      { status: 403 }
-    );
-  }
-
   try {
+    await ensureHelpdeskDefaults(ctx);
+    const requesterEmployeeId = await requireHelpdeskViewerId(ctx);
+
+    const onBehalf =
+      parsed.data.requesterId && parsed.data.requesterId !== requesterEmployeeId;
+    if (onBehalf && !["owner", "admin", "hr"].includes(ctx.role)) {
+      return NextResponse.json(
+        { error: "You cannot raise a ticket for someone else" },
+        { status: 403 }
+      );
+    }
+
     const ticket = await new NeonHelpdeskRepository(ctx).createTicket({
       subject: parsed.data.subject,
       body: parsed.data.body,
-      requesterId: parsed.data.requesterId ?? ctx.userId,
-      raisedById: onBehalf ? ctx.userId : undefined,
+      requesterId: onBehalf ? parsed.data.requesterId! : requesterEmployeeId,
+      raisedById: onBehalf ? requesterEmployeeId : undefined,
       categoryId: parsed.data.categoryId,
       priority: parsed.data.priority,
       tags: parsed.data.tags,

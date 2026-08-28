@@ -639,6 +639,28 @@ export function resolveSiteId(orgId: string, explicit?: number | null): number |
   return siteMapFromEnv()[orgId] ?? null;
 }
 
+/**
+ * Resolves a device site id for sync — env map first, then the control plane
+ * when exactly one site exists (typical single-office tenant).
+ */
+export async function resolveSiteIdForOrg(
+  orgId: string,
+  explicit?: number | null
+): Promise<number | null> {
+  const mapped = resolveSiteId(orgId, explicit);
+  if (mapped !== null) return mapped;
+
+  const { fetchSites } = await import("./device-client");
+  const sitesResult = await fetchSites();
+  if (!sitesResult.ok || sitesResult.data.sites.length === 0) return null;
+
+  const sites = sitesResult.data.sites;
+  if (sites.length === 1) return sites[0].id;
+
+  // Multiple sites and no map — use the first rather than blocking sync entirely.
+  return sites[0]?.id ?? null;
+}
+
 async function activeOrgsWithTimezone(): Promise<{ id: string; timezone: string }[]> {
   // Superuser, exactly like `outbox-sweep.ts`'s `activeOrganisationIds`: a
   // scheduled job has no signed-in caller and therefore no tenant of its own

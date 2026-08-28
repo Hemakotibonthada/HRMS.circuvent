@@ -12,6 +12,30 @@ import { NeonAssetsRepository } from "@/db/repositories/assets.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { assetActorId } from "@/lib/asset-actor";
+
+function mapAssetDbError(error: unknown): RepositoryError | null {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String((error as { code: string }).code)
+      : "";
+  if (code === "23503") {
+    return new RepositoryError(
+      "A related record is missing or invalid (category, employee, or location). Refresh and try again.",
+      400
+    );
+  }
+  if (code === "23514") {
+    return new RepositoryError(
+      "Those values break an asset register rule (for example salvage above cost, or assignment state). Check the form and try again.",
+      400
+    );
+  }
+  if (code === "23505") {
+    return new RepositoryError("An asset with that tag already exists.", 409);
+  }
+  return null;
+}
 
 const conditions = ["new", "good", "fair", "poor", "damaged"] as const;
 
@@ -80,6 +104,7 @@ export async function POST(
 
   const repo = new NeonAssetsRepository(ctx);
   const canManage = ["owner", "admin", "hr", "manager"].includes(ctx.role);
+  const actorId = await assetActorId(ctx);
 
   try {
     // Anyone may report a fault on equipment — being unable to say your laptop
@@ -89,7 +114,7 @@ export async function POST(
         await repo.reportFault({
           assetId: id,
           description: parsed.data.description,
-          reportedById: ctx.userId,
+          reportedById: actorId ?? undefined,
           vendor: parsed.data.vendor,
         }),
         { status: 201 }
@@ -102,13 +127,13 @@ export async function POST(
 
     if (parsed.data.action === "issue") {
       return NextResponse.json(
-        await repo.issue(id, parsed.data.employeeId, ctx.userId, parsed.data.condition)
+        await repo.issue(id, parsed.data.employeeId, actorId, parsed.data.condition)
       );
     }
 
     if (parsed.data.action === "return") {
       return NextResponse.json(
-        await repo.returnAsset(id, ctx.userId, parsed.data.condition, parsed.data.notes)
+        await repo.returnAsset(id, actorId, parsed.data.condition, parsed.data.notes)
       );
     }
 
@@ -119,9 +144,13 @@ export async function POST(
     }
 
     return NextResponse.json(
-      await repo.transition(id, parsed.data.action, ctx.userId, parsed.data.detail)
+      await repo.transition(id, parsed.data.action, actorId, parsed.data.detail)
     );
   } catch (error) {
+    const mapped = mapAssetDbError(error);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+    }
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
@@ -188,6 +217,8 @@ export async function PATCH(
     );
   }
 
+  const actorId = await assetActorId(ctx);
+
   try {
     const record = await new NeonAssetsRepository(ctx).update(
       id,
@@ -206,11 +237,15 @@ export async function PATCH(
         locationId: parsed.data.locationId ?? undefined,
         notes: parsed.data.notes ?? undefined,
       },
-      ctx.userId
+      actorId
     );
 
     return NextResponse.json({ asset: record });
   } catch (error) {
+    const mapped = mapAssetDbError(error);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+    }
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
@@ -245,6 +280,10 @@ export async function DELETE(
     await new NeonAssetsRepository(ctx).delete(id, ctx.userId);
     return NextResponse.json({ success: true });
   } catch (error) {
+    const mapped = mapAssetDbError(error);
+    if (mapped) {
+      return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+    }
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }

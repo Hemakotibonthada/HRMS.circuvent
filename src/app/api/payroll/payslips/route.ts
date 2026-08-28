@@ -10,7 +10,7 @@ import { NeonPayrollRepository } from "@/db/repositories/payroll.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
-import { currentEmployeeId } from "@/lib/current-employee";
+import { currentEmployeeId, resolveScopedEmployeeId } from "@/lib/current-employee";
 
 export async function GET(request: NextRequest) {
   let ctx;
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const employeeId = privileged && requested ? requested : self;
+    const employeeId = resolveScopedEmployeeId(ctx, self, requested, privileged);
 
     if (!employeeId) {
       return NextResponse.json({ employeeId: null, payslips: [] });

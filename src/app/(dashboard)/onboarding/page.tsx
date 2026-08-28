@@ -42,6 +42,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRBAC } from "@/hooks/use-rbac";
+import { describeDelivery, sendDocument } from "@/lib/letters-client";
 
 // ═══════════════════════════════════════════════════════════════
 // ONBOARDING — ATS Integration, Manager & Buddy Assignment,
@@ -904,7 +905,14 @@ export default function OnboardingPage() {
         return;
       }
 
-      toast.success(`Appointment letter generated & dispatched to ${targetEmail}`);
+      const document = (await docRes.json()) as { id: string };
+      const sendResult = await sendDocument(document.id);
+      const described = describeDelivery(sendResult);
+      if (described.tone === "success") {
+        toast.success(`Appointment letter sent to ${targetEmail}`);
+      } else {
+        toast.warning(described.message);
+      }
       loadData();
     } catch {
       toast.error("Could not generate appointment letter");

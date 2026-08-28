@@ -10,6 +10,7 @@ import { NeonHelpdeskRepository } from "@/db/repositories/helpdesk.neon";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
+import { requireHelpdeskViewerId } from "@/lib/helpdesk-actor";
 
 const bodySchema = z.object({
   body: z.string().trim().min(1, "Write something").max(20_000),
@@ -54,11 +55,10 @@ export async function POST(
   const isAgent = ["owner", "admin", "hr", "manager"].includes(ctx.role);
 
   try {
-    // Reading first applies the same visibility rules as GET, so nobody can
-    // comment on a ticket they cannot see.
-    await repo.getTicket(id, ctx.userId, ctx.role);
+    const viewerId = await requireHelpdeskViewerId(ctx);
+    await repo.getTicket(id, viewerId, ctx.role);
 
-    const result = await repo.comment(id, ctx.userId, parsed.data.body, {
+    const result = await repo.comment(id, viewerId, parsed.data.body, {
       isInternal: parsed.data.isInternal,
       isAgent,
     });

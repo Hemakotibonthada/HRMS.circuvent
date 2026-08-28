@@ -52,34 +52,48 @@ describe("the benefits routing gap", () => {
 });
 
 describe("resolveViewedEmployeeId", () => {
-  const SELF = "11111111-1111-1111-1111-111111111111";
+  const SELF_ACCOUNT = "11111111-1111-1111-1111-111111111111";
+  const SELF_EMPLOYEE = "33333333-3333-3333-3333-333333333333";
   const OTHER = "22222222-2222-2222-2222-222222222222";
 
   it("lets a privileged role look up someone else's benefits", () => {
-    expect(resolveViewedEmployeeId("hr", SELF, OTHER)).toEqual({ employeeId: OTHER, isSelf: false });
-    expect(resolveViewedEmployeeId("admin", SELF, OTHER)).toEqual({ employeeId: OTHER, isSelf: false });
-    expect(resolveViewedEmployeeId("owner", SELF, OTHER)).toEqual({ employeeId: OTHER, isSelf: false });
+    expect(resolveViewedEmployeeId("hr", SELF_ACCOUNT, SELF_EMPLOYEE, OTHER)).toEqual({
+      employeeId: OTHER,
+      isSelf: false,
+    });
+    expect(resolveViewedEmployeeId("admin", SELF_ACCOUNT, SELF_EMPLOYEE, OTHER)).toEqual({
+      employeeId: OTHER,
+      isSelf: false,
+    });
+    expect(resolveViewedEmployeeId("owner", SELF_ACCOUNT, SELF_EMPLOYEE, OTHER)).toEqual({
+      employeeId: OTHER,
+      isSelf: false,
+    });
   });
 
   it("never lets an ordinary employee view someone else's benefits", () => {
-    // The isolation guarantee this feature actually needs: a non-privileged
-    // caller's requested id is discarded here exactly as the server discards
-    // it, so a page built on this function cannot be talked into requesting
-    // a colleague's data even if its input field would accept any id typed
-    // into it.
-    expect(resolveViewedEmployeeId("employee", SELF, OTHER)).toEqual({ employeeId: SELF, isSelf: true });
+    expect(resolveViewedEmployeeId("employee", SELF_ACCOUNT, SELF_EMPLOYEE, OTHER)).toEqual({
+      employeeId: SELF_EMPLOYEE,
+      isSelf: true,
+    });
   });
 
   it("falls back to self when nobody requested anyone else", () => {
-    expect(resolveViewedEmployeeId("hr", SELF)).toEqual({ employeeId: SELF, isSelf: true });
-    expect(resolveViewedEmployeeId("employee", SELF)).toEqual({ employeeId: SELF, isSelf: true });
+    expect(resolveViewedEmployeeId("hr", SELF_ACCOUNT, SELF_EMPLOYEE)).toEqual({
+      employeeId: SELF_EMPLOYEE,
+      isSelf: true,
+    });
+    expect(resolveViewedEmployeeId("employee", SELF_ACCOUNT, SELF_EMPLOYEE)).toEqual({
+      employeeId: SELF_EMPLOYEE,
+      isSelf: true,
+    });
   });
 
-  it("treats a privileged lookup of one's own id as self, not 'someone else'", () => {
-    // An admin who looks themselves up is still viewing their own benefits --
-    // the page should not show a "you are viewing someone else's data" note
-    // for that.
-    expect(resolveViewedEmployeeId("admin", SELF, SELF)).toEqual({ employeeId: SELF, isSelf: true });
+  it("treats a privileged lookup of one's own account id as self, not 'someone else'", () => {
+    expect(resolveViewedEmployeeId("admin", SELF_ACCOUNT, SELF_EMPLOYEE, SELF_ACCOUNT)).toEqual({
+      employeeId: SELF_EMPLOYEE,
+      isSelf: true,
+    });
   });
 });
 

@@ -20,15 +20,16 @@
 // nothing.
 
 import { NextResponse, type NextRequest } from "next/server";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 
 import { withTenant } from "@/db/client";
-import { generatedDocuments } from "@/db/schema";
+import { generatedDocuments, employeeDocuments, payrollRecords, payrollRuns, performanceReviews, reviewCycles } from "@/db/schema";
 import { salaryHistory } from "@/db/schema/compensation";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
 import { currentEmployeeId } from "@/lib/current-employee";
 import { EMPLOYEE_VISIBLE_DOCUMENT_STATUSES } from "@/lib/document-visibility";
+import { classifyMyDocument, type MyDocumentKind } from "@/lib/my-document-kinds";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,10 +50,13 @@ export interface MyDocument {
   id: string;
   title: string;
   category: string;
+  kind: MyDocumentKind;
   status: string;
   issuedAt: string | null;
   /** True when the PDF has been archived and can be downloaded. */
   downloadable: boolean;
+  /** True when the document still needs an online signature. */
+  needsSignature: boolean;
 }
 
 export interface MyPayChange {
@@ -63,6 +67,41 @@ export interface MyPayChange {
   changePercent: string | null;
   currency: string;
   reason: string;
+}
+
+export interface MyPayslip {
+  id: string;
+  periodMonth: number;
+  periodYear: number;
+  netPayMinor: string;
+  currency: string;
+  downloadable: boolean;
+}
+
+export interface MyTaxForm {
+  financialYear: number;
+  assessmentYear: number;
+  monthsCovered: number;
+  viewPath: string;
+}
+
+export interface MyUploadedDocument {
+  id: string;
+  name: string;
+  documentType: string;
+  uploadedAt: string;
+  downloadable: boolean;
+}
+
+export interface MyAppraisal {
+  id: string;
+  cycleName: string;
+  periodStart: string;
+  periodEnd: string;
+  finalRating: string | null;
+  managerRating: string | null;
+  submittedAt: string | null;
+  viewPath: string;
 }
 
 export async function GET(request: NextRequest) {
@@ -100,6 +139,10 @@ export async function GET(request: NextRequest) {
           employeeId: null,
           documents: [] as MyDocument[],
           payChanges: [] as MyPayChange[],
+          payslips: [] as MyPayslip[],
+          taxForms: [] as MyTaxForm[],
+          uploads: [] as MyUploadedDocument[],
+          appraisals: [] as MyAppraisal[],
         };
       }
 
@@ -145,18 +188,112 @@ export async function GET(request: NextRequest) {
         .orderBy(desc(salaryHistory.effectiveOn))
         .limit(100);
 
+      const payslipRows = await tx
+        .select({
+          id: payrollRecords.id,
+          periodMonth: payrollRuns.periodMonth,
+          periodYear: payrollRuns.periodYear,
+          netPayMinor: payrollRecords.netPayMinor,
+          payslipUrl: payrollRecords.payslipUrl,
+        })
+        .from(payrollRecords)
+        .innerJoin(payrollRuns, eq(payrollRuns.id, payrollRecords.runId))
+        .where(
+          and(
+            eq(payrollRecords.orgId, ctx.orgId),
+            eq(payrollRecords.employeeId, employeeId),
+            inArray(payrollRuns.status, ["approved", "paid"])
+          )
+        )
+        .orderBy(desc(payrollRuns.periodYear), desc(payrollRuns.periodMonth))
+        .limit(120);
+
+      const taxRows = await tx
+        .selectDistinct({
+          periodYear: payrollRuns.periodYear,
+          periodMonth: payrollRuns.periodMonth,
+        })
+        .from(payrollRecords)
+        .innerJoin(payrollRuns, eq(payrollRuns.id, payrollRecords.runId))
+        .where(
+          and(
+            eq(payrollRecords.orgId, ctx.orgId),
+            eq(payrollRecords.employeeId, employeeId),
+            inArray(payrollRuns.status, ["approved", "paid"])
+          )
+        );
+
+      const fyMonths = new Map<number, Set<number>>();
+      for (const row of taxRows) {
+        const month = row.periodMonth;
+        const fy = month >= 4 ? row.periodYear : row.periodYear - 1;
+        if (!fyMonths.has(fy)) fyMonths.set(fy, new Set());
+        fyMonths.get(fy)!.add(month);
+      }
+
+      const taxForms: MyTaxForm[] = [...fyMonths.entries()]
+        .sort(([a], [b]) => b - a)
+        .map(([financialYear, months]) => ({
+          financialYear,
+          assessmentYear: financialYear + 1,
+          monthsCovered: months.size,
+          viewPath: `/tax?financialYear=${financialYear}`,
+        }));
+
+      const uploads = await tx
+        .select({
+          id: employeeDocuments.id,
+          name: employeeDocuments.name,
+          documentType: employeeDocuments.documentType,
+          blobUrl: employeeDocuments.blobUrl,
+          uploadedAt: employeeDocuments.uploadedAt,
+        })
+        .from(employeeDocuments)
+        .where(
+          and(eq(employeeDocuments.orgId, ctx.orgId), eq(employeeDocuments.employeeId, employeeId))
+        )
+        .orderBy(desc(employeeDocuments.uploadedAt))
+        .limit(200);
+
+      const appraisalRows = await tx
+        .select({
+          id: performanceReviews.id,
+          cycleName: reviewCycles.name,
+          periodStart: reviewCycles.periodStart,
+          periodEnd: reviewCycles.periodEnd,
+          finalRating: performanceReviews.finalRating,
+          managerRating: performanceReviews.managerRating,
+          submittedAt: performanceReviews.submittedAt,
+          status: performanceReviews.status,
+        })
+        .from(performanceReviews)
+        .innerJoin(reviewCycles, eq(reviewCycles.id, performanceReviews.cycleId))
+        .where(
+          and(
+            eq(performanceReviews.orgId, ctx.orgId),
+            eq(performanceReviews.employeeId, employeeId),
+            inArray(reviewCycles.status, ["active", "closed"]),
+            or(
+              isNotNull(performanceReviews.finalRating),
+              isNotNull(performanceReviews.managerRating),
+              inArray(performanceReviews.status, ["completed", "published", "submitted"])
+            )
+          )
+        )
+        .orderBy(desc(reviewCycles.periodEnd))
+        .limit(50);
+
       return {
         employeeId,
         documents: docs.map((doc) => ({
           id: doc.id,
           title: doc.title,
           category: doc.category,
+          kind: classifyMyDocument({ title: doc.title, category: doc.category }),
           status: String(doc.status),
           issuedAt: (doc.completedAt ?? doc.sentAt ?? doc.createdAt)?.toISOString() ?? null,
-          // Reported rather than assumed: the PDF is archived by an outbox
-          // that may not have run yet, and a download button that 404s is
-          // worse than one that is not offered.
           downloadable: Boolean(doc.blobUrl),
+          needsSignature: ["sent", "viewed", "partially_signed"].includes(String(doc.status)),
         })),
         payChanges: changes.map((change) => ({
           id: change.id,
@@ -170,6 +307,32 @@ export async function GET(request: NextRequest) {
           changePercent: change.changePercent === null ? null : String(change.changePercent),
           currency: change.currency,
           reason: change.reason,
+        })),
+        payslips: payslipRows.map((row) => ({
+          id: row.id,
+          periodMonth: row.periodMonth,
+          periodYear: row.periodYear,
+          netPayMinor: String(row.netPayMinor),
+          currency: "INR",
+          downloadable: Boolean(row.payslipUrl),
+        })),
+        taxForms,
+        uploads: uploads.map((row) => ({
+          id: row.id,
+          name: row.name,
+          documentType: row.documentType,
+          uploadedAt: row.uploadedAt.toISOString(),
+          downloadable: Boolean(row.blobUrl),
+        })),
+        appraisals: appraisalRows.map((row) => ({
+          id: row.id,
+          cycleName: row.cycleName,
+          periodStart: String(row.periodStart),
+          periodEnd: String(row.periodEnd),
+          finalRating: row.finalRating === null ? null : String(row.finalRating),
+          managerRating: row.managerRating === null ? null : String(row.managerRating),
+          submittedAt: row.submittedAt?.toISOString() ?? null,
+          viewPath: `/reviews?review=${row.id}`,
         })),
       };
     });

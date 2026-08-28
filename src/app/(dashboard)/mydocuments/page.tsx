@@ -1,32 +1,38 @@
 "use client";
 
-// ═══════════════════════════════════════════════════════════════
-// MY DOCUMENTS — the letters and pay changes that belong to me
-// ═══════════════════════════════════════════════════════════════
-// Until now an employee could see their payslips but not the letters behind
-// them: the offer they signed, the revision that changed their salary. Those
-// are the documents people are actually asked for — by a bank, a landlord, a
-// visa application — and getting one meant emailing HR for a copy of a letter
-// about yourself.
-//
-// The compensation history is shown alongside, not instead. A letter is the
-// artefact; the history is the answer to "what am I on, and since when",
-// which is the question most people arrive with.
-
-import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, Download, FileText, Loader2, TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  Briefcase,
+  Download,
+  ExternalLink,
+  FileText,
+  Loader2,
+  Receipt,
+  Star,
+  TrendingUp,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  EMPLOYMENT_KINDS,
+  kindLabel,
+  type MyDocumentKind,
+} from "@/lib/my-document-kinds";
 
 interface MyDocument {
   id: string;
   title: string;
   category: string;
+  kind: MyDocumentKind;
   status: string;
   issuedAt: string | null;
   downloadable: boolean;
+  needsSignature: boolean;
 }
 
 interface MyPayChange {
@@ -39,14 +45,41 @@ interface MyPayChange {
   reason: string;
 }
 
-/**
- * Formats an amount held in minor units.
- *
- * The value arrives as a string because it is a bigint of paise, and a
- * JavaScript number stops being exact somewhere past ninety lakh rupees.
- * Converting with BigInt keeps the rupee figure right for salaries this
- * company will plausibly pay.
- */
+interface MyPayslip {
+  id: string;
+  periodMonth: number;
+  periodYear: number;
+  netPayMinor: string;
+  currency: string;
+  downloadable: boolean;
+}
+
+interface MyTaxForm {
+  financialYear: number;
+  assessmentYear: number;
+  monthsCovered: number;
+  viewPath: string;
+}
+
+interface MyUploadedDocument {
+  id: string;
+  name: string;
+  documentType: string;
+  uploadedAt: string;
+  downloadable: boolean;
+}
+
+interface MyAppraisal {
+  id: string;
+  cycleName: string;
+  periodStart: string;
+  periodEnd: string;
+  finalRating: string | null;
+  managerRating: string | null;
+  submittedAt: string | null;
+  viewPath: string;
+}
+
 function formatMinor(minor: string | null, currency: string): string {
   if (minor === null) return "—";
   try {
@@ -68,20 +101,79 @@ function formatDate(value: string | null): string {
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
 }
 
-/** Human wording for the template categories an employee will actually see. */
-function describeCategory(category: string): string {
-  const known: Record<string, string> = {
-    letter: "Letter",
-    offer: "Offer",
-    compensation_revision: "Compensation",
-    experience_certificate: "Certificate",
-  };
-  return known[category] ?? category.replace(/_/g, " ");
+function monthLabel(month: number, year: number): string {
+  return new Date(year, month - 1, 1).toLocaleDateString("en-IN", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+async function downloadBlob(res: Response, filename: string) {
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = window.document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  window.document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function LetterRow({
+  doc,
+  downloading,
+  onDownload,
+}: {
+  doc: MyDocument;
+  downloading: string | null;
+  onDownload: (doc: MyDocument) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">{doc.title}</p>
+        <p className="truncate text-xs text-muted-foreground">
+          {kindLabel(doc.kind)} · issued {formatDate(doc.issuedAt)}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {doc.needsSignature && (
+          <Badge variant="outline" className="text-[10px] font-normal">
+            Signature pending — use the link in your email
+          </Badge>
+        )}
+        {doc.downloadable ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={downloading === `letter-${doc.id}`}
+            onClick={() => onDownload(doc)}
+          >
+            {downloading === `letter-${doc.id}` ? (
+              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="mr-1 h-3.5 w-3.5" />
+            )}
+            PDF
+          </Button>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">
+            {doc.needsSignature ? "PDF after signing" : "PDF not ready yet"}
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function MyDocumentsPage() {
   const [documents, setDocuments] = useState<MyDocument[]>([]);
   const [payChanges, setPayChanges] = useState<MyPayChange[]>([]);
+  const [payslips, setPayslips] = useState<MyPayslip[]>([]);
+  const [taxForms, setTaxForms] = useState<MyTaxForm[]>([]);
+  const [uploads, setUploads] = useState<MyUploadedDocument[]>([]);
+  const [appraisals, setAppraisals] = useState<MyAppraisal[]>([]);
   const [hasEmployeeRecord, setHasEmployeeRecord] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -96,10 +188,12 @@ export default function MyDocumentsPage() {
       if (!res.ok) throw new Error(data.error || "Could not load your documents.");
       setDocuments(data.documents ?? []);
       setPayChanges(data.payChanges ?? []);
+      setPayslips(data.payslips ?? []);
+      setTaxForms(data.taxForms ?? []);
+      setUploads(data.uploads ?? []);
+      setAppraisals(data.appraisals ?? []);
       setHasEmployeeRecord(Boolean(data.employeeId));
     } catch (e) {
-      // Named rather than swallowed: an empty list and a failed request look
-      // identical on screen, and only one of them means "you have no letters".
       setError(e instanceof Error ? e.message : "Could not load your documents.");
     } finally {
       setLoading(false);
@@ -110,8 +204,31 @@ export default function MyDocumentsPage() {
     void load();
   }, [load]);
 
-  const download = async (doc: MyDocument) => {
-    setDownloading(doc.id);
+  const employmentLetters = useMemo(
+    () => documents.filter((d) => EMPLOYMENT_KINDS.includes(d.kind)),
+    [documents]
+  );
+  const compensationLetters = useMemo(
+    () => documents.filter((d) => d.kind === "compensation_letter"),
+    [documents]
+  );
+  const appraisalLetters = useMemo(
+    () => documents.filter((d) => d.kind === "appraisal_letter"),
+    [documents]
+  );
+  const otherLetters = useMemo(
+    () =>
+      documents.filter(
+        (d) =>
+          !EMPLOYMENT_KINDS.includes(d.kind) &&
+          d.kind !== "compensation_letter" &&
+          d.kind !== "appraisal_letter"
+      ),
+    [documents]
+  );
+
+  const downloadLetter = async (doc: MyDocument) => {
+    setDownloading(`letter-${doc.id}`);
     setError("");
     try {
       const res = await fetch(`/api/documents/${doc.id}/pdf`, { credentials: "include" });
@@ -119,19 +236,49 @@ export default function MyDocumentsPage() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || "Could not download that document.");
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = window.document.createElement("a");
-      link.href = url;
-      link.download = `${doc.title.replace(/[^\w\s.-]/g, "").trim() || "document"}.pdf`;
-      window.document.body.appendChild(link);
-      link.click();
-      link.remove();
-      // Released on a later tick rather than immediately: revoking while the
-      // click is still being handled cancels the download in some browsers.
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await downloadBlob(
+        res,
+        `${doc.title.replace(/[^\w\s.-]/g, "").trim() || "document"}.pdf`
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not download that document.");
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const downloadPayslip = async (slip: MyPayslip) => {
+    setDownloading(`payslip-${slip.id}`);
+    setError("");
+    try {
+      const res = await fetch(`/api/payroll/payslips/${slip.id}/pdf`, { credentials: "include" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Payslip PDF is not available yet.");
+      }
+      await downloadBlob(
+        res,
+        `payslip-${slip.periodYear}-${String(slip.periodMonth).padStart(2, "0")}.pdf`
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not download that payslip.");
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const downloadUpload = async (doc: MyUploadedDocument) => {
+    setDownloading(`upload-${doc.id}`);
+    setError("");
+    try {
+      const res = await fetch(`/api/me/documents/${doc.id}/file`, { credentials: "include" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Could not download that file.");
+      }
+      await downloadBlob(res, doc.name);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not download that file.");
     } finally {
       setDownloading(null);
     }
@@ -142,8 +289,8 @@ export default function MyDocumentsPage() {
       <div>
         <h1 className="text-xl font-semibold">My documents</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          The letters issued to you and the pay changes they record. These are the
-          documents a bank or a landlord usually asks for.
+          Joining and appointment letters, compensation revisions, appraisals, payslips, tax
+          certificates and other HR files issued to you.
         </p>
       </div>
 
@@ -156,114 +303,333 @@ export default function MyDocumentsPage() {
 
       {!loading && !hasEmployeeRecord && (
         <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Your account is not linked to an employee record, so there are no letters to
-          show. If you believe that is wrong, ask HR to check your profile.
+          Your account is not linked to an employee record, so there are no documents to show. If
+          you believe that is wrong, ask HR to check your profile.
         </p>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <TrendingUp className="h-4 w-4" />
-            Compensation history
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading…
-            </p>
-          ) : payChanges.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No salary changes have been recorded against your profile yet.
-            </p>
-          ) : (
-            <div className="divide-y">
-              {payChanges.map((change) => (
-                <div key={change.id} className="flex items-center justify-between gap-4 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">
-                      {formatMinor(change.previousAnnual, change.currency)}
-                      <span className="mx-2 text-muted-foreground">→</span>
-                      {formatMinor(change.newAnnual, change.currency)}
-                      <span className="ml-2 text-xs text-muted-foreground">a year</span>
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {change.reason} · effective {formatDate(change.effectiveOn)}
-                    </p>
-                  </div>
-                  {change.changePercent && (
-                    <Badge variant="secondary" className="shrink-0">
-                      {Number(change.changePercent) > 0 ? "+" : ""}
-                      {change.changePercent}%
-                    </Badge>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="employment" className="space-y-4">
+        <TabsList className="flex h-auto flex-wrap gap-1">
+          <TabsTrigger value="employment">Employment</TabsTrigger>
+          <TabsTrigger value="compensation">Compensation</TabsTrigger>
+          <TabsTrigger value="appraisals">Appraisals</TabsTrigger>
+          <TabsTrigger value="payslips">Payslips</TabsTrigger>
+          <TabsTrigger value="tax">Tax</TabsTrigger>
+          <TabsTrigger value="other">Other</TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <FileText className="h-4 w-4" />
-            Letters issued to me
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading…
-            </p>
-          ) : documents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No letters have been issued to you yet. Letters appear here once HR sends
-              them; one still being drafted is not shown.
-            </p>
-          ) : (
-            <div className="divide-y">
-              {documents.map((doc) => (
-                <div key={doc.id} className="flex items-center justify-between gap-4 py-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{doc.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {describeCategory(doc.category)} · issued {formatDate(doc.issuedAt)}
-                    </p>
-                  </div>
-                  <div className="shrink-0">
-                    {doc.downloadable ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={downloading === doc.id}
-                        onClick={() => download(doc)}
-                      >
-                        {downloading === doc.id ? (
-                          <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Download className="mr-1 h-3.5 w-3.5" />
-                        )}
-                        PDF
-                      </Button>
-                    ) : (
-                      // Said plainly rather than shown as a button that fails.
-                      // The PDF is archived by a background job that may not
-                      // have run yet.
-                      <span className="text-[11px] text-muted-foreground">
-                        PDF not ready yet
-                      </span>
-                    )}
-                  </div>
+        <TabsContent value="employment" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Briefcase className="h-4 w-4" />
+                Joining, appointment & offer letters
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <LoadingRow />
+              ) : employmentLetters.length === 0 ? (
+                <EmptyRow text="No employment letters have been issued to you yet." />
+              ) : (
+                <div className="divide-y">
+                  {employmentLetters.map((doc) => (
+                    <LetterRow
+                      key={doc.id}
+                      doc={doc}
+                      downloading={downloading}
+                      onDownload={downloadLetter}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </CardContent>
+          </Card>
+          {!loading && otherLetters.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Other letters</CardTitle>
+              </CardHeader>
+              <CardContent className="divide-y">
+                {otherLetters.map((doc) => (
+                  <LetterRow
+                    key={doc.id}
+                    doc={doc}
+                    downloading={downloading}
+                    onDownload={downloadLetter}
+                  />
+                ))}
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+        </TabsContent>
+
+        <TabsContent value="compensation" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <TrendingUp className="h-4 w-4" />
+                Compensation revision letters
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <LoadingRow />
+              ) : compensationLetters.length === 0 ? (
+                <EmptyRow text="No compensation revision letters yet." />
+              ) : (
+                <div className="divide-y">
+                  {compensationLetters.map((doc) => (
+                    <LetterRow
+                      key={doc.id}
+                      doc={doc}
+                      downloading={downloading}
+                      onDownload={downloadLetter}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Salary change history</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <LoadingRow />
+              ) : payChanges.length === 0 ? (
+                <EmptyRow text="No salary changes recorded yet." />
+              ) : (
+                <div className="divide-y">
+                  {payChanges.map((change) => (
+                    <div key={change.id} className="flex items-center justify-between gap-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">
+                          {formatMinor(change.previousAnnual, change.currency)}
+                          <span className="mx-2 text-muted-foreground">→</span>
+                          {formatMinor(change.newAnnual, change.currency)}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {change.reason} · effective {formatDate(change.effectiveOn)}
+                        </p>
+                      </div>
+                      {change.changePercent && (
+                        <Badge variant="secondary" className="shrink-0">
+                          {Number(change.changePercent) > 0 ? "+" : ""}
+                          {change.changePercent}%
+                        </Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="appraisals" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Star className="h-4 w-4" />
+                Performance appraisals
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <LoadingRow />
+              ) : appraisals.length === 0 && appraisalLetters.length === 0 ? (
+                <EmptyRow text="Appraisals appear here once a review cycle is completed and published." />
+              ) : (
+                <div className="divide-y">
+                  {appraisals.map((row) => (
+                    <div key={row.id} className="flex items-center justify-between gap-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium">{row.cycleName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDate(row.periodStart)} – {formatDate(row.periodEnd)}
+                          {row.finalRating
+                            ? ` · rating ${row.finalRating}`
+                            : row.managerRating
+                              ? ` · manager rating ${row.managerRating}`
+                              : ""}
+                        </p>
+                      </div>
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={row.viewPath}>
+                          <ExternalLink className="mr-1 h-3.5 w-3.5" />
+                          View
+                        </Link>
+                      </Button>
+                    </div>
+                  ))}
+                  {appraisalLetters.map((doc) => (
+                    <LetterRow
+                      key={doc.id}
+                      doc={doc}
+                      downloading={downloading}
+                      onDownload={downloadLetter}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="payslips" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Receipt className="h-4 w-4" />
+                Payslips
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <LoadingRow />
+              ) : payslips.length === 0 ? (
+                <EmptyRow text="No approved payslips yet. They appear here after payroll is released." />
+              ) : (
+                <div className="divide-y">
+                  {payslips.map((slip) => (
+                    <div key={slip.id} className="flex items-center justify-between gap-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium">
+                          {monthLabel(slip.periodMonth, slip.periodYear)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Net pay {formatMinor(slip.netPayMinor, slip.currency)}
+                        </p>
+                      </div>
+                      {slip.downloadable ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={downloading === `payslip-${slip.id}`}
+                          onClick={() => downloadPayslip(slip)}
+                        >
+                          {downloading === `payslip-${slip.id}` ? (
+                            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Download className="mr-1 h-3.5 w-3.5" />
+                          )}
+                          PDF
+                        </Button>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">PDF archiving pending</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="tax" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileText className="h-4 w-4" />
+                Tax documents (Form 16)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <LoadingRow />
+              ) : taxForms.length === 0 ? (
+                <EmptyRow text="Form 16 is built from approved payroll. Once a financial year has payroll, it appears here." />
+              ) : (
+                <div className="divide-y">
+                  {taxForms.map((form) => (
+                    <div key={form.financialYear} className="flex items-center justify-between gap-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium">
+                          FY {form.financialYear}–{String(form.financialYear + 1).slice(-2)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Assessment year {form.assessmentYear} · {form.monthsCovered} month
+                          {form.monthsCovered === 1 ? "" : "s"} of payroll
+                        </p>
+                      </div>
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={form.viewPath}>
+                          <ExternalLink className="mr-1 h-3.5 w-3.5" />
+                          View
+                        </Link>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="other" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileText className="h-4 w-4" />
+                HR uploads & forms
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <LoadingRow />
+              ) : uploads.length === 0 ? (
+                <EmptyRow text="No uploaded documents on file yet — ID proofs, contracts and similar files appear here." />
+              ) : (
+                <div className="divide-y">
+                  {uploads.map((doc) => (
+                    <div key={doc.id} className="flex items-center justify-between gap-4 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{doc.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {doc.documentType.replace(/_/g, " ")} · uploaded {formatDate(doc.uploadedAt)}
+                        </p>
+                      </div>
+                      {doc.downloadable ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={downloading === `upload-${doc.id}`}
+                          onClick={() => downloadUpload(doc)}
+                        >
+                          {downloading === `upload-${doc.id}` ? (
+                            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Download className="mr-1 h-3.5 w-3.5" />
+                          )}
+                          Download
+                        </Button>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">File unavailable</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
+}
+
+function LoadingRow() {
+  return (
+    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      Loading…
+    </p>
+  );
+}
+
+function EmptyRow({ text }: { text: string }) {
+  return <p className="text-sm text-muted-foreground">{text}</p>;
 }
