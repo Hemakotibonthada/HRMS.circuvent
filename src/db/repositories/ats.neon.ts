@@ -41,6 +41,8 @@ import {
 } from "@/lib/ats";
 import { NotFoundError, RepositoryError } from "./types";
 import { minorToMajor, toMinor } from "@/lib/money/minor";
+import { offerAcceptedEmail } from "@/lib/document-mail";
+import { mailConfigured, sendMail } from "@/lib/mailer";
 
 function toStage(row: typeof pipelineStages.$inferSelect): PipelineStage {
   return {
@@ -886,14 +888,50 @@ export class NeonAtsRepository {
           .where(eq(applications.id, offer.applicationId));
       }
 
-      await tx.insert(applicationEvents).values({
-        orgId: this.ctx.orgId,
-        applicationId: offer.applicationId,
-        eventType: accepted ? "offer_accepted" : "offer_declined",
-        reason: accepted ? undefined : declineReason,
-      });
+      let candidateInfo: { name: string; email: string; designation: string } | null = null;
+      if (accepted && offer.candidateId) {
+        const [cand] = await tx
+          .select({
+            firstName: candidates.firstName,
+            lastName: candidates.lastName,
+            email: candidates.email,
+          })
+          .from(candidates)
+          .where(eq(candidates.id, offer.candidateId))
+          .limit(1);
 
-      return { status: accepted ? "accepted" : "declined" };
+        if (cand?.email) {
+          candidateInfo = {
+            name: `${cand.firstName} ${cand.lastName}`.trim(),
+            email: cand.email,
+            designation: offer.designation,
+          };
+        }
+      }
+
+      const result = { status: accepted ? "accepted" : "declined" };
+
+      // Dispatch Domain Mail Registration invite immediately to the candidate's personal email
+      if (candidateInfo && mailConfigured()) {
+        try {
+          const emailBody = offerAcceptedEmail({
+            recipientName: candidateInfo.name,
+            companyName: "Circuvent Technologies",
+            positionTitle: candidateInfo.designation,
+            claimUrl: process.env.MAIL_REGISTER_URL || "https://mail.circuvent.com/register",
+          });
+          await sendMail({
+            to: candidateInfo.email,
+            subject: emailBody.subject,
+            html: emailBody.html,
+            text: emailBody.text,
+          });
+        } catch (e) {
+          console.error("[ats] Could not send domain mail registration invite:", e);
+        }
+      }
+
+      return result;
     });
   }
 

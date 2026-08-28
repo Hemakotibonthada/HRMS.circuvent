@@ -58,6 +58,8 @@ export interface OfferMailContext {
   signUrl?: string;
   /** ISO date the offer lapses, if it does. */
   validUntil?: string;
+  /** Mailbox claim URL for domain email registration. */
+  claimUrl?: string;
   /** Person to reply to with questions. */
   contactName?: string;
   contactEmail?: string;
@@ -225,29 +227,42 @@ export function offerReminderEmail(ctx: OfferMailContext): EmailBody {
   };
 }
 
-/** Confirmation to the candidate once every signature is in. */
+/** Confirmation to the candidate once every signature is in with Domain Email Setup prompt. */
 export function offerAcceptedEmail(ctx: OfferMailContext): EmailBody {
   const company = escapeHtml(ctx.companyName);
   const position = escapeHtml(ctx.positionTitle);
   const contact = contactLine(ctx);
+  const claimUrl = ctx.claimUrl || process.env.MAIL_REGISTER_URL || "https://mail.circuvent.com/register";
 
   return {
-    subject: `Welcome to ${ctx.companyName}`,
+    subject: `Welcome to ${ctx.companyName} — Set up your Domain Email`,
     html:
-      WRAPPER_OPEN(`Welcome to ${company}`) +
+      WRAPPER_OPEN(`Welcome to ${company}!`) +
       paragraph(`Hi ${escapeHtml(greet(ctx.recipientName))},`) +
       paragraph(
-        `Your offer for <strong>${position}</strong> is signed by everyone it needed to be. Welcome aboard.`
+        `Congratulations! Your offer for <strong>${position}</strong> at ${company} is officially confirmed. We are thrilled to welcome you aboard!`
       ) +
-      paragraph("We will be in touch shortly with your onboarding details and what to bring.") +
-      footNote("A signed copy is attached to your record and can be sent to you on request.") +
+      paragraph(
+        `<strong>Next Step: Set Up Your Company Email Address</strong><br/>` +
+        `Before your first day, please register your official work email address. This domain mailbox is your primary identity for company webmail, HRMS, attendance, and employee self-service.`
+      ) +
+      button(claimUrl, "Create Your Company Email") +
+      paragraph(
+        `<em>Address format: &lt;your name&gt;@domain (or cvi-&lt;name&gt;@domain for interns).</em><br/>` +
+        `Once registered, your mailbox request is approved by IT / HR Operations and your credentials will be activated.`
+      ) +
+      footNote("A signed copy of your offer letter is attached to your employee record.") +
       contact.html +
       WRAPPER_CLOSE,
     text:
       `Hi ${greet(ctx.recipientName)},\n\n` +
-      `Your offer for ${ctx.positionTitle} is signed by everyone it needed to be. Welcome aboard.\n\n` +
-      `We will be in touch shortly with your onboarding details and what to bring.\n\n` +
-      `A signed copy is attached to your record and can be sent to you on request.` +
+      `Congratulations! Your offer for ${ctx.positionTitle} at ${ctx.companyName} is officially confirmed. Welcome aboard!\n\n` +
+      `NEXT STEP: SET UP YOUR COMPANY EMAIL ADDRESS\n` +
+      `Before your first day, please register your official work email address. This domain mailbox is your primary identity for company webmail, HRMS, attendance, and employee self-service.\n\n` +
+      `Create your company email:\n${claimUrl}\n\n` +
+      `Address format: <your name>@domain (or cvi-<name>@domain for interns).\n` +
+      `Once registered, your mailbox request is approved by IT / HR Operations and your credentials will be activated.\n\n` +
+      `A signed copy of your offer letter is attached to your employee record.` +
       contact.text,
   };
 }

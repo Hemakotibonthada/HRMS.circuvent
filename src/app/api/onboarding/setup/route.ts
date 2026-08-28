@@ -30,6 +30,8 @@ import { loadOrgLetterDefaults } from "@/db/repositories/org-identity";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
 import { normaliseEmploymentType } from "@/lib/employee-rules";
+import { offerAcceptedEmail } from "@/lib/document-mail";
+import { mailConfigured, sendMail } from "@/lib/mailer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -314,8 +316,26 @@ export async function POST(request: NextRequest) {
           if (task) {
             journey = await lifecycleRepo.setTaskCompletion(task.id, true, ctx.userId);
           }
+
+          const targetEmail = data.personalEmail || data.workEmail;
+          if (targetEmail && mailConfigured()) {
+            const claimUrl = process.env.MAIL_REGISTER_URL || "https://mail.circuvent.com/register";
+            const emailBody = offerAcceptedEmail({
+              recipientName: `${data.firstName} ${data.lastName}`.trim(),
+              companyName: "Circuvent Technologies",
+              positionTitle: data.designation,
+              claimUrl,
+            });
+
+            await sendMail({
+              to: targetEmail,
+              subject: emailBody.subject,
+              html: emailBody.html,
+              text: emailBody.text,
+            });
+          }
         } catch (mailErr) {
-          console.error("Mailbox setup task tick failed:", mailErr);
+          console.error("Mailbox setup task tick / send failed:", mailErr);
         }
       }
 
