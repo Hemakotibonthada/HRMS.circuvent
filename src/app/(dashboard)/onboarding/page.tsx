@@ -632,7 +632,9 @@ export default function OnboardingPage() {
   // Open Setup Modal for Pending Hire
   const openSetupModal = (hire: PendingHireItem) => {
     setSetupModalHire(hire);
-    const suggestedEmail = `${hire.firstName.toLowerCase()}.${hire.lastName.toLowerCase()}@circuvent.com`.replace(
+    const candidateMb = mailboxByCandidate[hire.candidateId];
+    const claimedWorkEmail = candidateMb?.email?.trim() || "";
+    const suggestedEmail = claimedWorkEmail || `${hire.firstName.toLowerCase()}.${hire.lastName.toLowerCase()}@circuvent.com`.replace(
       /\s+/g,
       ""
     );
@@ -699,7 +701,7 @@ export default function OnboardingPage() {
       rightToWorkCollected: true,
       backgroundCheckStatus: hire.consentBackgroundVerification === false ? "in_progress" : "verified",
       issueAppointmentLetter: true,
-      triggerMailboxInvite: true,
+      triggerMailboxInvite: candidateMb?.status !== "approved",
       assetId: availableAssets[0]?.id || "none",
     });
   };
