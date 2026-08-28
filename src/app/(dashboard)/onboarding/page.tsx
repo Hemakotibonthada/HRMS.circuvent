@@ -378,12 +378,13 @@ export default function OnboardingPage() {
 
       if (assetsRes.ok) {
         const data = await assetsRes.json();
-        const list = (data.items || data.assets || data.data || []).map(
-          (a: { id: string; name?: string; assetTag?: string; serialNumber?: string }) => ({
+        const rawList = data.assets || data.items || data.data || [];
+        const list = rawList.map(
+          (a: { id: string; name?: string; assetTag?: string; category?: string; serialNumber?: string; manufacturer?: string; model?: string }) => ({
             id: String(a.id),
-            name: a.name || "Asset",
-            assetTag: a.assetTag || a.serialNumber || "Asset",
-            category: "",
+            name: a.name || a.model || (a.manufacturer ? `${a.manufacturer} Device` : "Hardware"),
+            assetTag: a.assetTag || a.serialNumber || (a.id ? `AST-${a.id.slice(0, 6).toUpperCase()}` : "Asset"),
+            category: a.category || "IT Hardware",
             state: "in_stock",
           })
         );
@@ -607,8 +608,8 @@ export default function OnboardingPage() {
   const assetLabel = (id?: string | null) => {
     if (!id || id === "none") return "Assign Later (In Stock)";
     const match = availableAssets.find((a) => a.id === id);
-    if (match) return `${match.name} (${match.assetTag || (match as any).serialNumber || "Asset"})`;
-    return "Assign Later (In Stock)";
+    if (match) return `${match.name} (${match.assetTag}) • ${match.category || "IT Hardware"}`;
+    return "Choose hardware...";
   };
 
   // Filtered Joiners
@@ -871,9 +872,23 @@ export default function OnboardingPage() {
         credentials: "include",
         body: JSON.stringify({
           employeeId: emp.id,
-          title: `Appointment Letter - ${emp.firstName} ${emp.lastName}`,
+          title: `Appointment Letter - ${emp.firstName} ${emp.lastName}`.trim(),
+          recipients: {
+            employee: {
+              email: emp.workEmail || emp.personalEmail || "employee@circuvent.com",
+              name: `${emp.firstName} ${emp.lastName}`.trim(),
+            },
+            candidate: {
+              email: emp.workEmail || emp.personalEmail || "employee@circuvent.com",
+              name: `${emp.firstName} ${emp.lastName}`.trim(),
+            },
+            signatory: {
+              email: "hr@circuvent.com",
+              name: "Authorised Signatory",
+            },
+          },
           extraValues: {
-            candidate_name: `${emp.firstName} ${emp.lastName}`,
+            candidate_name: `${emp.firstName} ${emp.lastName}`.trim(),
             designation: emp.designation,
             join_date: emp.joiningDate,
           },
@@ -1969,15 +1984,23 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <Label>Available In-Stock Equipment</Label>
               <Select value={selectedAssetId} onValueChange={setSelectedAssetId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose hardware..." />
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Choose hardware...">
+                    {assetLabel(selectedAssetId)}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {availableAssets.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name} ({a.assetTag}) • {a.category}
+                  {availableAssets.length === 0 ? (
+                    <SelectItem value="none" disabled>
+                      No in-stock hardware available
                     </SelectItem>
-                  ))}
+                  ) : (
+                    availableAssets.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name} ({a.assetTag}) • {a.category}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>

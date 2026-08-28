@@ -7,6 +7,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { NeonDocumentsRepository } from "@/db/repositories/documents.neon";
+import { NeonEmployeeRepository } from "@/db/repositories/employee.neon";
+import { loadOrgLetterDefaults } from "@/db/repositories/org-identity";
 import { NotFoundError, RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
@@ -109,9 +111,10 @@ export async function POST(request: NextRequest) {
   try {
     const docRepo = new NeonDocumentsRepository(ctx);
     let templateId = parsed.data.templateId;
-    if (!templateId) {
-      const templates = await docRepo.listTemplates();
-      const template =
+    const templates = await docRepo.listTemplates();
+    let template = templateId ? templates.find((t) => t.id === templateId) : null;
+    if (!template) {
+      template =
         templates.find((t) => t.name === "Appointment Letter") ||
         templates.find((t) => t.name === "Joining Letter") ||
         templates[0];
@@ -121,8 +124,46 @@ export async function POST(request: NextRequest) {
       templateId = template.id;
     }
 
+    const recipients: Record<string, { email: string; name?: string }> = {
+      ...(parsed.data.recipients ?? {}),
+    };
+
+    if (template.requiresSignature && template.signatoryRoles?.length) {
+      const defaults = (await loadOrgLetterDefaults(ctx)) ?? {};
+      let emp: any = null;
+      if (parsed.data.employeeId) {
+        emp = await new NeonEmployeeRepository(ctx).getById(parsed.data.employeeId);
+      }
+
+      for (const role of template.signatoryRoles) {
+        if (!recipients[role]?.email) {
+          if (role === "employee" && emp) {
+            recipients[role] = {
+              email: emp.workEmail || emp.personalEmail || "employee@circuvent.com",
+              name: `${emp.firstName} ${emp.lastName}`.trim() || "Employee",
+            };
+          } else if (role === "candidate") {
+            recipients[role] = {
+              email: emp?.workEmail || emp?.personalEmail || "candidate@circuvent.com",
+              name: emp ? `${emp.firstName} ${emp.lastName}`.trim() : "Candidate",
+            };
+          } else if (role === "signatory" || role === "hr") {
+            recipients[role] = {
+              email: defaults.hrContactEmail || "hr@circuvent.com",
+              name: defaults.signatoryName || "Authorised Signatory",
+            };
+          } else if (role === "manager") {
+            recipients[role] = {
+              email: defaults.hrContactEmail || "hr@circuvent.com",
+              name: defaults.signatoryName || "Manager",
+            };
+          }
+        }
+      }
+    }
+
     const document = await docRepo.generate(
-      { ...parsed.data, templateId },
+      { ...parsed.data, templateId: template.id, recipients },
       ctx.userId
     );
     return NextResponse.json(document, { status: 201 });
