@@ -36,10 +36,18 @@ import { mailConfigured, sendMail } from "@/lib/mailer";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const optionalUuid = z.preprocess((v) => {
+  if (typeof v === "string") {
+    const trimmed = v.trim();
+    if (!trimmed || trimmed === "none" || trimmed === "null" || trimmed === "undefined") return null;
+  }
+  return v;
+}, z.string().uuid().optional().nullable());
+
 const setupSchema = z.object({
-  candidateId: z.string().uuid().optional().nullable(),
-  applicationId: z.string().uuid().optional().nullable(),
-  offerId: z.string().uuid().optional().nullable(),
+  candidateId: optionalUuid,
+  applicationId: optionalUuid,
+  offerId: optionalUuid,
   employeeCode: z.string().trim().max(64).optional(),
   firstName: z.string().trim().min(1, "First name is required").max(100),
   lastName: z.string().trim().min(1, "Last name is required").max(100),
@@ -47,16 +55,16 @@ const setupSchema = z.object({
   personalEmail: z.string().trim().email().max(320).optional().nullable(),
   phone: z.string().trim().max(32).optional().nullable(),
   designation: z.string().trim().min(1, "Designation is required").max(150),
-  departmentId: z.string().uuid().optional().nullable(),
-  reportingToId: z.string().uuid().optional().nullable(),
-  buddyId: z.string().uuid().optional().nullable(),
-  locationId: z.string().uuid().optional().nullable(),
+  departmentId: optionalUuid,
+  reportingToId: optionalUuid,
+  buddyId: optionalUuid,
+  locationId: optionalUuid,
   joiningDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Joining date must be YYYY-MM-DD"),
   salary: z.number().nonnegative().optional().nullable(),
   employmentType: z.string().trim().default("full_time"),
   issueAppointmentLetter: z.boolean().default(true),
   triggerMailboxInvite: z.boolean().default(true),
-  assetId: z.string().uuid().optional().nullable(),
+  assetId: optionalUuid,
   notes: z.string().trim().max(2000).optional().nullable(),
 });
 
