@@ -13,20 +13,9 @@
 // one), and an account can exist with no employee record (the billing and
 // abuse mailboxes in the live tenant are exactly this).
 //
-// Much of the API used `ctx.userId` directly as an employee id. That worked
-// only by accident: `scripts/backfill-owner-employees.ts` inserts the owner's
-// employee row with `id` *forced* to the user's id, so for those two accounts
-// the two identifiers happen to coincide. Every employee hired through the
-// application's own `POST /api/employees` gets a fresh `employees.id` and no
-// `user_id` at all, and for them the comparison matched nothing — clocking in
-// answered "Employee <uuid> not found", and leave, payslips, expenses, tax
-// declarations and the rest quietly returned an empty list belonging to
-// nobody.
-//
-// Resolving through `user_id` is correct for both: the backfilled rows set
-// `user_id` as well as `id`. The `employees.id` arm of the lookup is kept as a
-// fallback for any historic row where `user_id` was never populated, so this
-// change cannot take away access that used to work.
+// Much of the API used `ctx.userId` directly as an employee id. Resolving
+// through `user_id`, `id`, and matching email fallback ensures every employee
+// is seamlessly identified.
 
 import { and, eq, isNull, or } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -81,11 +70,41 @@ export async function currentEmployeeId(
       )
       .limit(2);
 
-    if (rows.length === 0) return null;
-    // Prefer the explicit link. Both arms resolving to different rows would
-    // mean an id collision across two random UUIDs, but preferring `user_id`
-    // costs nothing and makes the intent unambiguous.
-    return (rows.find((r) => r.userId === ctx.userId) ?? rows[0]).id;
+    if (rows.length > 0) {
+      return (rows.find((r) => r.userId === ctx.userId) ?? rows[0]).id;
+    }
+
+    // Fallback: match by login email from identity.users
+    const userRows = await t
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, ctx.userId))
+      .limit(1);
+
+    if (userRows[0]?.email) {
+      const emailMatch = await t
+        .select({ id: employees.id })
+        .from(employees)
+        .where(
+          and(
+            eq(employees.workEmail, userRows[0].email.toLowerCase()),
+            isNull(employees.deletedAt)
+          )
+        )
+        .limit(1);
+
+      if (emailMatch[0]?.id) {
+        // Link user_id for future fast lookups
+        await t
+          .update(employees)
+          .set({ userId: ctx.userId })
+          .where(eq(employees.id, emailMatch[0].id))
+          .catch(() => {});
+        return emailMatch[0].id;
+      }
+    }
+
+    return null;
   };
 
   return tx ? run(tx) : withTenant(ctx, run);

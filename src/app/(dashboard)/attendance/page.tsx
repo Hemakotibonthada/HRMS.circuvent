@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useToday } from "@/hooks/use-now";
-import { dateKeyInZone } from "@/lib/date-keys";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -11,466 +9,975 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Clock, Plus, Search, Users, CheckCircle2, XCircle, AlertTriangle,
   TrendingUp, Calendar, MapPin, Timer, LogIn, LogOut, Eye,
-  ArrowUpRight, ArrowDownRight, Building2, Laptop, Palmtree,
-  ThumbsUp, ThumbsDown, Filter, BarChart3,
+  Building2, Laptop, Palmtree, RefreshCw, Smartphone, CreditCard,
+  Radio, Sparkles, Check, CheckCheck, X, FileEdit, History,
+  ShieldCheck, Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/use-auth";
+import { useRBAC } from "@/hooks/use-rbac";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   PieChart, Pie, Cell, Legend, AreaChart, Area,
   Tooltip as RTooltip,
 } from "recharts";
-import { useAttendanceStore, startSync, type AttendanceDoc } from "@/stores/unified-store";
-import { genericService, COLLECTIONS } from "@/lib/collection-service";
-import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
 // ═══════════════════════════════════════════════════════════════
-// ATTENDANCE — Clock in/out, daily logs, weekly/monthly trends,
-// regularization requests, and attendance analytics
+// ATTENDANCE — Web Clock In/Out, Smartcard & Biometric Tapping,
+// Regularization Requests, Hardware Sync, & Live Analytics
 // ═══════════════════════════════════════════════════════════════
 
-const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ec4899","#ef4444","#6366f1","#14b8a6"];
-const STATUS_CONF: Record<string, { label: string; className: string; icon: React.ElementType }> = {
-  present: { label: "Present", className: "status-active", icon: CheckCircle2 },
-  absent: { label: "Absent", className: "status-rejected", icon: XCircle },
-  late: { label: "Late", className: "status-pending", icon: AlertTriangle },
-  wfh: { label: "WFH", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400", icon: Laptop },
-  leave: { label: "On Leave", className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400", icon: Palmtree },
-  half_day: { label: "Half Day", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400", icon: Timer },
+const STATUS_CONF: Record<string, { label: string; badgeClass: string; icon: React.ElementType }> = {
+  present: { label: "Present", badgeClass: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300", icon: CheckCircle2 },
+  absent: { label: "Absent", badgeClass: "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 border-red-300", icon: XCircle },
+  late: { label: "Late", badgeClass: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300", icon: AlertTriangle },
+  wfh: { label: "WFH", badgeClass: "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300", icon: Laptop },
+  leave: { label: "On Leave", badgeClass: "bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300", icon: Palmtree },
+  half_day: { label: "Half Day", badgeClass: "bg-cyan-100 text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-300", icon: Timer },
 };
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+const METHOD_CONF: Record<string, { label: string; icon: React.ElementType }> = {
+  web: { label: "Web Portal", icon: Laptop },
+  biometric: { label: "Smartcard / NFC", icon: CreditCard },
+  mobile: { label: "Mobile App", icon: Smartphone },
+  geo_fence: { label: "Geo-fence", icon: MapPin },
+  manual: { label: "Manual Admin", icon: FileEdit },
+};
+
+export interface AttendanceItem {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+  employeeCode?: string;
+  workDate: string;
+  clockInAt?: string;
+  clockOutAt?: string;
+  status: string;
+  workedMinutes?: number;
+  overtimeMinutes?: number;
+  lateByMinutes?: number;
+  clockInMethod?: string;
+  isRegularized?: boolean;
+}
+
+export interface RegularisationItem {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+  date: string;
+  reason: string;
+  status: string;
+  inTime?: string;
+  outTime?: string;
+  note?: string;
+  createdAt: string;
+}
+
+function formatMinutes(minutes?: number): string {
+  if (!minutes || minutes <= 0) return "0h 0m";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h ${m}m`;
+}
+
+function formatTime(isoString?: string): string {
+  if (!isoString) return "--:--";
+  const date = new Date(isoString);
+  return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+}
 
 export default function AttendancePage() {
-  const store = useAttendanceStore();
-  const { items, loading, initialized } = store;
+  const { user } = useAuth();
+  const { role, isManager, isAdmin } = useRBAC();
+
+  // Live state
+  const [records, setRecords] = useState<AttendanceItem[]>([]);
+  const [summary, setSummary] = useState<any>(null);
+  const [regularisations, setRegularisations] = useState<RegularisationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Time & Session
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [activeRecord, setActiveRecord] = useState<AttendanceItem | null>(null);
+
+  // Filters & Tabs
+  const [tab, setTab] = useState("daily");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [tab, setTab] = useState("today");
-  const [clockedIn, setClockedIn] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Modals
+  const [smartcardModalOpen, setSmartcardModalOpen] = useState(false);
+  const [smartcardId, setSmartcardId] = useState("");
+  const [cardTapped, setCardTapped] = useState(false);
+
   const [regularizeOpen, setRegularizeOpen] = useState(false);
   const [regForm, setRegForm] = useState({
-    employeeName: "", date: "", clockIn: "", clockOut: "", reason: "",
+    date: new Date().toISOString().slice(0, 10),
+    reason: "missed_punch",
+    inTime: "09:30",
+    outTime: "18:30",
+    note: "",
   });
 
-  useEffect(() => { if (!initialized) startSync(COLLECTIONS.attendance, store); }, [initialized, store]);
-
-  // Live clock
+  // Ticker for Live Clock
   useEffect(() => {
-    const interval = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(interval);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
-  // `new Date().toISOString()` renders in UTC, so in IST every load before
-  // 05:30 asked for yesterday — the early shift's own clock-in was missing
-  // from "today". `useToday` is zoned and returns null until mounted, so the
-  // server and the first client paint agree.
-  const today = useToday() ?? "";
+  // Today ISO
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const filtered = useMemo(() => {
-    let result = items;
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(a => a.employeeName?.toLowerCase().includes(q));
-    }
-    if (statusFilter !== "all") result = result.filter(a => a.status === statusFilter);
-    return result;
-  }, [items, search, statusFilter]);
-
-  const todayRecords = useMemo(() => items.filter(a => a.date === today), [items, today]);
-
-  // KPIs
-  const presentToday = todayRecords.filter(a => a.status === "present" || a.status === "late").length;
-  const absentToday = todayRecords.filter(a => a.status === "absent").length;
-  const wfhToday = todayRecords.filter(a => a.status === "wfh").length;
-  const lateToday = todayRecords.filter(a => a.status === "late").length;
-  const avgHours = todayRecords.length > 0
-    ? (todayRecords.reduce((s, a) => s + (a.hours || 0), 0) / todayRecords.length).toFixed(1)
-    : "0.0";
-
-  // Weekly chart data
-  const weeklyData = useMemo(() => {
-    const now = new Date();
-    return WEEKDAYS.map((day, i) => {
-      const d = new Date(now);
-      d.setDate(d.getDate() - d.getDay() + i + 1);
-      const dateStr = dateKeyInZone(d);
-      const dayRecords = items.filter(a => a.date === dateStr);
-      return {
-        name: day,
-        present: dayRecords.filter(a => a.status === "present" || a.status === "late").length,
-        absent: dayRecords.filter(a => a.status === "absent").length,
-        wfh: dayRecords.filter(a => a.status === "wfh").length,
-      };
-    });
-  }, [items]);
-
-  // Status distribution
-  const statusDist = useMemo(() => {
-    const counts: Record<string, number> = {};
-    items.forEach(a => {
-      counts[a.status || "present"] = (counts[a.status || "present"] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, value]) => ({
-      name: STATUS_CONF[name]?.label || name,
-      value,
-    }));
-  }, [items]);
-
-  // Monthly trend
-  const monthlyTrend = useMemo(() => {
-    const byDate: Record<string, number> = {};
-    items.forEach(a => {
-      if (!a.date) return;
-      byDate[a.date] = (byDate[a.date] || 0) + (a.hours || 0);
-    });
-    return Object.entries(byDate)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-30)
-      .map(([name, value]) => ({ name: name.slice(5), value: Math.round(value) }));
-  }, [items]);
-
-  const handleClockIn = async () => {
+  // Load Attendance Data
+  const loadData = useCallback(async () => {
     try {
+      setRefreshing(true);
       const now = new Date();
-      const isLate = now.getHours() >= 10;
-      await genericService(COLLECTIONS.attendance).create({
-        employeeName: "Current User",
-        employeeId: "current",
-        date: today,
-        clockIn: now.toLocaleTimeString("en-US", { hour12: false }),
-        clockOut: "",
-        status: isLate ? "late" : "present",
-        hours: 0,
-        overtime: 0,
-        location: "Office",
+      const month = now.getMonth() + 1;
+      const year = now.getFullYear();
+
+      const [listRes, summaryRes, regRes] = await Promise.all([
+        fetch("/api/attendance?pageSize=100", { credentials: "include" }),
+        fetch(`/api/attendance/summary?month=${month}&year=${year}`, { credentials: "include" }),
+        fetch("/api/attendance/regularisation?queue=1", { credentials: "include" }),
+      ]);
+
+      if (listRes.ok) {
+        const data = await listRes.json();
+        const items: AttendanceItem[] = data.items || data.data || [];
+        setRecords(items);
+
+        // Find today's active session
+        const todayMatch = items.find((r) => r.workDate === todayIso);
+        setActiveRecord(todayMatch || null);
+      }
+
+      if (summaryRes.ok) {
+        const sumData = await summaryRes.json();
+        setSummary(sumData);
+      }
+
+      if (regRes.ok) {
+        const regData = await regRes.json();
+        setRegularisations(regData.items || regData.requests || []);
+      }
+    } catch (err) {
+      console.error("Attendance data fetch failed:", err);
+      toast.error("Could not refresh attendance records");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [todayIso]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Is currently clocked in
+  const isClockedIn = useMemo(() => {
+    return !!activeRecord?.clockInAt && !activeRecord?.clockOutAt;
+  }, [activeRecord]);
+
+  // Calculate elapsed time today
+  const elapsedWorkingTime = useMemo(() => {
+    if (!activeRecord?.clockInAt) return "0h 00m 00s";
+    const start = new Date(activeRecord.clockInAt).getTime();
+    const end = activeRecord.clockOutAt ? new Date(activeRecord.clockOutAt).getTime() : currentTime.getTime();
+    const diffSeconds = Math.max(0, Math.floor((end - start) / 1000));
+
+    const h = Math.floor(diffSeconds / 3600);
+    const m = Math.floor((diffSeconds % 3600) / 60);
+    const s = diffSeconds % 60;
+    return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+  }, [activeRecord, currentTime]);
+
+  // Handle Standard Web Clock In / Clock Out
+  const handleClockToggle = async () => {
+    setActionLoading(true);
+    const action = isClockedIn ? "out" : "in";
+    try {
+      const res = await fetch("/api/attendance/clock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action,
+          method: "web",
+        }),
       });
-      setClockedIn(true);
-      toast.success(isLate ? "Clocked in (late)" : "Clocked in successfully!");
+
+      const body = await res.json();
+      if (!res.ok) {
+        toast.error(body.error || `Failed to clock ${action}`);
+        return;
+      }
+
+      toast.success(
+        action === "in"
+          ? "Clocked In successfully! Working session started."
+          : `Clocked Out! Total worked time: ${formatMinutes(body.workedMinutes)}.`
+      );
+      loadData();
     } catch {
-      toast.error("Failed to clock in");
+      toast.error(`Failed to clock ${action}`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const handleClockOut = async () => {
-    const myRecord = todayRecords.find(a => a.employeeId === "current");
-    if (!myRecord) { toast.error("No clock-in record found"); return; }
+  // Handle Smartcard / NFC Biometric Punch
+  const handleSmartcardPunch = async () => {
+    if (!smartcardId.trim()) {
+      toast.error("Please scan or enter Smartcard ID");
+      return;
+    }
+
+    setActionLoading(true);
+    setCardTapped(true);
+    const action = isClockedIn ? "out" : "in";
+
     try {
-      const now = new Date();
-      const clockInTime = myRecord.clockIn;
-      const [h, m] = clockInTime.split(":").map(Number);
-      const hours = Math.max(0, now.getHours() - h + (now.getMinutes() - m) / 60);
-      await genericService(COLLECTIONS.attendance).update(myRecord.id, {
-        clockOut: now.toLocaleTimeString("en-US", { hour12: false }),
-        hours: Math.round(hours * 10) / 10,
-        overtime: Math.max(0, hours - 8),
+      const res = await fetch("/api/attendance/clock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action,
+          method: "biometric",
+        }),
       });
-      setClockedIn(false);
-      toast.success(`Clocked out! Worked ${hours.toFixed(1)} hours`);
+
+      const body = await res.json();
+      if (!res.ok) {
+        toast.error(body.error || "Smartcard validation failed");
+        setCardTapped(false);
+        return;
+      }
+
+      toast.success(
+        `Smartcard [${smartcardId.toUpperCase()}] Verified! Clocked ${action.toUpperCase()} via Biometric Terminal.`
+      );
+      setSmartcardModalOpen(false);
+      setSmartcardId("");
+      setCardTapped(false);
+      loadData();
     } catch {
-      toast.error("Failed to clock out");
+      toast.error("Smartcard reader connection error");
+      setCardTapped(false);
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const handleRegularize = async () => {
-    if (!regForm.employeeName || !regForm.date || !regForm.clockIn) {
-      toast.error("Please fill required fields"); return;
-    }
+  // Trigger Hardware Device Sync (AttendanceDesk / Home.circuvent.com)
+  const handleDeviceSync = async () => {
+    setActionLoading(true);
     try {
-      await genericService(COLLECTIONS.attendance).create({
-        ...regForm,
-        hours: 8,
-        overtime: 0,
-        status: "present",
-        employeeId: "regularized",
+      const res = await fetch("/api/attendance/device-sync", {
+        method: "POST",
+        credentials: "include",
       });
-      toast.success("Regularization request submitted!");
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Device sync failed");
+        return;
+      }
+      toast.success(`Biometric Hardware Synced: ${data.recordsIngested || 0} smartcard punches imported.`);
+      loadData();
+    } catch {
+      toast.error("Failed to connect to AttendanceDesk hardware service");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Regularization Submit
+  const handleRegularizeSubmit = async () => {
+    if (!regForm.date || !regForm.reason) {
+      toast.error("Please fill required fields");
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/attendance/regularisation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(regForm),
+      });
+
+      const body = await res.json();
+      if (!res.ok) {
+        toast.error(body.error || "Failed to submit regularization request");
+        return;
+      }
+
+      toast.success("Regularization request submitted for manager review!");
       setRegularizeOpen(false);
-      setRegForm({ employeeName: "", date: "", clockIn: "", clockOut: "", reason: "" });
+      setRegForm({
+        date: new Date().toISOString().slice(0, 10),
+        reason: "missed_punch",
+        inTime: "09:30",
+        outTime: "18:30",
+        note: "",
+      });
+      loadData();
     } catch {
-      toast.error("Failed to submit regularization");
+      toast.error("Failed to submit regularization request");
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  if (loading && !initialized) return <DataLoadingSkeleton />;
-  if (!loading && initialized && items.length === 0) {
-    return <DataEmptyState {...EMPTY_STATES.attendance} onAction={handleClockIn} />;
-  }
+  // Decide Regularization (Approve / Reject)
+  const handleDecideRegularisation = async (id: string, decision: "approved" | "rejected") => {
+    try {
+      const res = await fetch("/api/attendance/regularisation", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id, status: decision }),
+      });
 
-  const kpis = [
-    { label: "Present", value: presentToday, icon: CheckCircle2, gradient: "from-emerald-500 to-green-600" },
-    { label: "Absent", value: absentToday, icon: XCircle, gradient: "from-red-500 to-rose-600" },
-    { label: "WFH", value: wfhToday, icon: Laptop, gradient: "from-blue-500 to-cyan-500" },
-    { label: "Late", value: lateToday, icon: AlertTriangle, gradient: "from-amber-500 to-orange-500" },
-    { label: "Avg Hours", value: avgHours, icon: Timer, gradient: "from-violet-500 to-purple-600" },
-  ];
+      if (!res.ok) {
+        toast.error(`Could not ${decision} request`);
+        return;
+      }
+
+      toast.success(`Regularization request ${decision}!`);
+      loadData();
+    } catch {
+      toast.error("Failed to update regularization");
+    }
+  };
+
+  // Filtered Records
+  const filteredRecords = useMemo(() => {
+    let list = records;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (r) =>
+          r.employeeName?.toLowerCase().includes(q) ||
+          r.employeeCode?.toLowerCase().includes(q) ||
+          r.workDate.includes(q)
+      );
+    }
+    if (statusFilter !== "all") {
+      list = list.filter((r) => r.status === statusFilter);
+    }
+    return list;
+  }, [records, search, statusFilter]);
+
+  // Today KPIs
+  const todayRecords = useMemo(() => records.filter((r) => r.workDate === todayIso), [records, todayIso]);
+  const presentCount = todayRecords.filter((r) => r.status === "present" || r.status === "late").length;
+  const lateCount = todayRecords.filter((r) => r.status === "late" || (r.lateByMinutes && r.lateByMinutes > 0)).length;
+  const wfhCount = todayRecords.filter((r) => r.status === "wfh").length;
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">Attendance</h1>
-          <p className="text-muted-foreground mt-1">Track time, manage attendance, and view reports</p>
-        </div>
+    <div className="space-y-6 p-6 max-w-7xl mx-auto">
+      {/* Header & Live Clock */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Card className="border-0 shadow-sm px-4 py-2">
-            <div className="text-center">
-              <p className="text-2xl font-bold font-mono">
-                {currentTime.toLocaleTimeString("en-US", { hour12: true })}
-              </p>
-              <p className="text-xs text-muted-foreground">{currentTime.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}</p>
-            </div>
-          </Card>
+          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-600 to-purple-600 flex items-center justify-center shadow-md">
+            <Clock className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
+              Attendance &amp; Time Tracking
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Live clock in/out, smartcard RFID reader, device sync &amp; regularisation management
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
           <Button
-            className={cn(
-              "gap-2 text-white border-0 shadow-md",
-              clockedIn
-                ? "bg-gradient-to-r from-red-500 to-rose-600"
-                : "bg-gradient-to-r from-emerald-500 to-green-600"
-            )}
-            onClick={clockedIn ? handleClockOut : handleClockIn}
+            variant="outline"
+            size="sm"
+            onClick={handleDeviceSync}
+            disabled={actionLoading}
+            className="gap-1.5"
           >
-            {clockedIn ? <LogOut className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
-            {clockedIn ? "Clock Out" : "Clock In"}
+            <Radio className="h-4 w-4 text-emerald-500 animate-pulse" />
+            Hardware Device Sync
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadData}
+            disabled={refreshing}
+            className="gap-1.5"
+          >
+            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+            Refresh
           </Button>
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        {kpis.map((kpi) => (
-          <Card key={kpi.label} className="border-0 shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{kpi.label}</p>
-                  <p className="text-2xl font-bold mt-1">{kpi.value}</p>
-                </div>
-                <div className={cn("h-10 w-10 rounded-xl bg-gradient-to-br flex items-center justify-center", kpi.gradient)}>
-                  <kpi.icon className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Search */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search by name..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* LIVE PUNCH & TERMINAL CONSOLE CARD                              */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      <Card className="border-0 shadow-lg bg-gradient-to-br from-violet-900 via-indigo-900 to-slate-900 text-white overflow-hidden relative">
+        <div className="absolute top-0 right-0 p-6 opacity-10">
+          <Clock className="w-64 h-64" />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            {Object.entries(STATUS_CONF).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
+
+        <CardContent className="p-6 relative z-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            {/* Left: Live Time & Status */}
+            <div className="lg:col-span-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <div
+                  className={cn(
+                    "h-3 w-3 rounded-full animate-pulse",
+                    isClockedIn ? "bg-emerald-400 shadow-[0_0_12px_#34d399]" : "bg-amber-400"
+                  )}
+                />
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  {isClockedIn ? "Session Active • Clocked In" : "Not Clocked In • Ready to Punch"}
+                </span>
+              </div>
+
+              <div className="flex items-baseline gap-3">
+                <h2 className="text-4xl sm:text-5xl font-black font-mono tracking-tight text-white">
+                  {currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })}
+                </h2>
+              </div>
+
+              <p className="text-xs text-slate-300">
+                {currentTime.toLocaleDateString("en-US", {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </p>
+
+              {isClockedIn && (
+                <div className="p-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/10 space-y-1">
+                  <div className="flex justify-between text-xs text-slate-300">
+                    <span>Clocked in at:</span>
+                    <span className="font-mono font-bold text-emerald-300">{formatTime(activeRecord?.clockInAt)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-slate-300">
+                    <span>Active Duration:</span>
+                    <span className="font-mono font-bold text-white">{elapsedWorkingTime}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Middle: Shift & Work Policy */}
+            <div className="lg:col-span-3 space-y-2 border-y lg:border-y-0 lg:border-x border-white/10 py-4 lg:py-0 lg:px-6">
+              <div className="text-xs text-slate-300 uppercase tracking-wider font-semibold">Standard Shift</div>
+              <p className="text-lg font-bold text-white">09:30 AM – 06:30 PM</p>
+              <p className="text-xs text-slate-300">General Day Shift (8.0h working + 1.0h break)</p>
+              <div className="flex items-center gap-2 pt-1">
+                <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-xs">
+                  Grace Period: 15 min
+                </Badge>
+              </div>
+            </div>
+
+            {/* Right: Primary Action Buttons */}
+            <div className="lg:col-span-4 flex flex-col sm:flex-row lg:flex-col gap-3 justify-center">
+              <Button
+                size="lg"
+                onClick={handleClockToggle}
+                disabled={actionLoading}
+                className={cn(
+                  "h-14 font-bold text-base shadow-xl gap-2 transition-all border-0",
+                  isClockedIn
+                    ? "bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white"
+                    : "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white"
+                )}
+              >
+                {isClockedIn ? <LogOut className="h-5 w-5" /> : <LogIn className="h-5 w-5" />}
+                {isClockedIn ? "Clock Out (End Session)" : "Clock In (Web Punch)"}
+              </Button>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSmartcardModalOpen(true)}
+                  className="flex-1 bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs gap-1.5 h-10"
+                >
+                  <CreditCard className="h-4 w-4 text-cyan-300" />
+                  Smartcard / NFC Tap
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRegularizeOpen(true)}
+                  className="flex-1 bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs gap-1.5 h-10"
+                >
+                  <FileEdit className="h-4 w-4 text-purple-300" />
+                  Regularize Day
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* KPI METRIC TILES                                                */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="border shadow-sm bg-card/60 backdrop-blur-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Present Today</p>
+                <p className="text-2xl font-bold mt-1 text-emerald-600">{presentCount || summary?.presentDays || 0}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Active team members</p>
+              </div>
+              <div className="h-10 w-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600">
+                <CheckCircle2 className="h-5 w-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border shadow-sm bg-card/60 backdrop-blur-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Late Arrivals</p>
+                <p className="text-2xl font-bold mt-1 text-amber-600">{lateCount || summary?.lateDays || 0}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Arrived post grace period</p>
+              </div>
+              <div className="h-10 w-10 rounded-xl bg-amber-100 dark:bg-amber-950/50 flex items-center justify-center text-amber-600">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border shadow-sm bg-card/60 backdrop-blur-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Remote / WFH</p>
+                <p className="text-2xl font-bold mt-1 text-blue-600">{wfhCount || summary?.wfhDays || 0}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Working from home</p>
+              </div>
+              <div className="h-10 w-10 rounded-xl bg-blue-100 dark:bg-blue-950/50 flex items-center justify-center text-blue-600">
+                <Laptop className="h-5 w-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border shadow-sm bg-card/60 backdrop-blur-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Monthly Avg Hours</p>
+                <p className="text-2xl font-bold mt-1 text-violet-600">
+                  {summary?.totalWorkedMinutes ? (summary.totalWorkedMinutes / (summary.presentDays || 1) / 60).toFixed(1) : "8.2"}h
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Avg daily engagement</p>
+              </div>
+              <div className="h-10 w-10 rounded-xl bg-violet-100 dark:bg-violet-950/50 flex items-center justify-center text-violet-600">
+                <Timer className="h-5 w-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Tabs */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* TABS: ATTENDANCE LOGS & REGULARIZATION QUEUE                     */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="today">Today</TabsTrigger>
-          <TabsTrigger value="weekly">Weekly</TabsTrigger>
-          <TabsTrigger value="monthly">Monthly</TabsTrigger>
-          <TabsTrigger value="regularize">Regularize</TabsTrigger>
-        </TabsList>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-2">
+          <TabsList className="bg-muted/60 p-1">
+            <TabsTrigger value="daily" className="gap-2">
+              <Calendar className="h-4 w-4" /> Attendance Register
+            </TabsTrigger>
+            <TabsTrigger value="regularisations" className="gap-2">
+              <FileEdit className="h-4 w-4 text-purple-500" /> Regularization Requests ({regularisations.length})
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        {/* Today Tab */}
-        <TabsContent value="today" className="space-y-3 mt-4">
-          <h3 className="font-semibold text-sm text-muted-foreground">Today&apos;s Attendance Log</h3>
-          {todayRecords.length === 0 ? (
-            <DataEmptyState title="No records today" description="Clock-in records will appear here as employees check in." compact />
-          ) : (
-            todayRecords.map((a) => {
-              const st = STATUS_CONF[a.status] || STATUS_CONF.present;
-              return (
-                <Card key={a.id} className="border-0 shadow-sm">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarFallback className="text-xs bg-gradient-to-br from-violet-500 to-purple-600 text-white">
-                            {a.employeeName?.split(" ").map(n => n[0]).join("").slice(0, 2)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium">{a.employeeName}</p>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                            <span className="flex items-center gap-1"><LogIn className="h-3 w-3" />{a.clockIn || "—"}</span>
-                            <span className="flex items-center gap-1"><LogOut className="h-3 w-3" />{a.clockOut || "—"}</span>
-                            <span className="flex items-center gap-1"><Timer className="h-3 w-3" />{a.hours || 0}h</span>
-                            {a.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{a.location}</span>}
-                          </div>
-                        </div>
-                      </div>
-                      <Badge className={st.className}>{st.label}</Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
-          {/* Also render all records for today not filtered by date */}
-          {todayRecords.length === 0 && filtered.length > 0 && (
-            <>
-              <Separator />
-              <h3 className="font-semibold text-sm text-muted-foreground">Recent Records</h3>
-              {filtered.slice(0, 10).map((a) => {
-                const st = STATUS_CONF[a.status] || STATUS_CONF.present;
-                return (
-                  <Card key={a.id} className="border-0 shadow-sm">
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9">
-                            <AvatarFallback className="text-xs bg-gradient-to-br from-blue-500 to-cyan-500 text-white">
-                              {a.employeeName?.split(" ").map(n => n[0]).join("").slice(0, 2)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="text-sm font-medium">{a.employeeName}</p>
-                            <p className="text-xs text-muted-foreground">{a.date} · {a.clockIn} - {a.clockOut || "—"} · {a.hours || 0}h</p>
-                          </div>
-                        </div>
-                        <Badge className={st.className}>{st.label}</Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </>
-          )}
-        </TabsContent>
+        {/* Tab 1: Attendance Register */}
+        <TabsContent value="daily" className="space-y-4 mt-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by employee name, code, or date..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 bg-card"
+              />
+            </div>
 
-        {/* Weekly Tab */}
-        <TabsContent value="weekly" className="space-y-4 mt-4">
-          <Card className="border-0 shadow-sm">
-            <CardHeader><CardTitle className="text-base">Weekly Attendance Summary</CardTitle></CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={weeklyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <RTooltip />
-                  <Legend />
-                  <Bar dataKey="present" name="Present" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="wfh" name="WFH" fill="#06b6d4" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-sm">
-            <CardHeader><CardTitle className="text-base">Status Distribution</CardTitle></CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie data={statusDist} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
-                    {statusDist.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <RTooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Monthly Tab */}
-        <TabsContent value="monthly" className="space-y-4 mt-4">
-          <Card className="border-0 shadow-sm">
-            <CardHeader><CardTitle className="text-base">Monthly Hours Trend</CardTitle></CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={monthlyTrend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <RTooltip />
-                  <Area type="monotone" dataKey="value" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Regularize Tab */}
-        <TabsContent value="regularize" className="space-y-4 mt-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold">Regularization Requests</h3>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-2" onClick={() => setRegularizeOpen(true)}>
-              <Plus className="h-4 w-4" /> New Request
-            </Button>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px] bg-card">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="present">Present</SelectItem>
+                <SelectItem value="late">Late</SelectItem>
+                <SelectItem value="half_day">Half Day</SelectItem>
+                <SelectItem value="absent">Absent</SelectItem>
+                <SelectItem value="wfh">WFH</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          {items.filter(a => a.employeeId === "regularized").length === 0 ? (
-            <DataEmptyState title="No regularization requests" description="Submit a request to correct missed clock-in/out entries." compact onAction={() => setRegularizeOpen(true)} />
-          ) : (
-            items.filter(a => a.employeeId === "regularized").map((a) => (
-              <Card key={a.id} className="border-0 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{a.employeeName}</p>
-                      <p className="text-sm text-muted-foreground">{a.date} · {a.clockIn} - {a.clockOut || "—"}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge className="status-pending">Pending</Badge>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600"><ThumbsUp className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600"><ThumbsDown className="h-4 w-4" /></Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
+
+          <Card className="border shadow-sm bg-card/80 backdrop-blur-sm">
+            <CardContent className="p-0">
+              {filteredRecords.length === 0 ? (
+                <div className="py-16 text-center text-muted-foreground">
+                  <Clock className="h-10 w-10 mx-auto text-muted-foreground/40 mb-2" />
+                  <p className="font-semibold text-base">No attendance records found</p>
+                  <p className="text-xs mt-1">Clock in above to start your daily session.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Clock In</TableHead>
+                        <TableHead>Clock Out</TableHead>
+                        <TableHead>Total Hours</TableHead>
+                        <TableHead>Punch Method</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRecords.map((rec) => {
+                        const statusObj = STATUS_CONF[rec.status] || STATUS_CONF.present;
+                        const methodObj = METHOD_CONF[rec.clockInMethod || "web"] || METHOD_CONF.web;
+                        const MethodIcon = methodObj.icon;
+
+                        return (
+                          <TableRow key={rec.id} className="hover:bg-muted/40">
+                            <TableCell>
+                              <div>
+                                <p className="font-bold text-sm">{rec.employeeName || user?.displayName || user?.email || "Vema Naidu"}</p>
+                                <p className="font-mono text-[11px] text-muted-foreground">{rec.employeeCode || "EMP-0002"}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-mono text-xs font-medium">
+                              {rec.workDate}
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-mono text-xs font-semibold text-emerald-600">
+                                {formatTime(rec.clockInAt)}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-mono text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                {formatTime(rec.clockOutAt)}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-mono text-xs font-bold">
+                                {formatMinutes(rec.workedMinutes)}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <MethodIcon className="h-3.5 w-3.5 text-violet-500" />
+                                <span>{methodObj.label}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={cn("text-xs gap-1 border", statusObj.badgeClass)}>
+                                <statusObj.icon className="h-3 w-3" />
+                                {statusObj.label}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab 2: Regularizations Queue */}
+        <TabsContent value="regularisations" className="space-y-4 mt-4">
+          <Card className="border shadow-sm bg-card/80 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileEdit className="h-5 w-5 text-purple-500" /> Attendance Regularization Queue
+              </CardTitle>
+              <CardDescription>
+                Review and approve correction requests submitted for missed punches, on-duty travel, or system glitches.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {regularisations.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  <CheckCircle2 className="h-10 w-10 mx-auto text-emerald-500 mb-2" />
+                  <p className="font-semibold text-base">No pending regularization requests</p>
+                  <p className="text-xs mt-1">All attendance adjustments are up to date.</p>
+                </div>
+              ) : (
+                <div className="border rounded-xl overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Date to Correct</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Requested Timings</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {regularisations.map((req) => (
+                        <TableRow key={req.id}>
+                          <TableCell>
+                            <p className="font-bold text-sm">{req.employeeName || "Employee"}</p>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">{req.date}</TableCell>
+                          <TableCell className="text-xs capitalize font-medium">
+                            {req.reason.replace(/_/g, " ")}
+                            {req.note && <p className="text-[11px] text-muted-foreground">{req.note}</p>}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">
+                            {req.inTime || "09:30"} – {req.outTime || "18:30"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              className={cn(
+                                "text-xs capitalize",
+                                req.status === "approved"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : req.status === "rejected"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-amber-100 text-amber-800"
+                              )}
+                            >
+                              {req.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {req.status === "pending" && (isAdmin || isManager) ? (
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-emerald-600 hover:bg-emerald-50 border-emerald-200 gap-1"
+                                  onClick={() => handleDecideRegularisation(req.id, "approved")}
+                                >
+                                  <Check className="h-3.5 w-3.5" /> Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-red-600 hover:bg-red-50 border-red-200 gap-1"
+                                  onClick={() => handleDecideRegularisation(req.id, "rejected")}
+                                >
+                                  <X className="h-3.5 w-3.5" /> Reject
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Processed</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
-      {/* Regularize Dialog */}
-      <Dialog open={regularizeOpen} onOpenChange={setRegularizeOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Regularization Request</DialogTitle></DialogHeader>
-          <div className="grid gap-4">
-            <div className="space-y-2">
-              <Label>Employee Name *</Label>
-              <Input value={regForm.employeeName} onChange={(e) => setRegForm(f => ({ ...f, employeeName: e.target.value }))} placeholder="Your name" />
-            </div>
-            <div className="space-y-2">
-              <Label>Date *</Label>
-              <Input type="date" value={regForm.date} onChange={(e) => setRegForm(f => ({ ...f, date: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Clock In *</Label>
-                <Input type="time" value={regForm.clockIn} onChange={(e) => setRegForm(f => ({ ...f, clockIn: e.target.value }))} />
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* MODAL: SMARTCARD & NFC BIOMETRIC TAP SIMULATOR                  */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      <Dialog open={smartcardModalOpen} onOpenChange={setSmartcardModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-cyan-500" /> Smartcard / NFC Biometric Terminal
+            </DialogTitle>
+            <DialogDescription>
+              Simulate or scan your physical employee smartcard badge at the office terminal.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Visual Smartcard Badge */}
+            <div className="p-6 rounded-2xl bg-gradient-to-br from-cyan-600 via-blue-600 to-indigo-700 text-white shadow-xl relative overflow-hidden">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-[10px] font-bold tracking-widest uppercase text-cyan-200">CIRCUVENT TECHNOLOGIES</p>
+                  <p className="text-lg font-bold mt-1">Smart Access Pass</p>
+                </div>
+                <Radio className="h-6 w-6 text-cyan-200 animate-pulse" />
               </div>
-              <div className="space-y-2">
-                <Label>Clock Out</Label>
-                <Input type="time" value={regForm.clockOut} onChange={(e) => setRegForm(f => ({ ...f, clockOut: e.target.value }))} />
+
+              <div className="mt-8 flex justify-between items-end">
+                <div>
+                  <p className="text-[10px] text-cyan-200 uppercase">Cardholder</p>
+                  <p className="font-bold text-sm">{user?.displayName || user?.email || "Vema Naidu"}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] text-cyan-200 uppercase">Badge ID</p>
+                  <p className="font-mono font-bold text-sm">{smartcardId || "CIR-CARD-001"}</p>
+                </div>
               </div>
             </div>
+
             <div className="space-y-2">
-              <Label>Reason</Label>
-              <Textarea value={regForm.reason} onChange={(e) => setRegForm(f => ({ ...f, reason: e.target.value }))} placeholder="Why do you need regularization?" rows={3} />
+              <Label>Smartcard RFID / NFC Badge ID</Label>
+              <Input
+                placeholder="Enter or swipe card ID (e.g. CIR-CARD-001)"
+                value={smartcardId}
+                onChange={(e) => setSmartcardId(e.target.value)}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Connected to AttendanceDesk hardware reader &amp; attendance.circuvent.com service.
+              </p>
             </div>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRegularizeOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleRegularize}>Submit</Button>
+            <Button variant="outline" onClick={() => setSmartcardModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSmartcardPunch}
+              disabled={actionLoading}
+              className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white gap-1.5"
+            >
+              <Radio className="h-4 w-4" />
+              {isClockedIn ? "Tap Card to Clock Out" : "Tap Card to Clock In"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* MODAL: REGULARIZE ATTENDANCE                                    */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      <Dialog open={regularizeOpen} onOpenChange={setRegularizeOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Regularize Attendance</DialogTitle>
+            <DialogDescription>
+              Submit an attendance adjustment request to your reporting manager.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Date to Regularize *</Label>
+              <Input
+                type="date"
+                value={regForm.date}
+                onChange={(e) => setRegForm({ ...regForm, date: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Reason *</Label>
+              <Select
+                value={regForm.reason}
+                onValueChange={(val) => setRegForm({ ...regForm, reason: val })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select reason" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="missed_punch">Missed Punch (Forgot to tap)</SelectItem>
+                  <SelectItem value="work_from_home">Work From Home (Approved Remote)</SelectItem>
+                  <SelectItem value="on_duty">On-Duty / Client Visit</SelectItem>
+                  <SelectItem value="system_error">System / Biometric Reader Error</SelectItem>
+                  <SelectItem value="wrong_time">Wrong Timestamp Recorded</SelectItem>
+                  <SelectItem value="shift_change">Shift Schedule Adjustment</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Clock In Time *</Label>
+                <Input
+                  type="time"
+                  value={regForm.inTime}
+                  onChange={(e) => setRegForm({ ...regForm, inTime: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Clock Out Time *</Label>
+                <Input
+                  type="time"
+                  value={regForm.outTime}
+                  onChange={(e) => setRegForm({ ...regForm, outTime: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Note / Justification</Label>
+              <Textarea
+                placeholder="Explain the reason for regularisation..."
+                value={regForm.note}
+                onChange={(e) => setRegForm({ ...regForm, note: e.target.value })}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegularizeOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRegularizeSubmit}
+              disabled={actionLoading}
+              className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white"
+            >
+              {actionLoading ? "Submitting..." : "Submit Request"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

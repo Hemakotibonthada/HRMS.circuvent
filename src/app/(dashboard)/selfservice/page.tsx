@@ -86,8 +86,12 @@ export default function SelfServicePage() {
 
   const myProfile = useMemo(() => {
     if (!user?.email) return null;
+    const target = user.email.toLowerCase();
     return empStore.items.find(
-      (e) => e.email?.toLowerCase() === user.email?.toLowerCase()
+      (e) =>
+        e.email?.toLowerCase() === target ||
+        (e as any).workEmail?.toLowerCase() === target ||
+        (e as any).personalEmail?.toLowerCase() === target
     );
   }, [empStore.items, user]);
 
@@ -103,7 +107,14 @@ export default function SelfServicePage() {
 
   const myAttendance = useMemo(() => {
     if (!myProfile) return [];
-    return attendanceStore.items.filter((a) => a.employeeId === myProfile.id);
+    return attendanceStore.items.filter(
+      (a) =>
+        a.employeeId === myProfile.id ||
+        (a.employeeName &&
+          `${myProfile.firstName} ${myProfile.lastName}`
+            .toLowerCase()
+            .includes(a.employeeName.toLowerCase()))
+    );
   }, [attendanceStore.items, myProfile]);
 
   const myExpenses = useMemo(() => {
