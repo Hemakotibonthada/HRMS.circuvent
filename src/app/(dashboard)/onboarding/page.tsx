@@ -37,6 +37,7 @@ import {
   Mail, Laptop, Building2, UserCheck, Sparkles, RefreshCw,
   MoreVertical, FileText, Send, Check, ShieldAlert,
   ArrowRight, HeartHandshake, UserCog, Package, Plus,
+  CreditCard, ShieldCheck, MapPin, User, Hash, PhoneCall,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -207,21 +208,40 @@ export default function OnboardingPage() {
 
   // Setup Form State
   const [setupForm, setSetupForm] = useState({
+    employeeCode: "",
     firstName: "",
     lastName: "",
     workEmail: "",
     personalEmail: "",
     phone: "",
+    gender: "prefer_not_to_say",
+    dateOfBirth: "",
+    bloodGroup: "",
+    panNumber: "",
+    aadhaarNumber: "",
     designation: "",
-    departmentId: "",
-    reportingToId: "",
-    buddyId: "",
+    departmentId: "none",
+    locationId: "none",
+    workstationDesk: "",
+    reportingToId: "none",
+    buddyId: "none",
     joiningDate: new Date().toISOString().slice(0, 10),
+    probationMonths: "3",
     salary: "",
     employmentType: "full_time",
+    bankName: "",
+    accountHolderName: "",
+    accountNumber: "",
+    ifsc: "",
+    accountType: "savings",
+    emergencyContactName: "",
+    emergencyContactRelation: "",
+    emergencyContactPhone: "",
+    rightToWorkCollected: true,
+    backgroundCheckStatus: "verified",
     issueAppointmentLetter: true,
     triggerMailboxInvite: true,
-    assetId: "",
+    assetId: "none",
   });
 
   // Edit Profile Form State
@@ -592,22 +612,59 @@ export default function OnboardingPage() {
     );
     const annualSalaryNum = hire.annualCtcMinor ? Number(BigInt(hire.annualCtcMinor) / 100n) : "";
 
+    let maxNum = 0;
+    for (const emp of employees) {
+      const match = emp.employeeCode?.match(/^CV-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    }
+    const nextCode = `CV-${String(maxNum + 1).padStart(3, "0")}`;
+
+    let matchedDeptId = "none";
+    if (hire.designation) {
+      const match = departments.find((d) =>
+        hire.designation?.toLowerCase().includes(d.name.toLowerCase())
+      );
+      if (match) matchedDeptId = match.id;
+    }
+
     setSetupForm({
+      employeeCode: nextCode,
       firstName: hire.firstName,
       lastName: hire.lastName,
       workEmail: suggestedEmail,
       personalEmail: hire.email,
       phone: hire.phone || "",
+      gender: "prefer_not_to_say",
+      dateOfBirth: "",
+      bloodGroup: "",
+      panNumber: "",
+      aadhaarNumber: "",
       designation: hire.designation || "Software Engineer",
-      departmentId: pickSelectId(undefined, departments),
-      reportingToId: pickSelectId(undefined, employees),
+      departmentId: matchedDeptId !== "none" ? matchedDeptId : (departments[0]?.id || "none"),
+      locationId: "none",
+      workstationDesk: "",
+      reportingToId: employees[0]?.id || "none",
       buddyId: "none",
       joiningDate: hire.proposedStartDate || new Date().toISOString().slice(0, 10),
+      probationMonths: "3",
       salary: annualSalaryNum.toString(),
       employmentType: "full_time",
+      bankName: "",
+      accountHolderName: `${hire.firstName} ${hire.lastName}`.trim(),
+      accountNumber: "",
+      ifsc: "",
+      accountType: "savings",
+      emergencyContactName: "",
+      emergencyContactRelation: "",
+      emergencyContactPhone: "",
+      rightToWorkCollected: true,
+      backgroundCheckStatus: "verified",
       issueAppointmentLetter: true,
       triggerMailboxInvite: true,
-      assetId: pickSelectId(undefined, availableAssets),
+      assetId: availableAssets[0]?.id || "none",
     });
   };
 
@@ -651,18 +708,37 @@ export default function OnboardingPage() {
           candidateId: setupModalHire?.candidateId,
           applicationId: setupModalHire?.applicationId,
           offerId: setupModalHire?.offerId,
+          employeeCode: setupForm.employeeCode || undefined,
           firstName: setupForm.firstName,
           lastName: setupForm.lastName,
           workEmail: setupForm.workEmail,
           personalEmail: setupForm.personalEmail || undefined,
           phone: setupForm.phone || undefined,
+          gender: setupForm.gender && setupForm.gender !== "prefer_not_to_say" ? setupForm.gender : undefined,
+          dateOfBirth: setupForm.dateOfBirth || undefined,
+          bloodGroup: setupForm.bloodGroup || undefined,
+          panNumber: setupForm.panNumber || undefined,
+          aadhaarNumber: setupForm.aadhaarNumber || undefined,
           designation: setupForm.designation,
           departmentId: setupForm.departmentId && setupForm.departmentId !== "none" ? setupForm.departmentId : undefined,
+          locationId: setupForm.locationId && setupForm.locationId !== "none" ? setupForm.locationId : undefined,
+          workstationDesk: setupForm.workstationDesk || undefined,
           reportingToId: setupForm.reportingToId && setupForm.reportingToId !== "none" ? setupForm.reportingToId : undefined,
           buddyId: setupForm.buddyId && setupForm.buddyId !== "none" ? setupForm.buddyId : undefined,
           joiningDate: setupForm.joiningDate,
+          probationMonths: setupForm.probationMonths ? Number(setupForm.probationMonths) : undefined,
           salary: setupForm.salary ? Number(setupForm.salary) : undefined,
           employmentType: setupForm.employmentType,
+          bankName: setupForm.bankName || undefined,
+          accountHolderName: setupForm.accountHolderName || undefined,
+          accountNumber: setupForm.accountNumber || undefined,
+          ifsc: setupForm.ifsc || undefined,
+          accountType: setupForm.accountType || undefined,
+          emergencyContactName: setupForm.emergencyContactName || undefined,
+          emergencyContactRelation: setupForm.emergencyContactRelation || undefined,
+          emergencyContactPhone: setupForm.emergencyContactPhone || undefined,
+          rightToWorkCollected: setupForm.rightToWorkCollected,
+          backgroundCheckStatus: setupForm.backgroundCheckStatus,
           issueAppointmentLetter: setupForm.issueAppointmentLetter,
           triggerMailboxInvite: setupForm.triggerMailboxInvite,
           assetId: setupForm.assetId && setupForm.assetId !== "none" ? setupForm.assetId : undefined,
@@ -1237,207 +1313,495 @@ export default function OnboardingPage() {
       {/* MODAL: COMPLETE ONBOARDING SETUP (ATS HIRE -> HRMS)             */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       <Dialog open={!!setupModalHire} onOpenChange={(open) => !open && setSetupModalHire(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-lg">
               <Sparkles className="h-5 w-5 text-violet-600" /> Complete Employee Onboarding Setup
             </DialogTitle>
             <DialogDescription>
-              Assign reporting manager, department, equipment, and dispatch the joining pack for {setupModalHire?.name}.
+              Configure employee profile, manager hierarchy, campus seating, banking, and trigger automated joining pack for <strong className="text-foreground">{setupModalHire?.name}</strong>.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-            <div className="space-y-2">
-              <Label>First Name *</Label>
-              <Input
-                value={setupForm.firstName}
-                onChange={(e) => setSetupForm({ ...setupForm, firstName: e.target.value })}
-              />
+          <div className="space-y-6 py-3">
+            {/* ── Section 1: Personal & Identity ── */}
+            <div className="rounded-xl border bg-card p-4 space-y-3.5 shadow-sm">
+              <div className="flex items-center gap-2 border-b pb-2 text-sm font-semibold text-foreground">
+                <User className="h-4 w-4 text-violet-600" />
+                <span>1. Personal &amp; Identification Details</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Employee Code *</Label>
+                  <Input
+                    value={setupForm.employeeCode}
+                    onChange={(e) => setSetupForm({ ...setupForm, employeeCode: e.target.value })}
+                    placeholder="CV-001"
+                    className="font-mono text-xs font-bold text-violet-600 dark:text-violet-400"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">First Name *</Label>
+                  <Input
+                    value={setupForm.firstName}
+                    onChange={(e) => setSetupForm({ ...setupForm, firstName: e.target.value })}
+                    placeholder="First name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Last Name *</Label>
+                  <Input
+                    value={setupForm.lastName}
+                    onChange={(e) => setSetupForm({ ...setupForm, lastName: e.target.value })}
+                    placeholder="Last name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Gender</Label>
+                  <Select
+                    value={setupForm.gender}
+                    onValueChange={(val) => setSetupForm({ ...setupForm, gender: val })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Date of Birth</Label>
+                  <Input
+                    type="date"
+                    value={setupForm.dateOfBirth}
+                    onChange={(e) => setSetupForm({ ...setupForm, dateOfBirth: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Blood Group</Label>
+                  <Select
+                    value={setupForm.bloodGroup || "none"}
+                    onValueChange={(val) => setSetupForm({ ...setupForm, bloodGroup: val === "none" ? "" : val })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Blood group" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not specified</SelectItem>
+                      <SelectItem value="A+">A+</SelectItem>
+                      <SelectItem value="A-">A-</SelectItem>
+                      <SelectItem value="B+">B+</SelectItem>
+                      <SelectItem value="B-">B-</SelectItem>
+                      <SelectItem value="O+">O+</SelectItem>
+                      <SelectItem value="O-">O-</SelectItem>
+                      <SelectItem value="AB+">AB+</SelectItem>
+                      <SelectItem value="AB-">AB-</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Personal Email</Label>
+                  <Input
+                    type="email"
+                    value={setupForm.personalEmail}
+                    onChange={(e) => setSetupForm({ ...setupForm, personalEmail: e.target.value })}
+                    placeholder="personal@gmail.com"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Mobile Phone</Label>
+                  <Input
+                    value={setupForm.phone}
+                    onChange={(e) => setSetupForm({ ...setupForm, phone: e.target.value })}
+                    placeholder="+91 9876543210"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Last Name *</Label>
-              <Input
-                value={setupForm.lastName}
-                onChange={(e) => setSetupForm({ ...setupForm, lastName: e.target.value })}
-              />
+            {/* ── Section 2: Designation, Department & Reporting ── */}
+            <div className="rounded-xl border bg-card p-4 space-y-3.5 shadow-sm">
+              <div className="flex items-center gap-2 border-b pb-2 text-sm font-semibold text-foreground">
+                <Building2 className="h-4 w-4 text-violet-600" />
+                <span>2. Designation, Department &amp; Reporting Hierarchy</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Company Work Email *</Label>
+                  <Input
+                    value={setupForm.workEmail}
+                    onChange={(e) => setSetupForm({ ...setupForm, workEmail: e.target.value })}
+                    placeholder="firstname.lastname@circuvent.com"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Designation / Role *</Label>
+                  <Input
+                    value={setupForm.designation}
+                    onChange={(e) => setSetupForm({ ...setupForm, designation: e.target.value })}
+                    placeholder="Software Engineer"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Department / Team *</Label>
+                  <Select
+                    value={setupForm.departmentId}
+                    onValueChange={(val) => setSetupForm({ ...setupForm, departmentId: val })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">General / Unassigned</SelectItem>
+                      {departments.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name} ({d.code || "DEPT"})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Reporting Manager *</Label>
+                  <Select
+                    value={setupForm.reportingToId}
+                    onValueChange={(val) => setSetupForm({ ...setupForm, reportingToId: val })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select reporting manager" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Company Management (Direct)</SelectItem>
+                      {employees.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.firstName} {e.lastName} ({e.designation || e.workEmail || "Admin"})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Onboarding Peer Buddy</Label>
+                  <Select
+                    value={setupForm.buddyId}
+                    onValueChange={(val) => setSetupForm({ ...setupForm, buddyId: val })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Assign a peer buddy..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Buddy Assigned</SelectItem>
+                      {employees.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.firstName} {e.lastName} ({e.designation || e.workEmail})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Employment Type</Label>
+                  <Select
+                    value={setupForm.employmentType}
+                    onValueChange={(val) => setSetupForm({ ...setupForm, employmentType: val })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="full_time">Full-Time Permanent</SelectItem>
+                      <SelectItem value="part_time">Part-Time</SelectItem>
+                      <SelectItem value="contract">Contractor</SelectItem>
+                      <SelectItem value="intern">Intern</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Joining Date *</Label>
+                  <Input
+                    type="date"
+                    value={setupForm.joiningDate}
+                    onChange={(e) => setSetupForm({ ...setupForm, joiningDate: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Probation Period</Label>
+                  <Select
+                    value={setupForm.probationMonths}
+                    onValueChange={(val) => setSetupForm({ ...setupForm, probationMonths: val })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select probation period" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="3">3 Months (Standard)</SelectItem>
+                      <SelectItem value="6">6 Months</SelectItem>
+                      <SelectItem value="0">None / Direct Confirmation</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Company Work Email (@circuvent.com) *</Label>
-              <Input
-                value={setupForm.workEmail}
-                onChange={(e) => setSetupForm({ ...setupForm, workEmail: e.target.value })}
-              />
+            {/* ── Section 3: Workplace, Desk & IT Hardware ── */}
+            <div className="rounded-xl border bg-card p-4 space-y-3.5 shadow-sm">
+              <div className="flex items-center gap-2 border-b pb-2 text-sm font-semibold text-foreground">
+                <Laptop className="h-4 w-4 text-violet-600" />
+                <span>3. Workplace, Desk &amp; IT Hardware Allocation</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Campus / Work Location</Label>
+                  <Select
+                    value={setupForm.locationId}
+                    onValueChange={(val) => setSetupForm({ ...setupForm, locationId: val })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Bangalore HQ (Main Campus)</SelectItem>
+                      <SelectItem value="hyd">Hyderabad Innovation Labs</SelectItem>
+                      <SelectItem value="vja">Vijayawada Tech Park</SelectItem>
+                      <SelectItem value="remote">Remote / WFH</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Assigned Desk / Workstation</Label>
+                  <Input
+                    value={setupForm.workstationDesk}
+                    onChange={(e) => setSetupForm({ ...setupForm, workstationDesk: e.target.value })}
+                    placeholder="e.g. Desk #4B / Bay 2 - Seat 14"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Allocate IT Hardware / Laptop</Label>
+                  <Select
+                    value={setupForm.assetId}
+                    onValueChange={(val) => setSetupForm({ ...setupForm, assetId: val })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Choose hardware..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Assign Later (In Stock)</SelectItem>
+                      {availableAssets.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name} ({a.assetTag || (a as any).serialNumber || "Asset"})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Designation / Role *</Label>
-              <Input
-                value={setupForm.designation}
-                onChange={(e) => setSetupForm({ ...setupForm, designation: e.target.value })}
-              />
+            {/* ── Section 4: Compensation & Bank Details ── */}
+            <div className="rounded-xl border bg-card p-4 space-y-3.5 shadow-sm">
+              <div className="flex items-center gap-2 border-b pb-2 text-sm font-semibold text-foreground">
+                <CreditCard className="h-4 w-4 text-violet-600" />
+                <span>4. Compensation &amp; Bank Account Details</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Annual CTC (₹) *</Label>
+                  <Input
+                    type="number"
+                    value={setupForm.salary}
+                    onChange={(e) => setSetupForm({ ...setupForm, salary: e.target.value })}
+                    placeholder="1200000"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Bank Name</Label>
+                  <Input
+                    value={setupForm.bankName}
+                    onChange={(e) => setSetupForm({ ...setupForm, bankName: e.target.value })}
+                    placeholder="e.g. HDFC Bank, ICICI Bank, SBI"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Account Holder Name</Label>
+                  <Input
+                    value={setupForm.accountHolderName}
+                    onChange={(e) => setSetupForm({ ...setupForm, accountHolderName: e.target.value })}
+                    placeholder="Account holder name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Bank Account Number</Label>
+                  <Input
+                    value={setupForm.accountNumber}
+                    onChange={(e) => setSetupForm({ ...setupForm, accountNumber: e.target.value })}
+                    placeholder="e.g. 5010023456789"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">IFSC Code</Label>
+                  <Input
+                    value={setupForm.ifsc}
+                    onChange={(e) => setSetupForm({ ...setupForm, ifsc: e.target.value.toUpperCase() })}
+                    placeholder="e.g. HDFC0001234"
+                    className="uppercase font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Account Type</Label>
+                  <Select
+                    value={setupForm.accountType}
+                    onValueChange={(val) => setSetupForm({ ...setupForm, accountType: val as "savings" | "current" })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="savings">Savings Account</SelectItem>
+                      <SelectItem value="current">Current / Salary Account</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-2 min-w-0">
-              <Label>Department / Team *</Label>
-              <Select
-                value={setupForm.departmentId || "none"}
-                onValueChange={(val) => setSetupForm({ ...setupForm, departmentId: val })}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select department">
-                    {departmentLabel(setupForm.departmentId || "none")}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {departments.length === 0 ? (
-                    <SelectItem value="none">General / Unassigned</SelectItem>
-                  ) : (
-                    departments.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name} ({d.code || "DEPT"})
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+            {/* ── Section 5: Statutory, Verification & Emergency ── */}
+            <div className="rounded-xl border bg-card p-4 space-y-3.5 shadow-sm">
+              <div className="flex items-center gap-2 border-b pb-2 text-sm font-semibold text-foreground">
+                <ShieldCheck className="h-4 w-4 text-violet-600" />
+                <span>5. Statutory Identifiers, Verification &amp; Emergency Contact</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Permanent Account Number (PAN)</Label>
+                  <Input
+                    value={setupForm.panNumber}
+                    onChange={(e) => setSetupForm({ ...setupForm, panNumber: e.target.value.toUpperCase() })}
+                    placeholder="ABCDE1234F"
+                    className="uppercase font-mono text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Aadhaar Number</Label>
+                  <Input
+                    value={setupForm.aadhaarNumber}
+                    onChange={(e) => setSetupForm({ ...setupForm, aadhaarNumber: e.target.value })}
+                    placeholder="12-digit Aadhaar Number"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Background &amp; Reference Check</Label>
+                  <Select
+                    value={setupForm.backgroundCheckStatus}
+                    onValueChange={(val) =>
+                      setSetupForm({ ...setupForm, backgroundCheckStatus: val as "verified" | "in_progress" | "waived" })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="verified">Verified &amp; Cleared</SelectItem>
+                      <SelectItem value="in_progress">In Progress / Pending</SelectItem>
+                      <SelectItem value="waived">Waived by Management</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Emergency Contact Name</Label>
+                  <Input
+                    value={setupForm.emergencyContactName}
+                    onChange={(e) => setSetupForm({ ...setupForm, emergencyContactName: e.target.value })}
+                    placeholder="Contact person name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Relationship</Label>
+                  <Input
+                    value={setupForm.emergencyContactRelation}
+                    onChange={(e) => setSetupForm({ ...setupForm, emergencyContactRelation: e.target.value })}
+                    placeholder="e.g. Spouse, Parent, Sibling"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Emergency Phone Number</Label>
+                  <Input
+                    value={setupForm.emergencyContactPhone}
+                    onChange={(e) => setSetupForm({ ...setupForm, emergencyContactPhone: e.target.value })}
+                    placeholder="+91 9876543210"
+                  />
+                </div>
+              </div>
+              <div className="pt-1">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="chk-rtw"
+                    checked={setupForm.rightToWorkCollected}
+                    onCheckedChange={(checked) =>
+                      setSetupForm({ ...setupForm, rightToWorkCollected: Boolean(checked) })
+                    }
+                  />
+                  <label htmlFor="chk-rtw" className="text-xs font-medium cursor-pointer text-muted-foreground">
+                    Right-to-work, citizenship, and identity documents collected and verified
+                  </label>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-2 min-w-0">
-              <Label>Reporting Manager *</Label>
-              <Select
-                value={setupForm.reportingToId || "none"}
-                onValueChange={(val) => setSetupForm({ ...setupForm, reportingToId: val })}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select reporting manager">
-                    {employeeLabel(setupForm.reportingToId || "none")}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {employees.length === 0 ? (
-                    <SelectItem value="none">Company Management (Direct)</SelectItem>
-                  ) : (
-                    employees.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.firstName} {e.lastName} ({e.designation || e.workEmail || "Admin"})
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2 min-w-0">
-              <Label>Onboarding Buddy (Optional)</Label>
-              <Select
-                value={setupForm.buddyId || "none"}
-                onValueChange={(val) => setSetupForm({ ...setupForm, buddyId: val })}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Assign a peer buddy...">
-                    {setupForm.buddyId === "none" || !setupForm.buddyId
-                      ? "No Buddy Assigned"
-                      : employeeLabel(setupForm.buddyId)}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Buddy Assigned</SelectItem>
-                  {employees.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {e.firstName} {e.lastName} ({e.designation || e.workEmail})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Joining Date *</Label>
-              <Input
-                type="date"
-                value={setupForm.joiningDate}
-                onChange={(e) => setSetupForm({ ...setupForm, joiningDate: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Annual CTC (₹)</Label>
-              <Input
-                type="number"
-                value={setupForm.salary}
-                onChange={(e) => setSetupForm({ ...setupForm, salary: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2 min-w-0 md:col-span-2">
-              <Label>Allocate IT Equipment</Label>
-              <Select
-                value={setupForm.assetId || "none"}
-                onValueChange={(val) => setSetupForm({ ...setupForm, assetId: val })}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose hardware...">
-                    {assetLabel(setupForm.assetId || "none")}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Assign Later (In Stock)</SelectItem>
-                  {availableAssets.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name} ({a.assetTag || (a as any).serialNumber || "Asset"})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Automation Checklist Toggles */}
-            <div className="md:col-span-2 p-3.5 rounded-xl bg-violet-50/60 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900 space-y-2.5">
-              <p className="text-xs font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider">
-                Automated Joining Pack Actions
-              </p>
-
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="chk-letter"
-                  checked={setupForm.issueAppointmentLetter}
-                  onCheckedChange={(checked) =>
-                    setSetupForm({ ...setupForm, issueAppointmentLetter: Boolean(checked) })
-                  }
-                />
-                <label htmlFor="chk-letter" className="text-xs font-medium cursor-pointer">
-                  Generate official Appointment Letter PDF &amp; log into Documents Repository
-                </label>
+            {/* ── Section 6: Automated Joining Pack Actions ── */}
+            <div className="rounded-xl border border-violet-200 dark:border-violet-900 bg-violet-50/60 dark:bg-violet-950/20 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4" /> Automated Joining Pack &amp; Lifecycle Actions
+                </p>
+                <Badge variant="outline" className="text-[10px] bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 border-violet-300">
+                  14 ATS Tasks Included
+                </Badge>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="chk-mailbox"
-                  checked={setupForm.triggerMailboxInvite}
-                  onCheckedChange={(checked) =>
-                    setSetupForm({ ...setupForm, triggerMailboxInvite: Boolean(checked) })
-                  }
-                />
-                <label htmlFor="chk-mailbox" className="text-xs font-medium cursor-pointer">
-                  Provision Domain Mailbox &amp; send onboarding account claim invite
-                </label>
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center gap-2.5">
+                  <Checkbox
+                    id="chk-letter"
+                    checked={setupForm.issueAppointmentLetter}
+                    onCheckedChange={(checked) =>
+                      setSetupForm({ ...setupForm, issueAppointmentLetter: Boolean(checked) })
+                    }
+                  />
+                  <label htmlFor="chk-letter" className="text-xs font-medium cursor-pointer">
+                    Generate official Appointment Letter PDF &amp; log into Documents Repository
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  <Checkbox
+                    id="chk-mailbox"
+                    checked={setupForm.triggerMailboxInvite}
+                    onCheckedChange={(checked) =>
+                      setSetupForm({ ...setupForm, triggerMailboxInvite: Boolean(checked) })
+                    }
+                  />
+                  <label htmlFor="chk-mailbox" className="text-xs font-medium cursor-pointer">
+                    Provision Domain Mailbox &amp; send onboarding account claim token invitation
+                  </label>
+                </div>
               </div>
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="border-t pt-4">
             <Button variant="outline" onClick={() => setSetupModalHire(null)}>
               Cancel
             </Button>
             <Button
               onClick={handleSetupSubmit}
               disabled={actionLoading}
-              className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white"
+              className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold shadow-md"
             >
-              {actionLoading ? "Provisioning..." : "Onboard & Dispatch Pack"}
+              {actionLoading ? "Provisioning Employee..." : "Create Employee & Dispatch Onboarding Pack"}
             </Button>
           </DialogFooter>
         </DialogContent>

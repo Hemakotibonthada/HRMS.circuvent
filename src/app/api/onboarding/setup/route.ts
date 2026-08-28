@@ -53,14 +53,32 @@ const setupSchema = z.object({
   workEmail: z.string().trim().email("Valid work email is required").max(320),
   personalEmail: z.string().trim().email().max(320).optional().nullable(),
   phone: z.string().trim().max(32).optional().nullable(),
+  gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional().nullable(),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date of birth must be YYYY-MM-DD").optional().nullable(),
+  bloodGroup: z.string().trim().max(16).optional().nullable(),
+  panNumber: z.string().trim().max(32).optional().nullable(),
+  aadhaarNumber: z.string().trim().max(32).optional().nullable(),
   designation: z.string().trim().min(1, "Designation is required").max(150),
   departmentId: optionalUuid,
   reportingToId: optionalUuid,
   buddyId: optionalUuid,
   locationId: optionalUuid,
+  workstationDesk: z.string().trim().max(100).optional().nullable(),
   joiningDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Joining date must be YYYY-MM-DD"),
   salary: z.number().nonnegative().optional().nullable(),
   employmentType: z.string().trim().default("full_time"),
+  noticePeriodDays: z.number().int().nonnegative().optional().nullable(),
+  probationMonths: z.number().int().nonnegative().optional().nullable(),
+  bankName: z.string().trim().max(120).optional().nullable(),
+  accountHolderName: z.string().trim().max(150).optional().nullable(),
+  accountNumber: z.string().trim().max(64).optional().nullable(),
+  ifsc: z.string().trim().max(32).optional().nullable(),
+  accountType: z.enum(["savings", "current"]).default("savings").optional().nullable(),
+  emergencyContactName: z.string().trim().max(150).optional().nullable(),
+  emergencyContactRelation: z.string().trim().max(64).optional().nullable(),
+  emergencyContactPhone: z.string().trim().max(32).optional().nullable(),
+  rightToWorkCollected: z.boolean().default(true).optional(),
+  backgroundCheckStatus: z.enum(["verified", "in_progress", "waived"]).default("verified").optional(),
   issueAppointmentLetter: z.boolean().default(true),
   triggerMailboxInvite: z.boolean().default(true),
   assetId: optionalUuid,
@@ -68,28 +86,30 @@ const setupSchema = z.object({
 });
 
 const STANDARD_ONBOARDING_TASKS = [
-  { phase: "pre", taskKey: "pre__offer_letter_signed", title: "Offer letter signed", mandatory: true, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__background_check", title: "Background check", mandatory: true, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__it_equipment_ordered", title: "IT equipment ordered", mandatory: false, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__email_account_created", title: "Email account created", mandatory: false, phaseOrder: 0 },
-  { phase: "pre", taskKey: "pre__welcome_kit_prepared", title: "Welcome kit prepared", mandatory: false, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__offer_letter_signed", title: "Collect signed offer letter", mandatory: true, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__right_to_work", title: "Collect right-to-work documents (PAN / Aadhaar)", mandatory: true, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__background_check", title: "Complete background-and-reference checks", mandatory: true, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__payroll_bank_setup", title: "Set up payroll and bank details", mandatory: true, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__email_account_created", title: "Create email and directory account", mandatory: true, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__it_equipment_ordered", title: "Provision and image the laptop", mandatory: false, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__desk_assigned", title: "Assign a desk and notify reception", mandatory: false, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__buddy_assigned", title: "Assign an onboarding buddy", mandatory: false, phaseOrder: 0 },
+  { phase: "pre", taskKey: "pre__welcome_kit_prepared", title: "Send the welcome and first-day packet", mandatory: false, phaseOrder: 0 },
 
-  { phase: "week1", taskKey: "week1__office_tour", title: "Office tour", mandatory: false, phaseOrder: 1 },
-  { phase: "week1", taskKey: "week1__team_introduction", title: "Team introduction", mandatory: false, phaseOrder: 1 },
-  { phase: "week1", taskKey: "week1__system_access_setup", title: "System access setup", mandatory: true, phaseOrder: 1 },
-  { phase: "week1", taskKey: "week1__policy_acknowledgement", title: "Policy acknowledgement", mandatory: true, phaseOrder: 1 },
-  { phase: "week1", taskKey: "week1__first_1_on_1_with_manager", title: "First 1-on-1 with manager", mandatory: false, phaseOrder: 1 },
+  { phase: "week1", taskKey: "week1__system_access_setup", title: "Grant system and application access", mandatory: true, phaseOrder: 1 },
+  { phase: "week1", taskKey: "week1__first_1_on_1_with_manager", title: "Manager welcome and first-week schedule", mandatory: false, phaseOrder: 1 },
+  { phase: "week1", taskKey: "week1__company_orientation", title: "Company orientation session", mandatory: false, phaseOrder: 1 },
+  { phase: "week1", taskKey: "week1__policy_acknowledgement", title: "Read and acknowledge company policies", mandatory: true, phaseOrder: 1 },
+  { phase: "week1", taskKey: "week1__security_training", title: "Complete security and data-privacy training", mandatory: true, phaseOrder: 1 },
+  { phase: "week1", taskKey: "week1__first_week_checkin", title: "First-week check-in", mandatory: false, phaseOrder: 1 },
 
   { phase: "month1", taskKey: "month1__department_orientation", title: "Department orientation", mandatory: false, phaseOrder: 2 },
   { phase: "month1", taskKey: "month1__role_specific_training", title: "Role-specific training", mandatory: false, phaseOrder: 2 },
-  { phase: "month1", taskKey: "month1__30_day_check_in", title: "30-day check-in", mandatory: false, phaseOrder: 2 },
+  { phase: "month1", taskKey: "month1__30_day_check_in", title: "30-day performance check-in", mandatory: false, phaseOrder: 2 },
   { phase: "month1", taskKey: "month1__benefits_enrollment", title: "Benefits enrollment", mandatory: false, phaseOrder: 2 },
-  { phase: "month1", taskKey: "month1__company_culture_session", title: "Company culture session", mandatory: false, phaseOrder: 2 },
 
   { phase: "month2_3", taskKey: "month2_3__60_day_performance_review", title: "60-day performance review", mandatory: false, phaseOrder: 3 },
   { phase: "month2_3", taskKey: "month2_3__cross_team_collaboration", title: "Cross-team collaboration", mandatory: false, phaseOrder: 3 },
-  { phase: "month2_3", taskKey: "month2_3__advanced_tool_training", title: "Advanced tool training", mandatory: false, phaseOrder: 3 },
-  { phase: "month2_3", taskKey: "month2_3__goals_setting", title: "Goals setting", mandatory: false, phaseOrder: 3 },
   { phase: "month2_3", taskKey: "month2_3__90_day_completion_review", title: "90-day completion review", mandatory: true, phaseOrder: 3 },
 ];
 
@@ -126,15 +146,23 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await withTenant({ orgId: ctx.orgId, userId: ctx.userId }, async (tx) => {
-      // 1. Determine Employee Code
+      // 1. Determine Employee Code (Strict CV-001 standard)
       let code = data.employeeCode?.trim();
       if (!code) {
-        const countRes = await tx
-          .select({ count: sql<number>`count(*)::int` })
+        const existingCodes = await tx
+          .select({ code: employees.employeeCode })
           .from(employees)
           .where(eq(employees.orgId, ctx.orgId));
-        const nextNum = (countRes[0]?.count ?? 0) + 1;
-        code = `CIR-${String(nextNum).padStart(3, "0")}`;
+        
+        let maxNum = 0;
+        for (const row of existingCodes) {
+          const match = row.code?.match(/^CV-(\d+)$/i);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > maxNum) maxNum = num;
+          }
+        }
+        code = `CV-${String(maxNum + 1).padStart(3, "0")}`;
       }
 
       // Check if employee already exists with this email or candidateId
@@ -158,6 +186,40 @@ export async function POST(request: NextRequest) {
         | "intern"
         | "freelance";
 
+      const validGender =
+        data.gender && ["male", "female", "other"].includes(data.gender)
+          ? (data.gender as "male" | "female" | "other")
+          : null;
+
+      const bankDetailsPayload =
+        data.bankName || data.accountNumber || data.ifsc
+          ? {
+              bankName: data.bankName || "",
+              accountHolderName: data.accountHolderName || `${data.firstName} ${data.lastName}`.trim(),
+              accountNumber: data.accountNumber || "",
+              ifsc: data.ifsc || "",
+              accountType: data.accountType || "savings",
+            }
+          : null;
+
+      const emergencyContactPayload =
+        data.emergencyContactName || data.emergencyContactPhone
+          ? {
+              name: data.emergencyContactName || "",
+              relationship: data.emergencyContactRelation || "",
+              phone: data.emergencyContactPhone || "",
+            }
+          : null;
+
+      let confirmationDate: string | null = null;
+      if (data.probationMonths && data.probationMonths > 0) {
+        const jd = new Date(data.joiningDate);
+        jd.setMonth(jd.getMonth() + data.probationMonths);
+        confirmationDate = jd.toISOString().slice(0, 10);
+      }
+
+      const ctcMinorVal = data.salary && data.salary > 0 ? BigInt(Math.round(data.salary * 100)) : null;
+
       if (existing[0]) {
         employeeId = existing[0].id;
         await tx
@@ -167,12 +229,22 @@ export async function POST(request: NextRequest) {
             lastName: data.lastName,
             personalEmail: data.personalEmail || null,
             phone: data.phone || null,
+            gender: validGender,
+            dateOfBirth: data.dateOfBirth || null,
+            bloodGroup: data.bloodGroup || null,
+            panNumber: data.panNumber || null,
+            aadhaarNumber: data.aadhaarNumber || null,
             designation: data.designation,
             departmentId: data.departmentId || null,
             reportingToId: data.reportingToId || null,
             locationId: data.locationId || null,
             joinDate: data.joiningDate,
+            confirmationDate,
+            noticePeriodDays: data.noticePeriodDays ?? 60,
             employmentType: empType,
+            ctcMinor: ctcMinorVal,
+            bankDetails: bankDetailsPayload,
+            emergencyContact: emergencyContactPayload,
             status: "active",
             updatedAt: new Date(),
           })
@@ -188,12 +260,22 @@ export async function POST(request: NextRequest) {
           workEmail: data.workEmail.toLowerCase(),
           personalEmail: data.personalEmail || null,
           phone: data.phone || null,
+          gender: validGender,
+          dateOfBirth: data.dateOfBirth || null,
+          bloodGroup: data.bloodGroup || null,
+          panNumber: data.panNumber || null,
+          aadhaarNumber: data.aadhaarNumber || null,
           designation: data.designation,
           departmentId: data.departmentId || null,
           reportingToId: data.reportingToId || null,
           locationId: data.locationId || null,
           joinDate: data.joiningDate,
+          confirmationDate,
+          noticePeriodDays: data.noticePeriodDays ?? 60,
           employmentType: empType,
+          ctcMinor: ctcMinorVal,
+          bankDetails: bankDetailsPayload,
+          emergencyContact: emergencyContactPayload,
           status: "active",
         });
       }
@@ -330,7 +412,7 @@ export async function POST(request: NextRequest) {
 
             documentId = doc.id;
 
-            // Mark task done
+            // Mark task done for offer/appointment letter
             const task = journey.tasks.find((t) => t.taskKey === "pre__offer_letter_signed");
             if (task) {
               journey = await lifecycleRepo.setTaskCompletion(task.id, true, ctx.userId);
@@ -338,6 +420,78 @@ export async function POST(request: NextRequest) {
           }
         } catch (docErr) {
           console.error("Appointment letter generation failed:", docErr);
+        }
+      }
+
+      // Mark right-to-work documents collected if provided
+      if (data.rightToWorkCollected || data.panNumber || data.aadhaarNumber) {
+        const rtwTask = journey.tasks.find((t) => t.taskKey === "pre__right_to_work");
+        if (rtwTask) {
+          try {
+            journey = await lifecycleRepo.setTaskCompletion(rtwTask.id, true, ctx.userId);
+          } catch (e) {
+            console.error("RTW task update failed:", e);
+          }
+        }
+      }
+
+      // Mark background check done if verified
+      if (data.backgroundCheckStatus === "verified") {
+        const bgTask = journey.tasks.find((t) => t.taskKey === "pre__background_check");
+        if (bgTask) {
+          try {
+            journey = await lifecycleRepo.setTaskCompletion(bgTask.id, true, ctx.userId);
+          } catch (e) {
+            console.error("BG task update failed:", e);
+          }
+        }
+      }
+
+      // Mark payroll and bank setup done if bank details given
+      if (data.bankName || data.accountNumber) {
+        const bankTask = journey.tasks.find((t) => t.taskKey === "pre__payroll_bank_setup");
+        if (bankTask) {
+          try {
+            journey = await lifecycleRepo.setTaskCompletion(bankTask.id, true, ctx.userId);
+          } catch (e) {
+            console.error("Bank task update failed:", e);
+          }
+        }
+      }
+
+      // Mark desk assigned if specified
+      if (data.workstationDesk) {
+        const deskTask = journey.tasks.find((t) => t.taskKey === "pre__desk_assigned");
+        if (deskTask) {
+          try {
+            journey = await lifecycleRepo.setTaskCompletion(deskTask.id, true, ctx.userId);
+          } catch (e) {
+            console.error("Desk task update failed:", e);
+          }
+        }
+      }
+
+      // Mark buddy assigned if chosen
+      if (data.buddyId && data.buddyId !== "none") {
+        const buddyTask = journey.tasks.find((t) => t.taskKey === "pre__buddy_assigned");
+        if (buddyTask) {
+          try {
+            journey = await lifecycleRepo.setTaskCompletion(buddyTask.id, true, ctx.userId);
+          } catch (e) {
+            console.error("Buddy task update failed:", e);
+          }
+        }
+      }
+
+      // Mark email created if invite triggered
+      if (data.triggerMailboxInvite) {
+        const mailTask = journey.tasks.find((t) => t.taskKey === "pre__email_account_created");
+        if (mailTask) {
+          try {
+            journey = await lifecycleRepo.setTaskCompletion(mailTask.id, true, ctx.userId);
+          } catch (e) {
+            console.error("Email task update failed:", e);
+          }
         }
       }
 
