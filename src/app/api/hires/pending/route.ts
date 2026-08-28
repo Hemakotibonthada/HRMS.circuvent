@@ -26,6 +26,7 @@ import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, clientIdentifier, requireApiContext } from "@/lib/api-context";
 import { checkHireProvenance } from "@/lib/hire-provenance";
 import { mostAdvanced } from "@/db/repositories/hire-provenance.neon";
+import { lookupMailboxRegistration } from "@/lib/mail-registration-client";
 
 const querySchema = z.object({
   search: z.string().trim().max(200).optional(),
@@ -65,6 +66,9 @@ export interface PendingHire {
   accountType: string | null;
   consentBackgroundVerification: boolean | null;
   registrationSubmittedAt: string | null;
+  mailboxStatus: "none" | "pending" | "approved" | "rejected";
+  mailboxEmail: string | null;
+  claimedWorkEmail: string | null;
   ready: boolean;
   /** Empty when ready; otherwise what HR has to resolve first. */
   blockers: string[];
@@ -236,6 +240,19 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Fetch mailbox registration for each candidate in parallel
+      const mailboxMap = new Map<string, { status: "none" | "pending" | "approved" | "rejected"; email: string | null }>();
+      await Promise.all(
+        candidateIds.map(async (cId) => {
+          try {
+            const mb = await lookupMailboxRegistration({ candidateId: cId });
+            mailboxMap.set(cId, { status: mb.status, email: mb.email });
+          } catch {
+            mailboxMap.set(cId, { status: "none", email: null });
+          }
+        })
+      );
+
       const results: PendingHire[] = [];
       for (const [candidateId, group] of byCandidate) {
         if (alreadyHired.has(candidateId)) continue;
@@ -255,6 +272,7 @@ export async function GET(request: NextRequest) {
         });
 
         const deptInfo = deptMap.get(candidateId);
+        const mb = mailboxMap.get(candidateId) ?? { status: "none", email: null };
 
         results.push({
           candidateId,
@@ -283,12 +301,15 @@ export async function GET(request: NextRequest) {
           proposedStartDate: primary.proposedStartDate || reg?.earliest_joining_date || null,
           noticePeriodDays: reg?.notice_period_days || null,
           bankName: null,
-          accountHolderName: `${primary.firstName ?? ""} ${primary.lastName ?? ""}`.trim(),
+          accountHolderName: reg?.full_legal_name || `${primary.firstName ?? ""} ${primary.lastName ?? ""}`.trim(),
           accountNumber: null,
           ifsc: null,
           accountType: "savings",
           consentBackgroundVerification: reg?.consent_background_verification ?? true,
           registrationSubmittedAt,
+          mailboxStatus: mb.status,
+          mailboxEmail: mb.email,
+          claimedWorkEmail: mb.email,
           ready: verdict.ok,
           blockers: verdict.ok ? [] : verdict.issues.map((issue) => issue.message),
         });

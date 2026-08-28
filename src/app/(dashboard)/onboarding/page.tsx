@@ -136,6 +136,9 @@ export interface PendingHireItem {
   accountType: string | null;
   consentBackgroundVerification: boolean | null;
   registrationSubmittedAt: string | null;
+  mailboxStatus?: "none" | "pending" | "approved" | "rejected";
+  mailboxEmail?: string | null;
+  claimedWorkEmail?: string | null;
   ready: boolean;
   blockers: string[];
 }
@@ -353,21 +356,14 @@ export default function OnboardingPage() {
         const hires = data.items || [];
         setPendingHires(hires);
         const candidateMailbox: Record<string, MailboxRegistrationView> = {};
-        await Promise.all(
-          hires.map(async (hire: PendingHireItem) => {
-            try {
-              const res = await fetch(`/api/onboarding/mailbox-status?candidateId=${hire.candidateId}`, {
-                credentials: "include",
-              });
-              if (res.ok) {
-                const body = await res.json();
-                candidateMailbox[hire.candidateId] = body.registration ?? { status: "none", email: null };
-              }
-            } catch {
-              /* optional enrichment */
-            }
-          })
-        );
+        for (const hire of hires) {
+          if (hire.mailboxStatus) {
+            candidateMailbox[hire.candidateId] = {
+              status: hire.mailboxStatus,
+              email: hire.mailboxEmail || hire.claimedWorkEmail || null,
+            };
+          }
+        }
         setMailboxByCandidate(candidateMailbox);
       } else if (!pendingRes.ok) {
         setPendingHires([]);
@@ -633,12 +629,23 @@ export default function OnboardingPage() {
   const openSetupModal = (hire: PendingHireItem) => {
     setSetupModalHire(hire);
     const candidateMb = mailboxByCandidate[hire.candidateId];
-    const claimedWorkEmail = candidateMb?.email?.trim() || "";
-    const suggestedEmail = claimedWorkEmail || `${hire.firstName.toLowerCase()}.${hire.lastName.toLowerCase()}@circuvent.com`.replace(
+    const claimedWorkEmail = hire.claimedWorkEmail || hire.mailboxEmail || candidateMb?.email?.trim() || "";
+    const systemSuggestedEmail = `${hire.firstName.toLowerCase()}.${hire.lastName.toLowerCase()}@circuvent.com`.replace(
       /\s+/g,
       ""
     );
-    const annualSalaryNum = hire.annualCtcMinor ? Number(BigInt(hire.annualCtcMinor) / 100n) : "";
+    const workEmailToUse = claimedWorkEmail || systemSuggestedEmail;
+
+    // Calculate annual CTC from minor units (paise) -> major units (rupees)
+    let annualSalaryStr = "";
+    if (hire.annualCtcMinor) {
+      try {
+        const b = BigInt(hire.annualCtcMinor);
+        annualSalaryStr = b > 10000000n ? (Number(b / 100n)).toString() : hire.annualCtcMinor;
+      } catch {
+        annualSalaryStr = hire.annualCtcMinor;
+      }
+    }
 
     let maxNum = 0;
     for (const emp of employees) {
@@ -672,7 +679,7 @@ export default function OnboardingPage() {
       employeeCode: nextCode,
       firstName: hire.firstName,
       lastName: hire.lastName,
-      workEmail: suggestedEmail,
+      workEmail: workEmailToUse,
       personalEmail: hire.personalEmail || hire.email || "",
       phone: hire.phone || "",
       gender: hire.gender || "prefer_not_to_say",
@@ -688,10 +695,10 @@ export default function OnboardingPage() {
       buddyId: "none",
       joiningDate: hire.proposedStartDate || new Date().toISOString().slice(0, 10),
       probationMonths: "3",
-      salary: annualSalaryNum ? annualSalaryNum.toString() : "",
+      salary: annualSalaryStr,
       employmentType: "full_time",
       bankName: hire.bankName || "",
-      accountHolderName: hire.accountHolderName || `${hire.firstName} ${hire.lastName}`.trim(),
+      accountHolderName: hire.accountHolderName || hire.name || `${hire.firstName} ${hire.lastName}`.trim(),
       accountNumber: hire.accountNumber || "",
       ifsc: hire.ifsc || "",
       accountType: (hire.accountType as "savings" | "current") || "savings",
@@ -701,7 +708,7 @@ export default function OnboardingPage() {
       rightToWorkCollected: true,
       backgroundCheckStatus: hire.consentBackgroundVerification === false ? "in_progress" : "verified",
       issueAppointmentLetter: true,
-      triggerMailboxInvite: candidateMb?.status !== "approved",
+      triggerMailboxInvite: (candidateMb?.status ?? hire.mailboxStatus) !== "approved",
       assetId: availableAssets[0]?.id || "none",
     });
   };
