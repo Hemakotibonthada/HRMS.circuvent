@@ -15,7 +15,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { attendanceRegularisations, employees, payrollRuns } from "@/db/schema/hrms";
+import { attendanceRecords, attendanceRegularisations, employees, payrollRuns } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
 import { currentEmployeeId, NoEmployeeRecordError, requireCurrentEmployeeId } from "@/lib/current-employee";
@@ -23,6 +23,7 @@ import {
   DEFAULT_POLICY,
   canDecide,
   evaluate,
+  workedMinutes,
   type RegularisationReason,
 } from "@/lib/attendance-regularisation";
 
@@ -296,11 +297,14 @@ export async function PATCH(request: NextRequest) {
       if (!APPROVERS.includes(ctx.role)) return { code: 403 as const };
       if (existing.status !== "pending") return { code: 409 as const };
 
+      const isOwnerOrAdmin = ctx.role === "owner" || ctx.role === "admin";
       const permitted = canDecide({
         approverId: employeeId,
         requesterId: existing.employeeId,
         status: body.status,
         reason: body.reason,
+        role: ctx.role,
+        isOwnerOrAdmin,
       });
 
       if (!permitted.allowed) return { code: 422 as const, message: permitted.message };
@@ -315,6 +319,65 @@ export async function PATCH(request: NextRequest) {
           updatedAt: new Date(),
         })
         .where(eq(attendanceRegularisations.id, body.id));
+
+      if (body.status === "approved") {
+        const inTimeStr = existing.inTime || "09:30";
+        const outTimeStr = existing.outTime || "18:30";
+        const totalMinutes = workedMinutes(inTimeStr, outTimeStr) || 540;
+        const workDateStr = existing.attendanceDate;
+
+        const clockInDate = new Date(`${workDateStr}T${inTimeStr}:00`);
+        const clockOutDate = new Date(`${workDateStr}T${outTimeStr}:00`);
+
+        const [existingRecord] = await tx
+          .select()
+          .from(attendanceRecords)
+          .where(
+            and(
+              eq(attendanceRecords.orgId, ctx.orgId),
+              eq(attendanceRecords.employeeId, existing.employeeId),
+              eq(attendanceRecords.workDate, workDateStr)
+            )
+          )
+          .limit(1);
+
+        const recStatus = existing.reason === "work_from_home" ? "wfh" : "present";
+
+        if (existingRecord) {
+          await tx
+            .update(attendanceRecords)
+            .set({
+              clockInAt: clockInDate,
+              clockOutAt: clockOutDate,
+              status: recStatus,
+              workedMinutes: totalMinutes,
+              isRegularized: true,
+              regularizationReason: existing.reason,
+              regularizedById: employeeId,
+              notes: existing.note ?? existing.reason,
+              clockInMethod: existingRecord.clockInMethod || "web",
+              clockOutMethod: "web",
+              updatedAt: new Date(),
+            })
+            .where(eq(attendanceRecords.id, existingRecord.id));
+        } else {
+          await tx.insert(attendanceRecords).values({
+            orgId: ctx.orgId,
+            employeeId: existing.employeeId,
+            workDate: workDateStr,
+            clockInAt: clockInDate,
+            clockOutAt: clockOutDate,
+            status: recStatus,
+            workedMinutes: totalMinutes,
+            isRegularized: true,
+            regularizationReason: existing.reason,
+            regularizedById: employeeId,
+            notes: existing.note ?? existing.reason,
+            clockInMethod: "web",
+            clockOutMethod: "web",
+          });
+        }
+      }
 
       return { code: 200 as const };
     });

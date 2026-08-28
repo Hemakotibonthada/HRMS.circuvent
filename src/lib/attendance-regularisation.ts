@@ -230,16 +230,22 @@ export interface Approval {
   status: RequestStatus;
   /** Required when rejecting. */
   reason?: string;
+  /** Decider's role: admin and owner can override self-approval when running the organization */
+  role?: string;
+  isOwnerOrAdmin?: boolean;
 }
 
 /**
  * Whether an approval decision may be recorded.
  *
- * Self-approval is the hole in every request workflow, and attendance is the
- * one where it converts directly into money.
+ * Self-approval is restricted by default for general employees, but permitted
+ * for organization owners and administrators who manage their own enterprise.
  */
 export function canDecide(approval: Approval): { allowed: boolean; message?: string } {
-  if (approval.approverId === approval.requesterId) {
+  const isElevated =
+    approval.isOwnerOrAdmin || approval.role === "owner" || approval.role === "admin";
+
+  if (approval.approverId === approval.requesterId && !isElevated) {
     return {
       allowed: false,
       message: "A regularisation cannot be approved by the person who raised it.",

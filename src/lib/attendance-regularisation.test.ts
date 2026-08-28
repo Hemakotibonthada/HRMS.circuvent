@@ -160,10 +160,28 @@ describe("who may decide", () => {
     expect(canDecide({ approverId: "m1", requesterId: "e1", status: "approved" }).allowed).toBe(true);
   });
 
-  it("stops somebody approving their own", () => {
+  it("stops a regular employee from approving their own", () => {
     const result = canDecide({ approverId: "e1", requesterId: "e1", status: "approved" });
     expect(result.allowed).toBe(false);
     expect(result.message).toMatch(/cannot be approved by the person who raised it/);
+  });
+
+  it("permits an admin or owner to approve their own regularisation", () => {
+    const adminResult = canDecide({
+      approverId: "e1",
+      requesterId: "e1",
+      status: "approved",
+      role: "admin",
+    });
+    expect(adminResult.allowed).toBe(true);
+
+    const ownerResult = canDecide({
+      approverId: "e1",
+      requesterId: "e1",
+      status: "approved",
+      isOwnerOrAdmin: true,
+    });
+    expect(ownerResult.allowed).toBe(true);
   });
 
   it("requires a reason for a rejection", () => {
