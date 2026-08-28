@@ -21,7 +21,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { withTenant } from "@/db/client";
 import { documentTemplates, generatedDocuments } from "@/db/schema";

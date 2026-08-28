@@ -121,6 +121,7 @@ function toRecord(row: Row): EmployeeRecord {
     lastName: row.lastName,
     fullName: `${row.firstName} ${row.lastName}`.trim(),
     email: row.workEmail,
+    workEmail: row.workEmail ?? undefined,
     personalEmail: row.personalEmail ?? undefined,
     phone: row.phone ?? undefined,
     avatarUrl: row.avatarUrl ?? undefined,
@@ -1168,7 +1169,7 @@ export class NeonEmployeeRepository implements EmployeeRepository {
    * it again.
    */
   async convertToPermanent(id: string): Promise<EmployeeRecord> {
-    const { row, justConverted, queuedMailChange } = await withTenant(this.ctx, async (tx) => {
+    const { row, justConverted } = await withTenant(this.ctx, async (tx) => {
       const [current] = await tx
         .select()
         .from(employees)

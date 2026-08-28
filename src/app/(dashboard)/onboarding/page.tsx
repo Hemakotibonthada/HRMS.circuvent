@@ -1270,9 +1270,10 @@ export default function OnboardingPage() {
                                         className="mt-0.5"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <p
+                                        <button
+                                          type="button"
                                           className={cn(
-                                            "text-xs leading-snug cursor-pointer select-none",
+                                            "text-xs leading-snug cursor-pointer select-none text-left",
                                             done ? "line-through text-muted-foreground" : "text-foreground font-medium"
                                           )}
                                           onClick={() => void toggleTask(joiner, p.key, taskTitle)}
@@ -1281,7 +1282,7 @@ export default function OnboardingPage() {
                                           {isMandatory && (
                                             <span className="ml-1 text-[10px] text-amber-600 font-semibold">*</span>
                                           )}
-                                        </p>
+                                        </button>
                                       </div>
                                     </div>
                                   );

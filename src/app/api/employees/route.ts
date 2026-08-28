@@ -23,7 +23,7 @@ import {
   normaliseEmploymentType,
   validateEmployeeFields,
 } from "@/lib/employee-rules";
-import { checkHireProvenance, provenanceAuditNote } from "@/lib/hire-provenance";
+import { checkHireProvenance } from "@/lib/hire-provenance";
 import { loadHireProvenance } from "@/db/repositories/hire-provenance.neon";
 import { recordProvenance } from "@/db/repositories/hire-provenance.audit";
 

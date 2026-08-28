@@ -763,7 +763,7 @@ export class NeonAssetsRepository {
   }
 
   /** Deletes an unassigned / disposed / retired asset. */
-  async delete(id: string, actorId: string): Promise<void> {
+  async delete(id: string, _actorId?: string): Promise<void> {
     return withTenant(this.ctx, async (tx) => {
       const [existing] = await tx
         .select()

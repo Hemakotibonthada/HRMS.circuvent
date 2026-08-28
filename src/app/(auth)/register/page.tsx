@@ -169,7 +169,6 @@ export default function RegisterPage() {
                     // dash is accepted rather than rejected as malformed.
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                     className="text-center text-2xl tracking-[0.5em] font-mono"
-                    autoFocus
                     required
                   />
                 </div>

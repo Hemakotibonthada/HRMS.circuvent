@@ -138,6 +138,7 @@ export interface EmployeeRecord {
   codeChangedAt?: string;
   location?: string;
   personalEmail?: string;
+  workEmail?: string;
   /** Major currency units for display. Stored as minor units in Postgres. */
   salary?: number;
   currency: string;

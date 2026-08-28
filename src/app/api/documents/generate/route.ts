@@ -9,7 +9,7 @@ import { z } from "zod";
 import { NeonDocumentsRepository } from "@/db/repositories/documents.neon";
 import { NeonEmployeeRepository } from "@/db/repositories/employee.neon";
 import { loadOrgLetterDefaults } from "@/db/repositories/org-identity";
-import { NotFoundError, RepositoryError } from "@/db/repositories/types";
+import { NotFoundError, RepositoryError, type EmployeeRecord } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { checkRateLimit, requireApiContext } from "@/lib/api-context";
 
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
 
     if (template.requiresSignature && template.signatoryRoles?.length) {
       const defaults = (await loadOrgLetterDefaults(ctx)) ?? {};
-      let emp: any = null;
+      let emp: EmployeeRecord | null = null;
       if (parsed.data.employeeId) {
         emp = await new NeonEmployeeRepository(ctx).getById(parsed.data.employeeId);
       }
@@ -139,12 +139,12 @@ export async function POST(request: NextRequest) {
         if (!recipients[role]?.email) {
           if (role === "employee" && emp) {
             recipients[role] = {
-              email: emp.workEmail || emp.personalEmail || "employee@circuvent.com",
+              email: emp.personalEmail || emp.workEmail || "employee@circuvent.com",
               name: `${emp.firstName} ${emp.lastName}`.trim() || "Employee",
             };
           } else if (role === "candidate") {
             recipients[role] = {
-              email: emp?.workEmail || emp?.personalEmail || "candidate@circuvent.com",
+              email: emp?.personalEmail || emp?.workEmail || "candidate@circuvent.com",
               name: emp ? `${emp.firstName} ${emp.lastName}`.trim() : "Candidate",
             };
           } else if (role === "signatory" || role === "hr") {

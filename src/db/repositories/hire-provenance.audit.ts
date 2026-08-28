@@ -12,9 +12,8 @@
 // an employee created through this route traceable in exactly the way one
 // created by the ATS handoff already is.
 
-import { and, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
-import { employees } from "@/db/schema";
 import { auditLog } from "@/db/schema/identity";
 import { provenanceAuditNote, type HireProvenance, type ProvenanceDecision } from "@/lib/hire-provenance";
 
@@ -75,5 +74,3 @@ export async function recordProvenance(
     });
   }
 }
-
-export { and, eq };

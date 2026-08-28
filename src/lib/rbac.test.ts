@@ -198,8 +198,8 @@ describe("canAccessModule", () => {
     // The failure this guards is not a widened privilege but a narrowed one:
     // a self-service page an employee is redirected away from is a feature
     // that silently does not exist for the only people who need it.
-    for (const module of ["mydocuments", "mybenefits", "payslip", "selfservice", "bankdetails"]) {
-      expect(canAccessModule("employee", module), `employee cannot open /${module}`).toBe(true);
+    for (const modName of ["mydocuments", "mybenefits", "payslip", "selfservice", "bankdetails"]) {
+      expect(canAccessModule("employee", modName), `employee cannot open /${modName}`).toBe(true);
     }
   });
 
