@@ -104,7 +104,7 @@ function formatTime(isoString?: string): string {
 
 export default function AttendancePage() {
   const { user } = useAuth();
-  const { role, isManager, isAdmin } = useRBAC();
+  const { role, isManager, isAdmin, isHR } = useRBAC();
 
   // Live state
   const [records, setRecords] = useState<AttendanceItem[]>([]);
@@ -143,8 +143,14 @@ export default function AttendancePage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Today ISO
-  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  // Today ISO in local timezone
+  const todayIso = useMemo(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }, []);
 
   // Load Attendance Data
   const loadData = useCallback(async () => {
@@ -165,9 +171,23 @@ export default function AttendancePage() {
         const items: AttendanceItem[] = data.items || data.data || [];
         setRecords(items);
 
-        // Find today's active session
-        const todayMatch = items.find((r) => r.workDate === todayIso);
-        setActiveRecord(todayMatch || null);
+        // Filter for current user's records to find their active session
+        const myRecords = items.filter((r) => {
+          if (user?.employeeId && r.employeeId) return r.employeeId === user.employeeId;
+          if (user?.displayName && r.employeeName) {
+            return r.employeeName.toLowerCase().trim() === user.displayName.toLowerCase().trim();
+          }
+          return true;
+        });
+
+        // 1. First priority: any session with clockInAt and no clockOutAt
+        const openSession = myRecords.find((r) => !!r.clockInAt && !r.clockOutAt);
+
+        // 2. Second priority: today's record (matching local date or UTC)
+        const todayUtc = new Date().toISOString().slice(0, 10);
+        const todaySession = myRecords.find((r) => r.workDate === todayIso || r.workDate === todayUtc);
+
+        setActiveRecord(openSession || todaySession || null);
       }
 
       if (summaryRes.ok) {
@@ -186,7 +206,7 @@ export default function AttendancePage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [todayIso]);
+  }, [todayIso, user]);
 
   useEffect(() => {
     loadData();
@@ -414,16 +434,18 @@ export default function AttendancePage() {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDeviceSync}
-            disabled={actionLoading}
-            className="gap-1.5"
-          >
-            <Radio className="h-4 w-4 text-emerald-500 animate-pulse" />
-            Hardware Device Sync
-          </Button>
+          {(isAdmin || isHR) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDeviceSync}
+              disabled={actionLoading}
+              className="gap-1.5"
+            >
+              <Radio className="h-4 w-4 text-emerald-500 animate-pulse" />
+              Hardware Device Sync
+            </Button>
+          )}
 
           <Button
             variant="outline"
