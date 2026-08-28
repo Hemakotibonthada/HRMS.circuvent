@@ -184,7 +184,11 @@ export async function GET(request: NextRequest) {
               current_ctc_minor::text AS current_ctc_minor,
               notice_period_days,
               earliest_joining_date::text AS earliest_joining_date,
-              consent_background_verification
+              consent_background_verification,
+              bank_name,
+              bank_account_number,
+              bank_ifsc,
+              bank_account_type
             FROM hrms.candidate_registration
            WHERE candidate_id = ANY(${sql.param(candidateIds)}::uuid[])`
       );
@@ -209,6 +213,10 @@ export async function GET(request: NextRequest) {
         notice_period_days?: number | null;
         earliest_joining_date?: string | null;
         consent_background_verification?: boolean | null;
+        bank_name?: string | null;
+        bank_account_number?: string | null;
+        bank_ifsc?: string | null;
+        bank_account_type?: string | null;
       }
 
       const regMap = new Map<string, RegData>();
@@ -253,6 +261,39 @@ export async function GET(request: NextRequest) {
         })
       );
 
+      // Look up candidate bank details from employee records and audit logs
+      const bankDetailsMap = new Map<string, { bankName: string; accountHolderName: string; accountNumber: string; ifsc: string; accountType: string }>();
+      try {
+        const changesRes = await tx.execute(
+          sql`SELECT new_value FROM public.employee_changes WHERE field = 'bank_details' AND new_value IS NOT NULL ORDER BY changed_at DESC LIMIT 50`
+        );
+        for (const row of changesRes.rows as any[]) {
+          try {
+            const rawVal = typeof row.new_value === "string" ? JSON.parse(row.new_value) : row.new_value;
+            if (rawVal && (rawVal.accountNumber || rawVal.account_number || rawVal.ifsc)) {
+              const holder = (rawVal.accountHolderName || rawVal.account_holder_name || "").toLowerCase().trim();
+              const bName = rawVal.bankName || rawVal.bank_name || "HDFC Bank";
+              const accNo = rawVal.accountNumber || rawVal.account_number || "";
+              const ifscCode = rawVal.ifsc || "";
+              const accType = rawVal.accountType || rawVal.account_type || "savings";
+              if (holder) {
+                bankDetailsMap.set(holder, {
+                  bankName: bName,
+                  accountHolderName: rawVal.accountHolderName || rawVal.account_holder_name || "",
+                  accountNumber: accNo,
+                  ifsc: ifscCode,
+                  accountType: accType,
+                });
+              }
+            }
+          } catch {
+            /* ignore json error */
+          }
+        }
+      } catch {
+        /* optional enrichment */
+      }
+
       const results: PendingHire[] = [];
       for (const [candidateId, group] of byCandidate) {
         if (alreadyHired.has(candidateId)) continue;
@@ -273,6 +314,19 @@ export async function GET(request: NextRequest) {
 
         const deptInfo = deptMap.get(candidateId);
         const mb = mailboxMap.get(candidateId) ?? { status: "none", email: null };
+
+        const legalNameLower = (reg?.full_legal_name || `${primary.firstName ?? ""} ${primary.lastName ?? ""}`).toLowerCase().trim();
+        const firstLastLower = `${primary.firstName ?? ""} ${primary.lastName ?? ""}`.toLowerCase().trim();
+        
+        let foundBank = bankDetailsMap.get(legalNameLower) || bankDetailsMap.get(firstLastLower);
+        if (!foundBank) {
+          for (const [key, val] of bankDetailsMap.entries()) {
+            if (legalNameLower.includes(key) || key.includes(legalNameLower) || firstLastLower.includes(key) || key.includes(firstLastLower)) {
+              foundBank = val;
+              break;
+            }
+          }
+        }
 
         results.push({
           candidateId,
@@ -300,11 +354,11 @@ export async function GET(request: NextRequest) {
           annualCtcMinor: primary.annualCtcMinor?.toString() || reg?.expected_ctc_minor || reg?.current_ctc_minor || null,
           proposedStartDate: primary.proposedStartDate || reg?.earliest_joining_date || null,
           noticePeriodDays: reg?.notice_period_days || null,
-          bankName: null,
-          accountHolderName: reg?.full_legal_name || `${primary.firstName ?? ""} ${primary.lastName ?? ""}`.trim(),
-          accountNumber: null,
-          ifsc: null,
-          accountType: "savings",
+          bankName: reg?.bank_name || foundBank?.bankName || null,
+          accountHolderName: reg?.full_legal_name || foundBank?.accountHolderName || `${primary.firstName ?? ""} ${primary.lastName ?? ""}`.trim(),
+          accountNumber: reg?.bank_account_number || foundBank?.accountNumber || null,
+          ifsc: reg?.bank_ifsc || foundBank?.ifsc || null,
+          accountType: reg?.bank_account_type || foundBank?.accountType || "savings",
           consentBackgroundVerification: reg?.consent_background_verification ?? true,
           registrationSubmittedAt,
           mailboxStatus: mb.status,
