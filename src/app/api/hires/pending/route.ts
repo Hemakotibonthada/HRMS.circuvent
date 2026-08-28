@@ -35,10 +35,16 @@ const querySchema = z.object({
 export interface PendingHire {
   candidateId: string;
   applicationId: string | null;
+  offerId: string | null;
   name: string;
+  firstName: string;
+  lastName: string;
   email: string;
+  phone: string | null;
   designation: string | null;
   offerStatus: string | null;
+  annualCtcMinor: string | null;
+  proposedStartDate: string | null;
   registrationSubmittedAt: string | null;
   ready: boolean;
   /** Empty when ready; otherwise what HR has to resolve first. */
@@ -81,13 +87,18 @@ export async function GET(request: NextRequest) {
       // would drift apart.
       const rows = await tx
         .select({
+          offerId: offers.id,
           candidateId: candidates.id,
           firstName: candidates.firstName,
           lastName: candidates.lastName,
           email: candidates.email,
+          phone: candidates.phone,
           designation: candidates.currentDesignation,
+          offerDesignation: offers.designation,
           offerStatus: offers.status,
           applicationId: offers.applicationId,
+          annualCtcMinor: offers.annualCtcMinor,
+          proposedStartDate: offers.proposedStartDate,
         })
         .from(offers)
         .innerJoin(candidates, eq(candidates.id, offers.candidateId))
@@ -175,10 +186,16 @@ export async function GET(request: NextRequest) {
         results.push({
           candidateId,
           applicationId: primary.applicationId ?? null,
+          offerId: primary.offerId ?? null,
           name: `${primary.firstName ?? ""} ${primary.lastName ?? ""}`.trim(),
+          firstName: primary.firstName ?? "",
+          lastName: primary.lastName ?? "",
           email: primary.email ?? "",
-          designation: primary.designation ?? null,
+          phone: primary.phone ?? null,
+          designation: primary.offerDesignation || primary.designation || null,
           offerStatus: best,
+          annualCtcMinor: primary.annualCtcMinor?.toString() ?? null,
+          proposedStartDate: primary.proposedStartDate ?? null,
           registrationSubmittedAt: registration,
           ready: verdict.ok,
           blockers: verdict.ok ? [] : verdict.issues.map((issue) => issue.message),
