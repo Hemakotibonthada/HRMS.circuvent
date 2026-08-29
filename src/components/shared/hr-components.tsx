@@ -4,7 +4,7 @@ import React, { useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
@@ -306,11 +306,12 @@ const GRADIENTS = [
 
 interface EmployeeAvatarProps {
   name: string;
+  avatarUrl?: string | null;
   size?: "sm" | "md" | "lg";
   className?: string;
 }
 
-export function EmployeeAvatar({ name, size = "md", className }: EmployeeAvatarProps) {
+export function EmployeeAvatar({ name, avatarUrl, size = "md", className }: EmployeeAvatarProps) {
   const initials = name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -319,7 +320,8 @@ export function EmployeeAvatar({ name, size = "md", className }: EmployeeAvatarP
   const textSize = size === "sm" ? "text-[8px]" : size === "lg" ? "text-sm" : "text-[10px]";
 
   return (
-    <Avatar className={cn(sizeClass, className)}>
+    <Avatar className={cn(sizeClass, "overflow-hidden shrink-0", className)}>
+      {avatarUrl && <AvatarImage src={avatarUrl} alt={name} className="object-cover" />}
       <AvatarFallback className={cn(`bg-gradient-to-br ${gradient} text-white font-semibold`, textSize)}>
         {initials}
       </AvatarFallback>
@@ -331,6 +333,7 @@ export function EmployeeAvatar({ name, size = "md", className }: EmployeeAvatarP
 
 interface EmployeeChipProps {
   name: string;
+  avatarUrl?: string | null;
   role?: string;
   department?: string;
   email?: string;
@@ -339,13 +342,13 @@ interface EmployeeChipProps {
   onClick?: () => void;
 }
 
-export function EmployeeChip({ name, role, department, email, size = "md", showDetails = true, onClick }: EmployeeChipProps) {
+export function EmployeeChip({ name, avatarUrl, role, department, email, size = "md", showDetails = true, onClick }: EmployeeChipProps) {
   return (
     <div
       className={cn("flex items-center gap-2", onClick && "cursor-pointer hover:bg-muted/50 rounded-lg p-1 transition-colors")}
       {...(onClick ? clickable(onClick) : {})}
     >
-      <EmployeeAvatar name={name} size={size === "sm" ? "sm" : "md"} />
+      <EmployeeAvatar name={name} avatarUrl={avatarUrl} size={size === "sm" ? "sm" : "md"} />
       <div className="min-w-0">
         <p className={cn("font-medium truncate", size === "sm" ? "text-[11px]" : "text-xs")}>{name}</p>
         {showDetails && (role || department) && (

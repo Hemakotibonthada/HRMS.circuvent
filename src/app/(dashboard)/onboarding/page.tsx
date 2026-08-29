@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -78,6 +78,7 @@ export interface EmployeeItem {
   workEmail: string;
   personalEmail?: string;
   phone?: string;
+  avatarUrl?: string;
   designation: string;
   departmentId?: string;
   departmentName?: string;
@@ -310,6 +311,7 @@ export default function OnboardingPage() {
           lastName: e.lastName || e.last_name || (e.name ? e.name.split(" ").slice(1).join(" ") : ""),
           workEmail: e.workEmail || e.work_email || e.email || "",
           personalEmail: e.personalEmail || e.personal_email || "",
+          avatarUrl: e.avatarUrl || e.avatar_url || "",
           phone: e.phone || "",
           designation: e.designation || "Administrator",
           departmentId: e.departmentId || e.department_id || "",
@@ -1396,7 +1398,10 @@ export default function OnboardingPage() {
                           onClick={() => openEditEmployeeModal(joiner)}
                           title="Click to view and edit full employee onboarding profile"
                         >
-                          <Avatar className="h-12 w-12 border shadow-sm transition-transform group-hover/profile:scale-105">
+                          <Avatar className="h-12 w-12 border shadow-sm transition-transform group-hover/profile:scale-105 overflow-hidden shrink-0">
+                            {joiner.avatarUrl ? (
+                              <AvatarImage src={joiner.avatarUrl} alt={`${joiner.firstName} ${joiner.lastName}`} className="object-cover" />
+                            ) : null}
                             <AvatarFallback className="bg-gradient-to-br from-violet-500 to-indigo-600 text-white font-bold text-base">
                               {joiner.firstName[0]}
                               {joiner.lastName[0]}
@@ -1736,32 +1741,44 @@ export default function OnboardingPage() {
       >
         <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              {editingEmployee ? (
-                <>
-                  <UserCog className="h-5 w-5 text-violet-600" /> Edit Employee Onboarding Profile &amp; Master Record
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-5 w-5 text-violet-600" /> Complete Employee Onboarding Setup
-                </>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              {editingEmployee ? (
-                <>
-                  Update complete employee personal details, designation, department, reporting manager, compensation, bank accounts, and compliance verification for{" "}
-                  <strong className="text-foreground">
-                    {editingEmployee.firstName} {editingEmployee.lastName} ({editingEmployee.employeeCode || "Joiner"})
-                  </strong>.
-                </>
-              ) : (
-                <>
-                  Configure employee profile, manager hierarchy, campus seating, banking, and trigger automated joining pack for{" "}
-                  <strong className="text-foreground">{setupModalHire?.name}</strong>.
-                </>
-              )}
-            </DialogDescription>
+            <div className="flex items-center gap-3">
+              {editingEmployee?.avatarUrl ? (
+                <Avatar className="h-10 w-10 border overflow-hidden shrink-0 shadow-sm">
+                  <AvatarImage src={editingEmployee.avatarUrl} alt={`${editingEmployee.firstName} ${editingEmployee.lastName}`} className="object-cover" />
+                  <AvatarFallback className="bg-gradient-to-br from-violet-500 to-purple-600 text-white text-xs font-semibold">
+                    {editingEmployee.firstName[0]}{editingEmployee.lastName[0]}
+                  </AvatarFallback>
+                </Avatar>
+              ) : null}
+              <div className="min-w-0">
+                <DialogTitle className="flex items-center gap-2 text-lg">
+                  {editingEmployee ? (
+                    <>
+                      <UserCog className="h-5 w-5 text-violet-600" /> Edit Employee Onboarding Profile &amp; Master Record
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-5 w-5 text-violet-600" /> Complete Employee Onboarding Setup
+                    </>
+                  )}
+                </DialogTitle>
+                <DialogDescription className="mt-1">
+                  {editingEmployee ? (
+                    <>
+                      Update complete employee personal details, designation, department, reporting manager, compensation, bank accounts, and compliance verification for{" "}
+                      <strong className="text-foreground">
+                        {editingEmployee.firstName} {editingEmployee.lastName} ({editingEmployee.employeeCode || "Joiner"})
+                      </strong>.
+                    </>
+                  ) : (
+                    <>
+                      Configure employee profile, manager hierarchy, campus seating, banking, and trigger automated joining pack for{" "}
+                      <strong className="text-foreground">{setupModalHire?.name}</strong>.
+                    </>
+                  )}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
           <div className="space-y-6 py-3">

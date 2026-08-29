@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo, type ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -148,19 +148,21 @@ const AVATAR_GRADIENTS = [
 
 interface GradientAvatarProps {
   name: string;
+  avatarUrl?: string | null;
   index?: number;
   size?: "sm" | "md" | "lg" | "xl";
   className?: string;
 }
 
-export function GradientAvatar({ name, index = 0, size = "md", className }: GradientAvatarProps) {
+export function GradientAvatar({ name, avatarUrl, index = 0, size = "md", className }: GradientAvatarProps) {
   const initials = name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "?";
   const gradient = AVATAR_GRADIENTS[index % AVATAR_GRADIENTS.length];
   const sizeClass = size === "sm" ? "h-7 w-7" : size === "lg" ? "h-12 w-12" : size === "xl" ? "h-16 w-16" : "h-9 w-9";
   const textSize = size === "sm" ? "text-[8px]" : size === "lg" ? "text-sm" : size === "xl" ? "text-lg" : "text-[10px]";
 
   return (
-    <Avatar className={cn(sizeClass, className)}>
+    <Avatar className={cn(sizeClass, "overflow-hidden shrink-0", className)}>
+      {avatarUrl && <AvatarImage src={avatarUrl} alt={name} className="object-cover" />}
       <AvatarFallback className={cn(`bg-gradient-to-br ${gradient} text-white font-semibold`, textSize)}>
         {initials}
       </AvatarFallback>

@@ -56,6 +56,7 @@ function createDataStore<T extends BaseRecord>() {
 // Employees
 export interface EmployeeDoc extends BaseRecord {
   firstName: string; lastName: string; email: string; phone: string;
+  avatarUrl?: string | null;
   department: string; designation: string; joiningDate: string;
   status: string; employmentType: string; reportingManager: string;
   location: string; salary?: number; skills?: string[];

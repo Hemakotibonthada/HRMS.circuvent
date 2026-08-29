@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -211,14 +211,15 @@ export function SearchBar({ value, onChange, placeholder = "Search...", classNam
 
 // ─── AVATAR WITH GRADIENT ────────────────────────────────────────────
 
-export function GradientAvatar({ name, size = "md", index = 0, className }: {
-  name: string; size?: "sm" | "md" | "lg"; index?: number; className?: string;
+export function GradientAvatar({ name, avatarUrl, size = "md", index = 0, className }: {
+  name: string; avatarUrl?: string | null; size?: "sm" | "md" | "lg"; index?: number; className?: string;
 }) {
   const sizeClass = size === "sm" ? "h-7 w-7" : size === "lg" ? "h-14 w-14" : "h-10 w-10";
   const textSize = size === "sm" ? "text-[9px]" : size === "lg" ? "text-lg" : "text-xs";
   const gradient = generateColor(name);
   return (
-    <Avatar className={cn(sizeClass, className)}>
+    <Avatar className={cn(sizeClass, "overflow-hidden shrink-0", className)}>
+      {avatarUrl && <AvatarImage src={avatarUrl} alt={name} className="object-cover" />}
       <AvatarFallback className={`bg-gradient-to-br ${gradient} text-white ${textSize} font-semibold`}>
         {getInitials(name)}
       </AvatarFallback>

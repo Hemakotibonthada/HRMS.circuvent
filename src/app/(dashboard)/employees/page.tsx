@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -276,7 +276,14 @@ export default function EmployeesPage() {
                   <Card key={emp.id} className="group cursor-pointer hover:shadow-lg transition-all" onClick={() => setSelectedEmp(emp)}>
                     <CardContent className="p-5">
                       <div className="flex items-start justify-between">
-                        <Avatar className="h-14 w-14"><AvatarFallback className={`bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]} text-white text-lg font-semibold`}>{initials}</AvatarFallback></Avatar>
+                        <Avatar className="h-14 w-14 overflow-hidden shrink-0">
+                          {emp.avatarUrl && (
+                            <AvatarImage src={emp.avatarUrl} alt={`${emp.firstName} ${emp.lastName}`} className="object-cover" />
+                          )}
+                          <AvatarFallback className={`bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]} text-white text-lg font-semibold`}>
+                            {initials}
+                          </AvatarFallback>
+                        </Avatar>
                         <Badge className={cn("text-[9px] border-0", sc.className)}>{sc.label}</Badge>
                       </div>
                       <h3 className="mt-3 font-semibold group-hover:text-primary transition-colors">{emp.firstName} {emp.lastName}</h3>
@@ -323,7 +330,14 @@ export default function EmployeesPage() {
                           <tr key={emp.id} className="border-b last:border-0 hover:bg-muted/50 transition-colors">
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-3">
-                                <Avatar className="h-8 w-8"><AvatarFallback className={`bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]} text-white text-[10px] font-semibold`}>{initials}</AvatarFallback></Avatar>
+                                <Avatar className="h-8 w-8 overflow-hidden shrink-0">
+                                  {emp.avatarUrl && (
+                                    <AvatarImage src={emp.avatarUrl} alt={`${emp.firstName} ${emp.lastName}`} className="object-cover" />
+                                  )}
+                                  <AvatarFallback className={`bg-gradient-to-br ${GRADIENTS[i % GRADIENTS.length]} text-white text-[10px] font-semibold`}>
+                                    {initials}
+                                  </AvatarFallback>
+                                </Avatar>
                                 <div><p className="font-medium text-xs">{emp.firstName} {emp.lastName}</p><p className="text-[10px] text-muted-foreground">{emp.phone || "—"}</p></div>
                               </div>
                             </td>
@@ -385,7 +399,14 @@ export default function EmployeesPage() {
           <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <div className="flex items-center gap-4">
-                <Avatar className="h-16 w-16"><AvatarFallback className={`bg-gradient-to-br ${GRADIENTS[items.indexOf(selectedEmp) % GRADIENTS.length]} text-white text-xl font-semibold`}>{`${selectedEmp.firstName?.[0] ?? ""}${selectedEmp.lastName?.[0] ?? ""}`.toUpperCase()}</AvatarFallback></Avatar>
+                <Avatar className="h-16 w-16 overflow-hidden shrink-0">
+                  {selectedEmp.avatarUrl && (
+                    <AvatarImage src={selectedEmp.avatarUrl} alt={`${selectedEmp.firstName} ${selectedEmp.lastName}`} className="object-cover" />
+                  )}
+                  <AvatarFallback className={`bg-gradient-to-br ${GRADIENTS[items.indexOf(selectedEmp) % GRADIENTS.length]} text-white text-xl font-semibold`}>
+                    {`${selectedEmp.firstName?.[0] ?? ""}${selectedEmp.lastName?.[0] ?? ""}`.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
                 <div>
                   <DialogTitle>{selectedEmp.firstName} {selectedEmp.lastName}</DialogTitle>
                   <p className="text-sm text-muted-foreground">{selectedEmp.designation || "No designation"}</p>

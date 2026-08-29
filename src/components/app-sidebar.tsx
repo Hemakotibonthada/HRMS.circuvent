@@ -15,7 +15,11 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { groupModulesByCategory } from "@/lib/constants";
 import { useAuth, signOutSession } from "@/hooks/use-auth";
@@ -113,7 +117,10 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuButton size="lg" className="w-full" />}>
-                  <Avatar className="h-8 w-8 rounded-lg">
+                  <Avatar className="h-8 w-8 rounded-lg overflow-hidden shrink-0">
+                    {user?.avatarUrl && (
+                      <AvatarImage src={user.avatarUrl} alt={user?.displayName || "User"} className="object-cover" />
+                    )}
                     <AvatarFallback className="rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-xs text-white font-semibold">
                       {initials}
                     </AvatarFallback>

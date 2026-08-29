@@ -20,6 +20,7 @@ export interface AuthUser {
   employeeId: string | null;
   email: string | null;
   displayName: string | null;
+  avatarUrl?: string | null;
   orgId: string;
   role: string;
   mfaVerified: boolean;
@@ -32,6 +33,7 @@ interface MeResponse {
     role: string;
     email?: string;
     displayName?: string;
+    avatarUrl?: string | null;
     mfaVerified?: boolean;
     employeeId?: string | null;
   };
@@ -43,6 +45,7 @@ function toUser(body: MeResponse): AuthUser {
     employeeId: body.user.employeeId ?? null,
     email: body.user.email ?? null,
     displayName: body.user.displayName ?? null,
+    avatarUrl: body.user.avatarUrl ?? null,
     orgId: body.user.orgId,
     role: body.user.role,
     mfaVerified: body.user.mfaVerified ?? false,
