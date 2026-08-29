@@ -9,13 +9,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import {
   Users, Plus, Search, CheckCircle2, Clock, LogIn,
   LogOut, Building2, Calendar, UserPlus, Shield,
-  CreditCard, Eye, AlertTriangle,
+  CreditCard, Eye, AlertTriangle, Sparkles, User, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -23,7 +23,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip,
 } from "recharts";
-import { useVisitorStore, startSync, type VisitorDoc } from "@/stores/unified-store";
+import { useVisitorStore, useEmployeeStore, startSync, type VisitorDoc } from "@/stores/unified-store";
 import { COLLECTIONS, genericService } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
@@ -37,20 +37,26 @@ const STATUS_MAP: Record<string, { label: string; className: string }> = {
   "pre-registered": { label: "Pre-registered", className: "status-pending" },
   expected: { label: "Expected", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
 };
-const PURPOSES = ["Meeting", "Interview", "Delivery", "Maintenance", "Client Visit", "Personal", "Vendor", "Other"];
+const PURPOSES = ["Meeting", "Interview", "Delivery", "Maintenance", "Client Visit", "Vendor", "Personal", "Other"];
 
 export default function VisitorsPage() {
   const store = useVisitorStore();
+  const empStore = useEmployeeStore();
   const { items, loading, initialized } = store;
+  const { items: employees, initialized: empInit } = empStore;
+
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("today");
   const [registerOpen, setRegisterOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<VisitorDoc | null>(null);
   const [form, setForm] = useState({
-    name: "", company: "", purpose: "", host: "", date: "",
+    name: "", company: "", purpose: "Meeting", host: "", date: new Date().toISOString().slice(0, 10),
   });
 
-  useEffect(() => { if (!initialized) startSync(COLLECTIONS.visitors, store); }, [initialized, store]);
+  useEffect(() => {
+    if (!initialized) startSync(COLLECTIONS.visitors, store);
+    if (!empInit) startSync(COLLECTIONS.employees, empStore);
+  }, [initialized, store, empInit, empStore]);
 
   const today = useToday() ?? "";
 
@@ -323,54 +329,135 @@ export default function VisitorsPage() {
                   <Button className="bg-gradient-to-r from-emerald-500 to-green-600 text-white border-0" onClick={() => { handleCheckIn(detailItem.id); setDetailItem(null); }}>Check In</Button>
                 )}
                 {detailItem.status === "checked-in" && (
-                  <Button className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-0" onClick={() => { handleCheckOut(detailItem.id); setDetailItem(null); }}>Check Out</Button>
+                  <Button className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-full text-xs h-9 px-5 border-0 shadow-md gap-1.5" onClick={() => { handleCheckOut(detailItem.id); setDetailItem(null); }}>Check Out</Button>
                 )}
-                <Button variant="outline" onClick={() => setDetailItem(null)}>Close</Button>
+                <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setDetailItem(null)}>Close</Button>
               </DialogFooter>
             </>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Pre-Register Dialog */}
+      {/* ENHANCED PRE-REGISTER VISITOR DIALOG */}
       <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Pre-Register Visitor</DialogTitle></DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Visitor Name *</Label>
-                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" />
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <UserPlus className="h-5 w-5" />
               </div>
-              <div className="space-y-2">
-                <Label>Company</Label>
-                <Input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} placeholder="Company name" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Purpose *</Label>
-                <Select value={form.purpose} onValueChange={v => setForm(f => ({ ...f, purpose: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                    {PURPOSES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Expected Date *</Label>
-                <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+              <div>
+                <DialogTitle className="text-lg font-bold">Pre-Register Campus Visitor</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Issue building entry clearance and host notification for arriving guests.
+                </DialogDescription>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Host (Employee) *</Label>
-              <Input value={form.host} onChange={e => setForm(f => ({ ...f, host: e.target.value }))} placeholder="Host employee name" />
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Visitor Full Name <span className="text-destructive">*</span></Label>
+                <Input
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Rahul Sen"
+                  className="h-9 text-xs"
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Visiting Company / Organization</Label>
+                <Input
+                  value={form.company}
+                  onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
+                  placeholder="e.g. Acme Corp, AWS, Vendor"
+                  className="h-9 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Purpose Selector Pills */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Visit Purpose <span className="text-destructive">*</span></Label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {PURPOSES.map(p => {
+                  const active = form.purpose === p;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, purpose: p }))}
+                      className={cn(
+                        "p-2 rounded-lg border text-center transition-all cursor-pointer",
+                        active
+                          ? "bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-700 dark:text-violet-300 font-bold shadow-xs"
+                          : "bg-background hover:bg-muted/50 text-muted-foreground border-border"
+                      )}
+                    >
+                      <span className="text-xs">{p}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-violet-500" />
+                  Host Employee <span className="text-destructive">*</span>
+                </Label>
+                {employees && employees.length > 0 ? (
+                  <Select value={form.host} onValueChange={v => setForm(f => ({ ...f, host: v }))}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Select host employee..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map(emp => {
+                        const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                        const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                        return (
+                          <SelectItem key={emp.id} value={name} className="text-xs">
+                            <span className="font-medium">{name}</span>
+                            {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={form.host}
+                    onChange={e => setForm(f => ({ ...f, host: e.target.value }))}
+                    placeholder="Host employee name"
+                    className="h-9 text-xs"
+                    required
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                  Expected Date of Arrival <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="date"
+                  value={form.date}
+                  onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                  className="h-9 text-xs"
+                  required
+                />
+              </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRegisterOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleRegister}>
-              <UserPlus className="h-4 w-4 mr-2" /> Register
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setRegisterOpen(false)}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5" onClick={handleRegister}>
+              <Send className="h-4 w-4" /> Issue Gate Pass
             </Button>
           </DialogFooter>
         </DialogContent>

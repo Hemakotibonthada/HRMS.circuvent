@@ -10,13 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import {
   MessageSquare, Plus, Search, Heart, Share2, Send,
   Image, Hash, TrendingUp, Users, ThumbsUp, Smile,
-  MoreHorizontal, Clock, Star, Flame,
+  MoreHorizontal, Clock, Star, Flame, Sparkles, User, Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ import {
   Tooltip as RTooltip,
 } from "recharts";
 import { genericService, COLLECTIONS } from "@/lib/collection-service";
+import { useEmployeeStore, startSync } from "@/stores/unified-store";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { useNowMs } from "@/hooks/use-now";
 
@@ -85,31 +86,33 @@ const TYPE_COLORS: Record<string, string> = {
 export default function WallPage() {
   const nowMs = useNowMs();
   const store = useWallStore();
+  const empStore = useEmployeeStore();
   const { items: posts, loading } = store;
+  const { items: employees, initialized: empInit } = empStore;
+
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("feed");
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({
-    author: "", department: "", content: "", tags: "", type: "post",
+    author: "", department: "Engineering", content: "", tags: "", type: "post",
   });
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    if (initialized) return;
-    store.setLoading(true);
-    genericService("socialPosts").getAll().then((data) => {
-      store.setItems(data as unknown as WallPost[]);
-      setInitialized(true);
-    }).catch(() => {
-      store.setError("Failed to load posts");
-      store.setLoading(false);
-      setInitialized(true);
-    });
-    // `store` is deliberately not a dependency — it is the whole zustand state
-    // object, so setLoading() above replaces it and listing it here re-triggers
-    // this effect forever. `initialized` is the real guard.
+    if (!initialized) {
+      store.setLoading(true);
+      genericService("socialPosts").getAll().then((data) => {
+        store.setItems(data as unknown as WallPost[]);
+        setInitialized(true);
+      }).catch(() => {
+        store.setError("Failed to load posts");
+        store.setLoading(false);
+        setInitialized(true);
+      });
+    }
+    if (!empInit) startSync(COLLECTIONS.employees, empStore);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialized]);
+  }, [initialized, empInit]);
 
   // KPIs
   const totalPosts = posts.length;
@@ -364,46 +367,143 @@ export default function WallPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Create Post Dialog */}
+      {/* ENHANCED CREATE POST DIALOG */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Create Post</DialogTitle></DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Your Name *</Label>
-                <Input value={form.author} onChange={e => setForm(f => ({ ...f, author: e.target.value }))} placeholder="Your name" />
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Sparkles className="h-5 w-5" />
               </div>
-              <div className="space-y-2">
-                <Label>Department</Label>
-                <Input value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} placeholder="Department" />
+              <div>
+                <DialogTitle className="text-lg font-bold">Share to Company Wall</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Post project milestones, welcome team members, or celebrate team wins.
+                </DialogDescription>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Post Type</Label>
-              <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="post">General Post</SelectItem>
-                  <SelectItem value="achievement">Achievement</SelectItem>
-                  <SelectItem value="welcome">Welcome</SelectItem>
-                  <SelectItem value="announcement">Announcement</SelectItem>
-                </SelectContent>
-              </Select>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            {/* Post Type Selector Cards */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Post Category</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { id: "post", label: "General Update", icon: MessageSquare },
+                  { id: "achievement", label: "Milestone & Win", icon: Star },
+                  { id: "welcome", label: "Welcome Member", icon: Users },
+                  { id: "announcement", label: "Team Bulletin", icon: Flame },
+                ].map(t => {
+                  const Icon = t.icon;
+                  const active = form.type === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, type: t.id }))}
+                      className={cn(
+                        "p-2 rounded-lg border text-left transition-all cursor-pointer",
+                        active
+                          ? "bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-700 dark:text-violet-300 shadow-xs"
+                          : "bg-background hover:bg-muted/50 text-muted-foreground border-border"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <Icon className={cn("h-3.5 w-3.5", active ? "text-violet-600" : "text-muted-foreground")} />
+                        <span className="font-bold text-xs truncate">{t.label}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Content *</Label>
-              <Textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} placeholder="What&apos;s on your mind?" rows={4} />
+
+            {/* Author Selector */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-violet-500" />
+                  Author / Contributor <span className="text-destructive">*</span>
+                </Label>
+                {employees && employees.length > 0 ? (
+                  <Select
+                    value={form.author}
+                    onValueChange={v => {
+                      const emp = employees.find(e => `${e.firstName} ${e.lastName}`.trim() === v);
+                      setForm(f => ({ ...f, author: v, department: emp?.department || f.department }));
+                    }}
+                  >
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Select posting author..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map(emp => {
+                        const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                        const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                        return (
+                          <SelectItem key={emp.id} value={name} className="text-xs">
+                            <span className="font-medium">{name}</span>
+                            {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    placeholder="Your name"
+                    value={form.author}
+                    onChange={e => setForm(f => ({ ...f, author: e.target.value }))}
+                    className="h-9 text-xs"
+                    required
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Department</Label>
+                <Input
+                  value={form.department}
+                  onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
+                  placeholder="e.g. Engineering, Design"
+                  className="h-9 text-xs"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Tags (comma separated)</Label>
-              <Input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} placeholder="teamwork, milestone, fun" />
+
+            {/* Post Content */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Post Content &amp; Thoughts <span className="text-destructive">*</span></Label>
+              <Textarea
+                value={form.content}
+                onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+                placeholder="Share your milestone, team celebration, or project launch..."
+                rows={4}
+                className="text-xs resize-none"
+                required
+              />
+            </div>
+
+            {/* Tags / Keywords */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                Hashtags &amp; Topics
+              </Label>
+              <Input
+                value={form.tags}
+                onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
+                placeholder="teamwork, milestone, innovation, sprint-release"
+                className="h-9 text-xs"
+              />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleCreatePost}>
-              <Send className="h-4 w-4 mr-2" /> Publish
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5" onClick={handleCreatePost}>
+              <Send className="h-4 w-4" /> Broadcast Post
             </Button>
           </DialogFooter>
         </DialogContent>

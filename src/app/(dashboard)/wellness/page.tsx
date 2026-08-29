@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -17,11 +17,11 @@ import {
   Heart, Plus, Search, Brain, Dumbbell, DollarSign,
   Users, Scale, Activity, Target, Calendar,
   TrendingUp, BarChart3, BookOpen,
-  ExternalLink,
+  ExternalLink, Sparkles, User, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { type BaseRecord } from "@/stores/unified-store";
+import { useEmployeeStore, startSync, type BaseRecord } from "@/stores/unified-store";
 import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import {
@@ -91,16 +91,18 @@ const COLORS = ["#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899","#63
 
 export default function WellnessPage() {
   const store = useWellnessStore();
+  const empStore = useEmployeeStore();
   const { items, loading, initialized } = store;
+  const { items: employees, initialized: empInit } = empStore;
 
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
   const [tab, setTab] = useState("programs");
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({
-    title: "", category: "Mental Health", description: "", capacity: "",
-    startDate: "", endDate: "", instructor: "", frequency: "Weekly",
-    location: "",
+    title: "", category: "Mental Health", description: "", capacity: "30",
+    startDate: new Date().toISOString().slice(0, 10), endDate: "", instructor: "", frequency: "Weekly",
+    location: "Wellness Studio / Virtual",
   });
 
   useEffect(() => {
@@ -110,12 +112,9 @@ export default function WellnessPage() {
         store.setItems(data as unknown as WellnessDoc[]);
       }).catch(() => { store.setItems([]); });
     }
-    // `store` is deliberately not a dependency. It is the whole zustand state
-    // object, so setLoading() above replaces it — listing it here re-triggers
-    // this effect, which sets loading again, forever, firing a fetch each pass.
-    // The setters are stable, so calling them from this closure is safe.
+    if (!empInit) startSync(COLLECTIONS.employees, empStore);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [store.initialized, empInit]);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -350,59 +349,162 @@ export default function WellnessPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Create Program Dialog */}
+      {/* ENHANCED CREATE WELLNESS PROGRAM DIALOG */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>Add Wellness Program</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="space-y-2">
-              <Label>Program Title *</Label>
-              <Input placeholder="e.g. Yoga for Beginners" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{PROGRAM_CATEGORIES.map(c => <SelectItem key={c.key} value={c.key}>{c.key}</SelectItem>)}</SelectContent>
-                </Select>
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Heart className="h-5 w-5" />
               </div>
-              <div className="space-y-2">
-                <Label>Frequency</Label>
+              <div>
+                <DialogTitle className="text-lg font-bold">Launch Wellness Initiative</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Create mental health workshops, fitness challenges, and work-life balance sessions.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Program Title <span className="text-destructive">*</span></Label>
+              <Input
+                placeholder="e.g. Guided Mindfulness &amp; Desk Ergonomics Workshop"
+                value={form.title}
+                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                className="h-9 text-xs"
+                required
+              />
+            </div>
+
+            {/* Category Selector Cards */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Wellness Pillar <span className="text-destructive">*</span></Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {PROGRAM_CATEGORIES.map(cat => {
+                  const Icon = cat.icon;
+                  const active = form.category === cat.key;
+                  return (
+                    <button
+                      key={cat.key}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, category: cat.key }))}
+                      className={cn(
+                        "p-2.5 rounded-lg border text-left transition-all cursor-pointer",
+                        active
+                          ? "bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-700 dark:text-violet-300 shadow-xs"
+                          : "bg-background hover:bg-muted/50 text-muted-foreground border-border"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Icon className={cn("h-3.5 w-3.5", active ? "text-violet-600" : "text-muted-foreground")} />
+                        <span className="font-bold text-xs truncate">{cat.key}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Session Frequency</Label>
                 <Select value={form.frequency} onValueChange={v => setForm(f => ({ ...f, frequency: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{FREQUENCIES.map(fr => <SelectItem key={fr} value={fr}>{fr}</SelectItem>)}</SelectContent>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {FREQUENCIES.map(fr => <SelectItem key={fr} value={fr} className="text-xs">{fr}</SelectItem>)}
+                  </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea placeholder="Program details..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Capacity</Label>
-                <Input type="number" placeholder="30" value={form.capacity} onChange={e => setForm(f => ({ ...f, capacity: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label>Instructor</Label>
-                <Input placeholder="Instructor name" value={form.instructor} onChange={e => setForm(f => ({ ...f, instructor: e.target.value }))} />
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Max Participant Capacity</Label>
+                <Input
+                  type="number"
+                  placeholder="30"
+                  value={form.capacity}
+                  onChange={e => setForm(f => ({ ...f, capacity: e.target.value }))}
+                  className="h-9 text-xs"
+                />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Start Date</Label>
-                <Input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} />
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Program Overview &amp; Health Benefits</Label>
+              <Textarea
+                placeholder="Describe activity goals, agenda, benefits, and required sportswear or equipment..."
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                rows={3}
+                className="text-xs resize-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-violet-500" />
+                  Lead Coach / Instructor
+                </Label>
+                {employees && employees.length > 0 ? (
+                  <Select value={form.instructor} onValueChange={v => setForm(f => ({ ...f, instructor: v }))}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Select internal champion..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map(emp => {
+                        const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                        const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                        return (
+                          <SelectItem key={emp.id} value={name} className="text-xs">
+                            <span className="font-medium">{name}</span>
+                            {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    placeholder="Instructor or certified coach name"
+                    value={form.instructor}
+                    onChange={e => setForm(f => ({ ...f, instructor: e.target.value }))}
+                    className="h-9 text-xs"
+                  />
+                )}
               </div>
-              <div className="space-y-2">
-                <Label>Location</Label>
-                <Input placeholder="e.g. Gym, Room 201" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                  Start Date
+                </Label>
+                <Input
+                  type="date"
+                  value={form.startDate}
+                  onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
+                  className="h-9 text-xs"
+                />
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Location / Meeting Link</Label>
+              <Input
+                placeholder="e.g. Mind-Body Studio / Google Meet"
+                value={form.location}
+                onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+                className="h-9 text-xs"
+              />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleCreate}>Create Program</Button>
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5" onClick={handleCreate}>
+              <Send className="h-4 w-4" /> Publish Program
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -134,6 +134,7 @@ export interface AnnouncementDoc extends BaseRecord {
   title: string; content: string; author: string;
   category: string; status: string; pinned: boolean;
   publishedAt: string; expiresAt?: string;
+  targetAudience?: string; audience?: string;
 }
 export const useAnnouncementStore = createDataStore<AnnouncementDoc>();
 

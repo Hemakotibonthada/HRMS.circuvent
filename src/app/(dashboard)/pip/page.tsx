@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -18,6 +18,7 @@ import {
   Target, Plus, Search, CheckCircle2, Clock, AlertTriangle,
   TrendingUp, Users, Calendar, ClipboardList, ArrowUpRight,
   Flag, Eye, BarChart3, XCircle, Timer, Milestone,
+  Sparkles, User, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -352,45 +353,102 @@ export default function PipPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Create PIP Dialog */}
+      {/* ENHANCED CREATE PIP DIALOG */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Create Performance Improvement Plan</DialogTitle></DialogHeader>
-          <div className="grid gap-4">
-            <div className="space-y-2">
-              <Label>PIP Title *</Label>
-              <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Q1 Performance Recovery" />
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md">
+                <Target className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">Create Performance Improvement Plan</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Establish performance milestones, target deliverables, and structured reviews.
+                </DialogDescription>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Employee *</Label>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Plan Objective / Focus Area <span className="text-destructive">*</span></Label>
+              <Input
+                value={form.title}
+                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="e.g. Q3 Sprint Delivery &amp; Code Quality Recovery"
+                className="h-9 text-xs"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-amber-500" />
+                Employee on Plan <span className="text-destructive">*</span>
+              </Label>
               <Select value={form.employeeId} onValueChange={v => setForm(f => ({ ...f, employeeId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
+                <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select team member..." /></SelectTrigger>
                 <SelectContent>
-                  {employees.map(e => (
-                    <SelectItem key={e.id} value={e.id}>{e.firstName} {e.lastName}</SelectItem>
-                  ))}
+                  {employees.map(e => {
+                    const name = `${e.firstName} ${e.lastName}`.trim();
+                    const sub = [e.designation, e.department].filter(Boolean).join(" · ");
+                    return (
+                      <SelectItem key={e.id} value={e.id} className="text-xs">
+                        <span className="font-medium">{name}</span>
+                        {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Due Date *</Label>
-                <Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                  Target Evaluation Due Date <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="date"
+                  value={form.dueDate}
+                  onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
+                  className="h-9 text-xs"
+                  required
+                />
               </div>
-              <div className="space-y-2">
-                <Label>Weight (%)</Label>
-                <Input type="number" value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} />
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Priority Weight (%)</Label>
+                <Input
+                  type="number"
+                  value={form.weight}
+                  onChange={e => setForm(f => ({ ...f, weight: e.target.value }))}
+                  className="h-9 text-xs"
+                />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Improvement Goals &amp; Expectations</Label>
-              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe the improvement goals, expected outcomes, and milestones..." rows={4} />
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Improvement Goals &amp; Specific Milestones</Label>
+              <Textarea
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Detail the measurable performance goals, feedback cadence, and support provided..."
+                rows={4}
+                className="text-xs resize-none"
+              />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleCreate}>
-              <Plus className="h-4 w-4 mr-2" /> Create PIP
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button
+              className="bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5"
+              onClick={handleCreate}
+            >
+              <Send className="h-4 w-4" /> Issue Performance Plan
             </Button>
           </DialogFooter>
         </DialogContent>

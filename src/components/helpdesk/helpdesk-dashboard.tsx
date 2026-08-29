@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -175,6 +176,32 @@ export function HelpdeskDashboard() {
       .then(setCategories)
       .catch(() => {});
   }, [loadList]);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    void listCategories()
+      .then((loaded) => {
+        setCategories(loaded);
+        setCreateForm((f) => ({
+          ...f,
+          categoryId:
+            f.categoryId && loaded.some((category) => category.id === f.categoryId) ? f.categoryId : "",
+        }));
+      })
+      .catch(() => {});
+  }, [createOpen]);
+
+  const createCategoryLabel = useMemo(() => {
+    if (!createForm.categoryId) return "General";
+    return categories.find((category) => category.id === createForm.categoryId)?.name ?? "General";
+  }, [createForm.categoryId, categories]);
+
+  const createCategoryValue = useMemo(() => {
+    if (!createForm.categoryId) return "none";
+    return categories.some((category) => category.id === createForm.categoryId)
+      ? createForm.categoryId
+      : "none";
+  }, [createForm.categoryId, categories]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -458,64 +485,82 @@ export function HelpdeskDashboard() {
         </TabsContent>
       </Tabs>
 
-      {/* Create ticket */}
+      {/* ENHANCED CREATE TICKET DIALOG */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Raise a ticket</DialogTitle>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Headphones className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">Raise Support Ticket</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Submit an IT hardware, software access, or HR support incident.
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <div className="space-y-4">
+
+          <div className="space-y-4 mt-2">
             <div className="space-y-1.5">
-              <Label htmlFor="subject">Subject</Label>
+              <Label htmlFor="subject" className="text-xs font-semibold">Subject / Issue Summary <span className="text-destructive">*</span></Label>
               <Input
                 id="subject"
+                placeholder="e.g. Need VPN certificate reset for remote work"
                 value={createForm.subject}
                 onChange={(e) => setCreateForm((f) => ({ ...f, subject: e.target.value }))}
+                className="h-9 text-xs"
               />
               {createErrors.subject && (
                 <p className="text-xs text-destructive">{createErrors.subject}</p>
               )}
             </div>
+
             {kbHints.length > 0 && (
-              <div className="rounded-md border bg-muted/30 p-3 text-sm">
-                <p className="mb-2 font-medium">Before you submit — these articles may help:</p>
+              <div className="rounded-xl border bg-muted/30 p-3 text-xs">
+                <p className="mb-1.5 font-semibold text-foreground">Before you submit — these articles may help:</p>
                 <ul className="space-y-1">
                   {kbHints.slice(0, 3).map((a) => (
-                    <li key={a.id} className="text-muted-foreground">
-                      {a.title}
+                    <li key={a.id} className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+                      &bull; {a.title}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
+
             <div className="space-y-1.5">
-              <Label htmlFor="body">Description</Label>
+              <Label htmlFor="body" className="text-xs font-semibold">Detailed Description &amp; Steps to Reproduce <span className="text-destructive">*</span></Label>
               <Textarea
                 id="body"
-                rows={5}
+                rows={4}
+                placeholder="Describe what happened, what device or system you are using, and the error messages received..."
                 value={createForm.body}
                 onChange={(e) => setCreateForm((f) => ({ ...f, body: e.target.value }))}
+                className="text-xs resize-none"
               />
               {createErrors.body && (
                 <p className="text-xs text-destructive">{createErrors.body}</p>
               )}
             </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>Category</Label>
+                <Label className="text-xs font-semibold">Helpdesk Category</Label>
                 <Select
-                  value={createForm.categoryId || "none"}
+                  value={createCategoryValue}
                   onValueChange={(v) =>
                     setCreateForm((f) => ({ ...f, categoryId: v === "none" ? "" : v }))
                   }
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose category" />
+                  <SelectTrigger className="h-9 text-xs">
+                    <span className="truncate">{createCategoryLabel}</span>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">General</SelectItem>
+                    <SelectItem value="none" className="text-xs">General Support</SelectItem>
                     {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
+                      <SelectItem key={c.id} value={c.id} className="text-xs">
                         {c.name}
                         {c.isConfidential ? " (confidential)" : ""}
                       </SelectItem>
@@ -523,20 +568,21 @@ export function HelpdeskDashboard() {
                   </SelectContent>
                 </Select>
               </div>
+
               <div className="space-y-1.5">
-                <Label>Priority</Label>
+                <Label className="text-xs font-semibold">Priority Level</Label>
                 <Select
                   value={createForm.priority}
                   onValueChange={(v) =>
                     setCreateForm((f) => ({ ...f, priority: v as TicketPriority }))
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {SELECTABLE_PRIORITIES.map((p) => (
-                      <SelectItem key={p} value={p}>
+                      <SelectItem key={p} value={p} className="text-xs">
                         {priorityLabel(p)}
                       </SelectItem>
                     ))}
@@ -545,13 +591,18 @@ export function HelpdeskDashboard() {
               </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setCreateOpen(false)}>
               Cancel
             </Button>
-            <Button disabled={creating} onClick={() => void handleCreate()}>
+            <Button
+              disabled={creating}
+              onClick={() => void handleCreate()}
+              className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5"
+            >
               {creating ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-              Submit
+              Submit Ticket
             </Button>
           </DialogFooter>
         </DialogContent>

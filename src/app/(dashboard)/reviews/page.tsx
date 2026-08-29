@@ -9,13 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Star, Search, Plus, ClipboardList, CheckCircle, Clock, Users, Send, BarChart3 } from "lucide-react";
+import { Star, Search, Plus, ClipboardList, CheckCircle, Clock, Users, Send, BarChart3, Award, Sparkles, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useGoalStore, startSync } from "@/stores/unified-store";
+import { useGoalStore, useEmployeeStore, startSync } from "@/stores/unified-store";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { genericService, COLLECTIONS } from "@/lib/collection-service";
 
@@ -43,14 +43,21 @@ function StarRating({ value, onChange }: { value: number; onChange?: (v: number)
 
 export default function ReviewsPage() {
   const store = useGoalStore();
+  const empStore = useEmployeeStore();
   const { items, loading, initialized } = store;
+  const { items: employees, initialized: empInit } = empStore;
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [tab, setTab] = useState("cycles");
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [selectedEmp, setSelectedEmp] = useState("");
   const [ratings, setRatings] = useState<Record<string, number>>({});
 
-  useEffect(() => { if (!initialized) startSync(COLLECTIONS.goals, store); }, [initialized, store]);
+  useEffect(() => {
+    if (!initialized) startSync(COLLECTIONS.goals, store);
+    if (!empInit) startSync(COLLECTIONS.employees, empStore);
+  }, [initialized, store, empInit, empStore]);
 
   const reviewGoals = useMemo(() => items.filter(g => g.category === "review" || g.category === "performance"), [items]);
 
@@ -226,25 +233,89 @@ export default function ReviewsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Submit Review Dialog */}
+      {/* ENHANCED SUBMIT REVIEW DIALOG */}
       <Dialog open={submitOpen} onOpenChange={setSubmitOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Submit Review</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmitReview} className="space-y-4">
-            <div><Label>Employee Name</Label><Input name="employeeName" required /></div>
-            <div>
-              <Label>Competency Ratings</Label>
-              <div className="space-y-2 mt-2">
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Award className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">Performance Appraisal Review</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Score core competencies, leadership capabilities, and provide appraisal remarks.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmitReview} className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-violet-500" />
+                Employee Under Review <span className="text-destructive">*</span>
+              </Label>
+              {employees && employees.length > 0 ? (
+                <>
+                  <input type="hidden" name="employeeName" value={selectedEmp} />
+                  <Select value={selectedEmp} onValueChange={setSelectedEmp}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Select team member..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map(emp => {
+                        const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                        const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                        return (
+                          <SelectItem key={emp.id} value={name} className="text-xs">
+                            <span className="font-medium">{name}</span>
+                            {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </>
+              ) : (
+                <Input name="employeeName" placeholder="Employee full name" className="h-9 text-xs" required />
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">Core Competency Assessment</Label>
+                <span className="text-[11px] text-muted-foreground">1 (Needs Work) to 5 (Outstanding)</span>
+              </div>
+              <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
                 {REVIEW_CATEGORIES.map(cat => (
-                  <div key={cat} className="flex items-center justify-between">
-                    <span className="text-sm">{cat}</span>
+                  <div key={cat} className="flex items-center justify-between p-2 rounded-lg bg-background border text-xs">
+                    <span className="font-medium text-foreground">{cat}</span>
                     <StarRating value={ratings[cat] || 0} onChange={v => setRatings(prev => ({ ...prev, [cat]: v }))} />
                   </div>
                 ))}
               </div>
             </div>
-            <div><Label>Comments</Label><Textarea name="comments" rows={3} placeholder="Overall performance comments..." /></div>
-            <DialogFooter><Button type="submit" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-2"><Send className="h-4 w-4" />Submit</Button></DialogFooter>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Overall Evaluator Remarks &amp; Feedback</Label>
+              <Textarea
+                name="comments"
+                rows={3}
+                placeholder="Highlight key achievements, impact, growth opportunities, and recommendations..."
+                className="text-xs resize-none"
+                required
+              />
+            </div>
+
+            <DialogFooter className="pt-2 gap-2">
+              <Button type="button" variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setSubmitOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5">
+                <Send className="h-4 w-4" /> Finalize Appraisal
+              </Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

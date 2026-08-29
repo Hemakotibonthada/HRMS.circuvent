@@ -48,6 +48,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { syncDeviceAttendanceForAllOrgs } from "@/lib/attendance/device-sync";
+import { syncAttendanceToPaystubForAllOrgs } from "@/lib/paystub-attendance-sync";
 import { sweepInternReminders } from "@/lib/intern-reminders";
 import { processDueExits } from "@/lib/offboarding-exit";
 import { sweepOutboxes } from "@/lib/outbox-sweep";
@@ -193,6 +194,21 @@ export async function GET(req: NextRequest) {
     deviceSync = { failed: error instanceof Error ? error.message : String(error) };
   }
 
+  let paystubAttendance:
+    | Awaited<ReturnType<typeof syncAttendanceToPaystubForAllOrgs>>
+    | { failed: string };
+  try {
+    paystubAttendance = await syncAttendanceToPaystubForAllOrgs();
+    if (paystubAttendance.problems.length > 0) {
+      console.warn("[cron] Paystub attendance sync completed with problems", {
+        problems: paystubAttendance.problems,
+      });
+    }
+  } catch (error) {
+    console.error("[cron] Paystub attendance sync threw unexpectedly", error);
+    paystubAttendance = { failed: error instanceof Error ? error.message : String(error) };
+  }
+
   // Sweeps interns nearing their internship end date for last-working-day
   // reminders — added here rather than a second `crons` entry for the same
   // one-invocation-per-path-per-day reason the device sync above is: this
@@ -271,6 +287,7 @@ export async function GET(req: NextRequest) {
     ...result.totals,
     problems: result.problems,
     deviceSync,
+    paystubAttendance,
     internReminders,
     exitSweep,
     photoPurge,

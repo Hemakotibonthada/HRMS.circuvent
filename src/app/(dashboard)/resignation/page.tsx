@@ -305,36 +305,81 @@ export default function ResignationPage() {
               </CardContent>
             </Card>
           ) : (
-            <Card className="animate-slide-up">
-              <CardHeader><CardTitle className="text-base">Submit your resignation</CardTitle></CardHeader>
+            <Card className="animate-slide-up border-rose-200/60 dark:border-rose-900/40">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-md">
+                    <LogOut className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base font-bold">Initiate Formal Separation Notice</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Submit formal resignation request for manager and HR review.
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Intended Last Working Day *</Label>
+                <div className="p-3 rounded-xl border bg-amber-50/50 dark:bg-amber-950/20 flex items-start gap-2.5">
+                  <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-900 dark:text-amber-200">
+                    Standard notice period policy applies. Your final agreed last working day will be confirmed during the manager review consultation.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Intended Last Working Day <span className="text-destructive">*</span></Label>
                   <Input
                     type="date"
                     value={form.intendedLastWorkingDay}
                     onChange={(e) => setForm((f) => ({ ...f, intendedLastWorkingDay: e.target.value }))}
+                    className="h-9 text-xs"
+                    required
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Your actual last working day is agreed once your manager or HR accepts, based on your notice
-                    period policy — this is only what you are asking for.
-                  </p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Reason *</Label>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Primary Reason for Departure <span className="text-destructive">*</span></Label>
+                  <div className="flex gap-1.5 flex-wrap mb-2">
+                    {[
+                      "Career Advancement & Growth",
+                      "Relocation & Family",
+                      "Higher Studies / Education",
+                      "Health & Well-being",
+                      "Better Compensation",
+                      "Entrepreneurship / Sabbatical",
+                    ].map((reasonChip) => (
+                      <button
+                        key={reasonChip}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, reason: reasonChip }))}
+                        className={cn(
+                          "px-2.5 py-1 rounded-full text-xs font-medium border transition-all cursor-pointer",
+                          form.reason === reasonChip
+                            ? "bg-rose-50 dark:bg-rose-950/40 border-rose-500 text-rose-700 dark:text-rose-300 font-bold"
+                            : "bg-muted/40 hover:bg-muted text-muted-foreground border-border"
+                        )}
+                      >
+                        {reasonChip}
+                      </button>
+                    ))}
+                  </div>
                   <Textarea
-                    placeholder="Why are you resigning?"
+                    placeholder="Provide additional details or context for management and HR exit interview..."
                     rows={4}
                     value={form.reason}
                     onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
+                    className="text-xs resize-none"
+                    required
                   />
                 </div>
+
                 <Button
-                  className="bg-gradient-to-r from-red-500 to-orange-500 text-white border-0 gap-2"
+                  className="bg-gradient-to-r from-rose-500 to-red-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5"
                   disabled={submitting}
                   onClick={() => void handleSubmit()}
                 >
-                  <Send className="h-4 w-4" /> {submitting ? "Submitting…" : "Submit Resignation"}
+                  <Send className="h-4 w-4" /> {submitting ? "Submitting…" : "Submit Formal Notice"}
                 </Button>
               </CardContent>
             </Card>

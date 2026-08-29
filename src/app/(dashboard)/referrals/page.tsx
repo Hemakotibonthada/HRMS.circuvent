@@ -8,9 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { UserPlus, Plus, Search, Clock, CheckCircle2, DollarSign, Users } from "lucide-react";
+import { UserPlus, Plus, Search, Clock, CheckCircle2, DollarSign, Users, Sparkles, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useReferralStore, startSync, stopSync } from "@/stores/unified-store";
@@ -244,48 +244,76 @@ export default function ReferralsPage() {
         </TabsContent>
       </Tabs>
 
+      {/* ENHANCED REFER A CANDIDATE DIALOG */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Refer a Candidate</DialogTitle></DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-3">
-            {/* No "your name" field: the API takes the referrer from the session
-                and refuses it from the body, so anything typed here was ignored
-                while implying you could refer on a colleague's behalf. */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="ref-name">Candidate name</Label>
-                <Input id="ref-name" name="candidateName" required minLength={2} maxLength={150} />
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <UserPlus className="h-5 w-5" />
               </div>
               <div>
-                <Label htmlFor="ref-email">Candidate email</Label>
-                <Input id="ref-email" name="candidateEmail" type="email" required maxLength={320} />
+                <DialogTitle className="text-lg font-bold">Refer a Talent Candidate</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Submit candidate recommendations to Talent Acquisition for open roles.
+                </DialogDescription>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="ref-role">Role</Label>
-                <Input id="ref-role" name="positionTitle" required minLength={2} maxLength={150} />
+          </DialogHeader>
+
+          <form onSubmit={handleCreate} className="space-y-4 mt-2">
+            <div className="p-3 rounded-xl border bg-violet-50/50 dark:bg-violet-950/20 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                <span className="text-xs font-semibold text-violet-900 dark:text-violet-200">Employee Referral Bonus Program</span>
               </div>
-              <div>
-                <Label htmlFor="ref-phone">Phone <span className="text-muted-foreground">(optional)</span></Label>
-                <Input id="ref-phone" name="candidatePhone" maxLength={32} />
+              <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 text-[10px] font-bold">
+                Eligible for Reward
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="ref-name" className="text-xs font-semibold">Candidate Full Name <span className="text-destructive">*</span></Label>
+                <Input id="ref-name" name="candidateName" placeholder="e.g. Aditi Rao" required minLength={2} maxLength={150} className="h-9 text-xs" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ref-email" className="text-xs font-semibold">Candidate Email <span className="text-destructive">*</span></Label>
+                <Input id="ref-email" name="candidateEmail" type="email" placeholder="aditi.rao@example.com" required maxLength={320} className="h-9 text-xs" />
               </div>
             </div>
-            <div>
-              <Label htmlFor="ref-rel">How do you know them? <span className="text-muted-foreground">(optional)</span></Label>
-              <Input id="ref-rel" name="relationship" maxLength={120} placeholder="Former colleague, university friend…" />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="ref-role" className="text-xs font-semibold">Target Job Role / Designation <span className="text-destructive">*</span></Label>
+                <Input id="ref-role" name="positionTitle" placeholder="e.g. Senior Frontend Engineer" required minLength={2} maxLength={150} className="h-9 text-xs" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ref-phone" className="text-xs font-semibold">Contact Phone <span className="text-muted-foreground">(Optional)</span></Label>
+                <Input id="ref-phone" name="candidatePhone" placeholder="+91 98765 43210" maxLength={32} className="h-9 text-xs" />
+              </div>
             </div>
-            <div>
-              <Label htmlFor="ref-why">Why they&apos;d be a good fit <span className="text-muted-foreground">(optional)</span></Label>
-              <Input id="ref-why" name="recommendation" maxLength={2000} />
+
+            <div className="space-y-1.5">
+              <Label htmlFor="ref-rel" className="text-xs font-semibold">Relationship / How do you know them? <span className="text-muted-foreground">(Optional)</span></Label>
+              <Input id="ref-rel" name="relationship" maxLength={120} placeholder="e.g. Former colleague at previous company, university classmate…" className="h-9 text-xs" />
             </div>
-            <DialogFooter>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="ref-why" className="text-xs font-semibold">Recommendation Highlights &amp; Strengths <span className="text-muted-foreground">(Optional)</span></Label>
+              <Input id="ref-why" name="recommendation" maxLength={2000} placeholder="Explain why they would be an exceptional addition to the team..." className="h-9 text-xs" />
+            </div>
+
+            <DialogFooter className="pt-2 gap-2">
+              <Button type="button" variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setDialogOpen(false)} disabled={submitting}>
+                Cancel
+              </Button>
               <Button
                 type="submit"
                 disabled={submitting}
-                className="bg-gradient-to-r from-violet-500 to-purple-600 text-white"
+                className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5"
               >
-                {submitting ? "Submitting…" : "Submit Referral"}
+                <Send className="h-4 w-4" /> {submitting ? "Submitting…" : "Submit Referral"}
               </Button>
             </DialogFooter>
           </form>

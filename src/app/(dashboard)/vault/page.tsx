@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -18,6 +18,7 @@ import {
   Eye, Lock, Globe, Shield, Users, Calendar, Clock,
   Filter, MoreHorizontal, ChevronRight, File, Folder,
   AlertTriangle, CheckCircle2, Tag, ExternalLink, Trash2,
+  Sparkles, User, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -26,7 +27,7 @@ import {
   PieChart, Pie, Cell, Legend,
   Tooltip as RTooltip,
 } from "recharts";
-import { useDocumentStore, startSync, type DocumentDoc } from "@/stores/unified-store";
+import { useDocumentStore, useEmployeeStore, startSync, type DocumentDoc } from "@/stores/unified-store";
 import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
@@ -60,7 +61,10 @@ const STATUS_CONF: Record<string, { label: string; className: string }> = {
 
 export default function VaultPage() {
   const store = useDocumentStore();
+  const empStore = useEmployeeStore();
   const { items, loading, initialized } = store;
+  const { items: employees, initialized: empInit } = empStore;
+
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [accessFilter, setAccessFilter] = useState("all");
@@ -68,11 +72,14 @@ export default function VaultPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<DocumentDoc | null>(null);
   const [form, setForm] = useState({
-    name: "", category: "", type: "", uploadedBy: "",
+    name: "", category: "policies", type: "PDF Document", uploadedBy: "",
     version: "1.0", status: "active", accessLevel: "public",
   });
 
-  useEffect(() => { if (!initialized) startSync(COLLECTIONS.documents, store); }, [initialized, store]);
+  useEffect(() => {
+    if (!initialized) startSync(COLLECTIONS.documents, store);
+    if (!empInit) startSync(COLLECTIONS.employees, empStore);
+  }, [initialized, store, empInit, empStore]);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -421,49 +428,133 @@ export default function VaultPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Upload Document Dialog */}
+      {/* ENHANCED UPLOAD DOCUMENT DIALOG */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Upload Document</DialogTitle></DialogHeader>
-          <div className="grid gap-4">
-            <div className="space-y-2">
-              <Label>Document Name *</Label>
-              <Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Employee Handbook v3" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Category *</Label>
-                <Select value={form.category} onValueChange={(v) => setForm(f => ({ ...f, category: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                    {DOC_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Lock className="h-5 w-5" />
               </div>
-              <div className="space-y-2">
-                <Label>Access Level</Label>
+              <div>
+                <DialogTitle className="text-lg font-bold">Secure Document Vault Upload</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Store company contracts, HR policies, compliance forms, and certificates.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Document Title / File Name <span className="text-destructive">*</span></Label>
+              <Input
+                value={form.name}
+                onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. FY2026 Executive Compensation Policy v3.2"
+                className="h-9 text-xs"
+                required
+              />
+            </div>
+
+            {/* Category Selector Pills */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Vault Folder / Classification <span className="text-destructive">*</span></Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {DOC_CATEGORIES.map(cat => {
+                  const Icon = cat.icon;
+                  const active = form.category === cat.value;
+                  return (
+                    <button
+                      key={cat.value}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, category: cat.value }))}
+                      className={cn(
+                        "p-2.5 rounded-lg border text-left transition-all cursor-pointer",
+                        active
+                          ? "bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-700 dark:text-violet-300 shadow-xs font-bold"
+                          : "bg-background hover:bg-muted/50 text-muted-foreground border-border"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Icon className="h-3.5 w-3.5" style={{ color: cat.color }} />
+                        <span className="text-xs">{cat.label}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Access Permissions</Label>
                 <Select value={form.accessLevel} onValueChange={(v) => setForm(f => ({ ...f, accessLevel: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {ACCESS_LEVELS.map(a => <SelectItem key={a} value={a}>{ACCESS_CONF[a]?.label || a}</SelectItem>)}
+                    {ACCESS_LEVELS.map(a => <SelectItem key={a} value={a} className="text-xs">{ACCESS_CONF[a]?.label || a}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Initial Version Tag</Label>
+                <Input
+                  value={form.version}
+                  onChange={(e) => setForm(f => ({ ...f, version: e.target.value }))}
+                  placeholder="e.g. 1.0"
+                  className="h-9 text-xs"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Uploaded By</Label>
-              <Input value={form.uploadedBy} onChange={(e) => setForm(f => ({ ...f, uploadedBy: e.target.value }))} placeholder="Your name" />
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-violet-500" />
+                Uploader / Owner
+              </Label>
+              {employees && employees.length > 0 ? (
+                <Select value={form.uploadedBy} onValueChange={v => setForm(f => ({ ...f, uploadedBy: v }))}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Select uploader..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employees.map(emp => {
+                      const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                      const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                      return (
+                        <SelectItem key={emp.id} value={name} className="text-xs">
+                          <span className="font-medium">{name}</span>
+                          {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={form.uploadedBy}
+                  onChange={(e) => setForm(f => ({ ...f, uploadedBy: e.target.value }))}
+                  placeholder="Uploader name"
+                  className="h-9 text-xs"
+                />
+              )}
             </div>
-            <div className="border-2 border-dashed rounded-xl p-8 text-center">
-              <Upload className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-              <p className="text-sm text-muted-foreground">Drag and drop files here or click to browse</p>
-              <p className="text-xs text-muted-foreground mt-1">PDF, DOCX, XLSX up to 25MB</p>
+
+            <div className="border-2 border-dashed rounded-xl p-6 text-center bg-muted/10 hover:bg-muted/20 transition-colors cursor-pointer">
+              <Upload className="h-8 w-8 mx-auto text-violet-500 mb-2" />
+              <p className="text-xs font-semibold text-foreground">Drag and drop file here or click to browse</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Encrypted PDF, DOCX, XLSX, ZIP up to 50MB</p>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleCreate}>
-              <Upload className="h-4 w-4 mr-2" /> Upload
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
+            <Button
+              className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5"
+              onClick={handleCreate}
+            >
+              <Send className="h-4 w-4" /> Vault &amp; Protect Document
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -9,14 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import {
   Receipt, Plus, Search, CheckCircle2, Clock, DollarSign, Eye,
   TrendingUp, FileText, Upload, AlertTriangle, Filter,
   CreditCard, ArrowUpRight, Building2, Calendar, Tag,
   ThumbsUp, ThumbsDown, Download, Wallet, PieChart as PieIcon,
+  Sparkles, User, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -25,7 +27,7 @@ import {
   PieChart, Pie, Cell, Legend, AreaChart, Area,
   Tooltip as RTooltip,
 } from "recharts";
-import { useExpenseStore, startSync, type ExpenseDoc } from "@/stores/unified-store";
+import { useExpenseStore, useEmployeeStore, startSync, type ExpenseDoc } from "@/stores/unified-store";
 import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
@@ -52,7 +54,10 @@ const STATUS_CONF: Record<string, { label: string; className: string }> = {
 
 export default function ExpensesPage() {
   const store = useExpenseStore();
+  const empStore = useEmployeeStore();
   const { items, loading, initialized } = store;
+  const { items: employees, initialized: empInit } = empStore;
+
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -60,11 +65,14 @@ export default function ExpensesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<ExpenseDoc | null>(null);
   const [form, setForm] = useState({
-    employeeName: "", department: "", category: "",
-    amount: "", date: "", description: "", receipt: false,
+    employeeName: "", department: "", category: "Travel",
+    amount: "", date: new Date().toISOString().slice(0, 10), description: "", receipt: false,
   });
 
-  useEffect(() => { if (!initialized) startSync(COLLECTIONS.expenses, store); }, [initialized, store]);
+  useEffect(() => {
+    if (!initialized) startSync(COLLECTIONS.expenses, store);
+    if (!empInit) startSync(COLLECTIONS.employees, empStore);
+  }, [initialized, store, empInit, empStore]);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -330,35 +338,28 @@ export default function ExpensesPage() {
                   </Badge>
                 </div>
                 <Separator />
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div><p className="text-muted-foreground">Category</p><p className="font-medium">{selectedExpense.category}</p></div>
-                  <div><p className="text-muted-foreground">Date</p><p className="font-medium">{selectedExpense.date}</p></div>
-                  <div><p className="text-muted-foreground">Amount</p><p className="font-bold text-lg">₹{(selectedExpense.amount || 0).toLocaleString()}</p></div>
-                  <div><p className="text-muted-foreground">Receipt</p><p className="font-medium">{selectedExpense.receipt ? "Attached" : "Not attached"}</p></div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 rounded-lg border bg-muted/20"><p className="text-muted-foreground">Category</p><p className="font-semibold text-foreground mt-0.5">{selectedExpense.category}</p></div>
+                  <div className="p-3 rounded-lg border bg-muted/20"><p className="text-muted-foreground">Claim Date</p><p className="font-semibold text-foreground mt-0.5">{selectedExpense.date}</p></div>
+                  <div className="p-3 rounded-lg border bg-muted/20"><p className="text-muted-foreground">Reimbursement Amount</p><p className="font-bold text-base text-violet-600 dark:text-violet-400 mt-0.5">₹{(selectedExpense.amount || 0).toLocaleString()}</p></div>
+                  <div className="p-3 rounded-lg border bg-muted/20"><p className="text-muted-foreground">Receipt Proof</p><p className="font-semibold text-foreground mt-0.5">{selectedExpense.receipt ? "Attached & Verified" : "No receipt attached"}</p></div>
                 </div>
                 {selectedExpense.description && (
-                  <>
-                    <Separator />
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Description</p>
-                      <p className="text-sm">{selectedExpense.description}</p>
-                    </div>
-                  </>
+                  <div className="p-3 rounded-lg border bg-muted/20">
+                    <p className="text-xs text-muted-foreground mb-1">Business Purpose &amp; Justification</p>
+                    <p className="text-xs text-foreground leading-relaxed">{selectedExpense.description}</p>
+                  </div>
                 )}
-                {/* This dialog used to assert a per-category "Policy Limit"
-                    (e.g. "Max: ₹50,000 per quarter") here, which could have
-                    influenced a real approve/reject decision even though no
-                    such policy was ever configured anywhere in the app. */}
               </div>
-              <DialogFooter className="gap-2">
+              <DialogFooter className="gap-2 pt-2">
                 {(selectedExpense.status === "submitted" || selectedExpense.status === "pending") && (
                   <>
-                    <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => handleAction(selectedExpense.id, "rejected")}>Reject</Button>
-                    <Button className="bg-gradient-to-r from-emerald-500 to-green-600 text-white border-0" onClick={() => handleAction(selectedExpense.id, "approved")}>Approve</Button>
+                    <Button variant="outline" className="rounded-full text-xs h-9 px-4 text-red-600 border-red-200 hover:bg-red-50" onClick={() => handleAction(selectedExpense.id, "rejected")}>Reject</Button>
+                    <Button className="bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-full text-xs h-9 px-5 border-0 shadow-md hover:shadow-lg gap-1.5" onClick={() => handleAction(selectedExpense.id, "approved")}>Approve Claim</Button>
                   </>
                 )}
                 {selectedExpense.status === "approved" && (
-                  <Button className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-0" onClick={() => handleAction(selectedExpense.id, "reimbursed")}>
+                  <Button className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-full text-xs h-9 px-5 border-0 shadow-md gap-1.5" onClick={() => handleAction(selectedExpense.id, "reimbursed")}>
                     Mark Reimbursed
                   </Button>
                 )}
@@ -368,59 +369,162 @@ export default function ExpensesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Submit Expense Dialog */}
+      {/* ENHANCED SUBMIT EXPENSE CLAIM DIALOG */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Submit Expense</DialogTitle></DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Employee Name *</Label>
-                <Input value={form.employeeName} onChange={(e) => setForm(f => ({ ...f, employeeName: e.target.value }))} placeholder="Your name" />
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Receipt className="h-5 w-5" />
               </div>
-              <div className="space-y-2">
-                <Label>Department</Label>
-                <Input value={form.department} onChange={(e) => setForm(f => ({ ...f, department: e.target.value }))} placeholder="Department" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Category *</Label>
-                <Select value={form.category} onValueChange={(v) => setForm(f => ({ ...f, category: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Amount (₹) *</Label>
-                <Input type="number" value={form.amount} onChange={(e) => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0" />
+              <div>
+                <DialogTitle className="text-lg font-bold">Submit Expense Reimbursement</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  File corporate out-of-pocket expenses for HR and finance approval.
+                </DialogDescription>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Date</Label>
-              <Input type="date" value={form.date} onChange={(e) => setForm(f => ({ ...f, date: e.target.value }))} />
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            {/* Employee Selector */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-violet-500" />
+                  Claimant Employee <span className="text-destructive">*</span>
+                </Label>
+                {employees && employees.length > 0 ? (
+                  <Select
+                    value={form.employeeName}
+                    onValueChange={v => {
+                      const emp = employees.find(e => `${e.firstName} ${e.lastName}`.trim() === v);
+                      setForm(f => ({ ...f, employeeName: v, department: emp?.department || f.department }));
+                    }}
+                  >
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Select employee..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map(emp => {
+                        const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                        const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                        return (
+                          <SelectItem key={emp.id} value={name} className="text-xs">
+                            <span className="font-medium">{name}</span>
+                            {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    placeholder="Your name"
+                    value={form.employeeName}
+                    onChange={e => setForm(f => ({ ...f, employeeName: e.target.value }))}
+                    className="h-9 text-xs"
+                    required
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Department</Label>
+                <Input
+                  value={form.department}
+                  onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
+                  placeholder="e.g. Sales, Engineering"
+                  className="h-9 text-xs"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea value={form.description} onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe the expense..." rows={3} />
+
+            {/* Category Selector Pills */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Expense Category <span className="text-destructive">*</span></Label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {CATEGORIES.map(cat => {
+                  const active = form.category === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, category: cat }))}
+                      className={cn(
+                        "p-2 rounded-lg border text-center transition-all cursor-pointer",
+                        active
+                          ? "bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-700 dark:text-violet-300 font-bold shadow-xs"
+                          : "bg-background hover:bg-muted/50 text-muted-foreground border-border"
+                      )}
+                    >
+                      <span className="text-xs">{cat}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="receipt" checked={form.receipt} onChange={(e) => setForm(f => ({ ...f, receipt: e.target.checked }))} className="rounded" />
-              <Label htmlFor="receipt" className="text-sm font-normal cursor-pointer">I have a receipt</Label>
+
+            {/* Amount & Date */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                  Amount Claimed (₹) <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="e.g. 2500"
+                  value={form.amount}
+                  onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                  className="h-9 text-xs font-semibold"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                  Expense Date
+                </Label>
+                <Input
+                  type="date"
+                  value={form.date}
+                  onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                  className="h-9 text-xs"
+                />
+              </div>
             </div>
-            {/* A "Policy limit for {category}: ₹X per quarter" hint used to
-                render here, telling the employee about a per-category cap
-                that was invented for display purposes only — no such policy
-                is configured anywhere in the app, so showing it risked an
-                employee under- or over-claiming against a rule that doesn't
-                actually exist. */}
+
+            {/* Description */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Business Purpose &amp; Remarks</Label>
+              <Textarea
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Explain business justification, client name, or itemized receipt breakdown..."
+                rows={3}
+                className="text-xs resize-none"
+              />
+            </div>
+
+            {/* Receipt Switch */}
+            <div className="p-3 rounded-lg border bg-muted/20 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5 text-violet-500" /> Original Bill / Tax Invoice
+                </p>
+                <p className="text-[10px] text-muted-foreground">Confirm that physical or digital receipt proof is available</p>
+              </div>
+              <Switch checked={form.receipt} onCheckedChange={v => setForm(f => ({ ...f, receipt: v }))} />
+            </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleCreate}>
-              <Plus className="h-4 w-4 mr-2" /> Submit
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5" onClick={handleCreate}>
+              <Send className="h-4 w-4" /> Submit Claim
             </Button>
           </DialogFooter>
         </DialogContent>

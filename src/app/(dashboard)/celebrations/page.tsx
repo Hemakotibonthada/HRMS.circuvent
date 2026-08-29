@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -423,30 +423,62 @@ export default function CelebrationsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Send Wish Dialog */}
+      {/* ENHANCED SEND WISH DIALOG */}
       <Dialog open={wishOpen} onOpenChange={setWishOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-violet-500" />
-              Send Wishes {wishTarget?.employeeName ? `to ${wishTarget.employeeName}` : ""}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Your Message</Label>
-              <Textarea placeholder="Write your wishes..." value={wishMessage} onChange={e => setWishMessage(e.target.value)} rows={4} />
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-md">
+                <PartyPopper className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">
+                  Send Wishes {wishTarget?.employeeName ? `to ${wishTarget.employeeName}` : ""}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Post milestone congratulations and warm greetings.
+                </DialogDescription>
+              </div>
             </div>
-            <div className="flex gap-2 flex-wrap">
-              {["Happy Birthday! 🎂", "Congratulations! 🎉", "Great milestone! 🏆", "Well done! ⭐"].map(quick => (
-                <Button key={quick} size="sm" variant="outline" onClick={() => setWishMessage(quick)}>{quick}</Button>
-              ))}
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Your Celebration Note <span className="text-destructive">*</span></Label>
+              <Textarea
+                placeholder="Write your wishes, cheers, and congratulations..."
+                value={wishMessage}
+                onChange={e => setWishMessage(e.target.value)}
+                rows={4}
+                className="text-xs resize-none"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground">Quick Presets</Label>
+              <div className="flex gap-1.5 flex-wrap">
+                {["Happy Birthday! 🎂", "Happy Work Anniversary! 🎖️", "Congratulations on the Milestone! 🏆", "Proud to work with you! ⭐"].map(quick => (
+                  <button
+                    key={quick}
+                    type="button"
+                    onClick={() => setWishMessage(quick)}
+                    className="px-2.5 py-1 rounded-full text-xs font-medium border bg-muted/40 hover:bg-muted text-foreground transition-all cursor-pointer"
+                  >
+                    {quick}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setWishOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-2" onClick={handleSendWish}>
-              <Send className="h-4 w-4" /> Send
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setWishOpen(false)}>Cancel</Button>
+            <Button
+              className="bg-gradient-to-r from-pink-500 to-rose-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5"
+              onClick={handleSendWish}
+            >
+              <Send className="h-4 w-4" /> Send Celebration Note
             </Button>
           </DialogFooter>
         </DialogContent>

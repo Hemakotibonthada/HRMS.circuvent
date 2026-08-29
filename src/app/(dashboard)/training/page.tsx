@@ -9,15 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import {
   GraduationCap, Plus, Search, CheckCircle2, Clock, Star, TrendingUp,
   BookOpen, Users, Play, Award, Filter, Eye, Calendar,
   Layers, Zap, Target, BarChart3, FileText, Video, Headphones,
-  ChevronRight, ExternalLink, Heart,
+  ChevronRight, ExternalLink, Heart, Sparkles, User, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -27,7 +28,7 @@ import {
   PieChart, Pie, Cell, Legend, AreaChart, Area,
   Tooltip as RTooltip,
 } from "recharts";
-import { useCourseStore, startSync, type CourseDoc } from "@/stores/unified-store";
+import { useCourseStore, useEmployeeStore, startSync, type CourseDoc } from "@/stores/unified-store";
 import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 
@@ -60,7 +61,10 @@ const LEVEL_CONF: Record<string, string> = {
 export default function TrainingPage() {
   const rbac = useRBAC();
   const store = useCourseStore();
+  const empStore = useEmployeeStore();
   const { items, loading, initialized } = store;
+  const { items: employees, initialized: empInit } = empStore;
+
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [levelFilter, setLevelFilter] = useState("all");
@@ -68,11 +72,14 @@ export default function TrainingPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<CourseDoc | null>(null);
   const [form, setForm] = useState({
-    title: "", category: "", type: "", instructor: "", duration: "",
-    level: "", description: "", mandatory: false,
+    title: "", category: "Technical", type: "Self-paced", instructor: "", duration: "4h 00m",
+    level: "Beginner", description: "", mandatory: false,
   });
 
-  useEffect(() => { if (!initialized) startSync(COLLECTIONS.training, store); }, [initialized, store]);
+  useEffect(() => {
+    if (!initialized) startSync(COLLECTIONS.training, store);
+    if (!empInit) startSync(COLLECTIONS.employees, empStore);
+  }, [initialized, store, empInit, empStore]);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -450,9 +457,9 @@ export default function TrainingPage() {
                   </div>
                 </div>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setSelectedCourse(null)}>Close</Button>
-                <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-2" onClick={() => { handleEnroll(selectedCourse.id); setSelectedCourse(null); }}>
+              <DialogFooter className="pt-2 gap-2">
+                <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setSelectedCourse(null)}>Close</Button>
+                <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg gap-1.5" onClick={() => { handleEnroll(selectedCourse.id); setSelectedCourse(null); }}>
                   <Play className="h-4 w-4" /> Enroll Now
                 </Button>
               </DialogFooter>
@@ -461,67 +468,151 @@ export default function TrainingPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Create Course Dialog */}
+      {/* ENHANCED CREATE COURSE DIALOG */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Add Course</DialogTitle></DialogHeader>
-          <div className="grid gap-4">
-            <div className="space-y-2">
-              <Label>Title *</Label>
-              <Input value={form.title} onChange={(e) => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Course title" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Category *</Label>
-                <Select value={form.category} onValueChange={(v) => setForm(f => ({ ...f, category: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                    {COURSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <GraduationCap className="h-5 w-5" />
               </div>
-              <div className="space-y-2">
-                <Label>Level</Label>
+              <div>
+                <DialogTitle className="text-lg font-bold">Publish Learning Course</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Create skill paths, mandatory compliance trainings, or technical workshops.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Course Title <span className="text-destructive">*</span></Label>
+              <Input
+                value={form.title}
+                onChange={(e) => setForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="e.g. Full-Stack Next.js 15 &amp; TypeScript Masterclass"
+                className="h-9 text-xs"
+                required
+              />
+            </div>
+
+            {/* Category Selector Pills */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Subject Category <span className="text-destructive">*</span></Label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {COURSE_CATEGORIES.map(cat => {
+                  const active = form.category === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, category: cat }))}
+                      className={cn(
+                        "p-2 rounded-lg border text-center transition-all cursor-pointer",
+                        active
+                          ? "bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-700 dark:text-violet-300 font-bold shadow-xs"
+                          : "bg-background hover:bg-muted/50 text-muted-foreground border-border"
+                      )}
+                    >
+                      <span className="text-xs">{COURSE_EMOJIS[cat] || "📚"} {cat}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Skill Level</Label>
                 <Select value={form.level} onValueChange={(v) => setForm(f => ({ ...f, level: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {LEVELS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                    {LEVELS.map(l => <SelectItem key={l} value={l} className="text-xs">{l}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Type</Label>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Delivery Format</Label>
                 <Select value={form.type} onValueChange={(v) => setForm(f => ({ ...f, type: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    {TYPES.map(t => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Duration</Label>
-                <Input value={form.duration} onChange={(e) => setForm(f => ({ ...f, duration: e.target.value }))} placeholder="e.g. 4h 30m" />
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Estimated Duration</Label>
+                <Input
+                  value={form.duration}
+                  onChange={(e) => setForm(f => ({ ...f, duration: e.target.value }))}
+                  placeholder="e.g. 4h 30m"
+                  className="h-9 text-xs"
+                />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Instructor</Label>
-              <Input value={form.instructor} onChange={(e) => setForm(f => ({ ...f, instructor: e.target.value }))} placeholder="Instructor name" />
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-violet-500" />
+                Course Instructor / Lead Trainer
+              </Label>
+              {employees && employees.length > 0 ? (
+                <Select value={form.instructor} onValueChange={v => setForm(f => ({ ...f, instructor: v }))}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Select internal trainer..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employees.map(emp => {
+                      const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                      const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                      return (
+                        <SelectItem key={emp.id} value={name} className="text-xs">
+                          <span className="font-medium">{name}</span>
+                          {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={form.instructor}
+                  onChange={(e) => setForm(f => ({ ...f, instructor: e.target.value }))}
+                  placeholder="Instructor or academy name"
+                  className="h-9 text-xs"
+                />
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea value={form.description} onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Course description..." rows={3} />
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Syllabus Overview &amp; Learning Objectives</Label>
+              <Textarea
+                value={form.description}
+                onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Detail the target outcomes, prerequisites, and curriculum outline..."
+                rows={3}
+                className="text-xs resize-none"
+              />
             </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="mandatory" checked={form.mandatory} onChange={(e) => setForm(f => ({ ...f, mandatory: e.target.checked }))} className="rounded" />
-              <Label htmlFor="mandatory" className="text-sm font-normal cursor-pointer">Mandatory course</Label>
+
+            <div className="p-3 rounded-lg border bg-muted/20 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Award className="h-3.5 w-3.5 text-amber-500" /> Mandatory Compliance Training
+                </p>
+                <p className="text-[10px] text-muted-foreground">Enforces automated completion tracking for all staff</p>
+              </div>
+              <Switch checked={form.mandatory} onCheckedChange={v => setForm(f => ({ ...f, mandatory: v }))} />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleCreate}>
-              <Plus className="h-4 w-4 mr-2" /> Create Course
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5" onClick={handleCreate}>
+              <Send className="h-4 w-4" /> Publish Course
             </Button>
           </DialogFooter>
         </DialogContent>

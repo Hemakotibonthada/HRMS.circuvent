@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
@@ -17,12 +17,12 @@ import { Switch } from "@/components/ui/switch";
 import {
   Megaphone, Plus, Search, Pin, PinOff, Calendar,
   Eye, Trash2, Clock, FileText, Bell, Filter,
-  TrendingUp, Archive, Star, Send, Users,
+  TrendingUp, Archive, Star, Send, Users, Sparkles, User, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRBAC } from "@/hooks/use-rbac";
-import { useAnnouncementStore, startSync, type AnnouncementDoc } from "@/stores/unified-store";
+import { useAnnouncementStore, useEmployeeStore, startSync, type AnnouncementDoc } from "@/stores/unified-store";
 import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import {
@@ -58,7 +58,9 @@ const CATEGORY_COLORS: Record<string, string> = {
 export default function AnnouncementsPage() {
   const rbac = useRBAC();
   const store = useAnnouncementStore();
+  const empStore = useEmployeeStore();
   const { items, loading, initialized } = store;
+  const { items: employees, initialized: empInit } = empStore;
 
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
@@ -71,7 +73,10 @@ export default function AnnouncementsPage() {
     pinned: false, status: "active",
   });
 
-  useEffect(() => { if (!initialized) startSync(COLLECTIONS.announcements, store); }, [initialized, store]);
+  useEffect(() => {
+    if (!initialized) startSync(COLLECTIONS.announcements, store);
+    if (!empInit) startSync(COLLECTIONS.employees, empStore);
+  }, [initialized, store, empInit, empStore]);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -360,82 +365,205 @@ export default function AnnouncementsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Create Announcement Dialog */}
+      {/* ENHANCED CREATE ANNOUNCEMENT DIALOG */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>New Announcement</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="space-y-2">
-              <Label>Title *</Label>
-              <Input placeholder="Announcement title" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>Content *</Label>
-              <Textarea placeholder="Write your announcement..." value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} rows={4} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                </Select>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Megaphone className="h-5 w-5" />
               </div>
-              <div className="space-y-2">
-                <Label>Target Audience</Label>
+              <div>
+                <DialogTitle className="text-lg font-bold">New Company Announcement</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Publish or schedule corporate news, policy changes, and urgent workforce bulletins.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Announcement Title <span className="text-destructive">*</span></Label>
+              <Input
+                placeholder="e.g. Q3 All-Hands Meeting &amp; Product Roadmap Reveal"
+                value={form.title}
+                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                className="h-9 text-xs"
+                required
+              />
+            </div>
+
+            {/* Category Selector Cards */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Bulletin Category</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {CATEGORIES.map(cat => {
+                  const active = form.category === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, category: cat }))}
+                      className={cn(
+                        "p-2 rounded-lg border text-center transition-all cursor-pointer",
+                        active
+                          ? "bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-700 dark:text-violet-300 font-bold shadow-xs"
+                          : "bg-background hover:bg-muted/50 text-muted-foreground border-border"
+                      )}
+                    >
+                      <span className="text-xs">{cat}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Announcement Body &amp; Details <span className="text-destructive">*</span></Label>
+              <Textarea
+                placeholder="Write the full announcement details, highlights, links, or actionable instructions..."
+                value={form.content}
+                onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+                rows={4}
+                className="text-xs resize-none"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-violet-500" />
+                  Published By (Author)
+                </Label>
+                {employees && employees.length > 0 ? (
+                  <Select value={form.author} onValueChange={v => setForm(f => ({ ...f, author: v }))}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Select publishing author..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map(emp => {
+                        const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                        const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                        return (
+                          <SelectItem key={emp.id} value={name} className="text-xs">
+                            <span className="font-medium">{name}</span>
+                            {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    placeholder="e.g. HR Communications"
+                    value={form.author}
+                    onChange={e => setForm(f => ({ ...f, author: e.target.value }))}
+                    className="h-9 text-xs"
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                  Target Audience
+                </Label>
                 <Select value={form.targetAudience} onValueChange={v => setForm(f => ({ ...f, targetAudience: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{AUDIENCES.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {AUDIENCES.map(a => <SelectItem key={a} value={a} className="text-xs">{a}</SelectItem>)}
+                  </SelectContent>
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Author</Label>
-                <Input placeholder="Your name" value={form.author} onChange={e => setForm(f => ({ ...f, author: e.target.value }))} />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                  Schedule Publication Date (Optional)
+                </Label>
+                <Input
+                  type="date"
+                  value={form.scheduledDate}
+                  onChange={e => setForm(f => ({ ...f, scheduledDate: e.target.value }))}
+                  className="h-9 text-xs"
+                />
               </div>
-              <div className="space-y-2">
-                <Label>Schedule Date</Label>
-                <Input type="date" value={form.scheduledDate} onChange={e => setForm(f => ({ ...f, scheduledDate: e.target.value }))} />
+
+              <div className="p-2.5 rounded-lg border bg-muted/20 flex items-center justify-between mt-4 sm:mt-0">
+                <div className="space-y-0.5">
+                  <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Pin className="h-3.5 w-3.5 text-amber-500" /> Pin to Company Top
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Keep pinned on all employee dashboards</p>
+                </div>
+                <Switch checked={form.pinned} onCheckedChange={v => setForm(f => ({ ...f, pinned: v }))} />
               </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Switch checked={form.pinned} onCheckedChange={v => setForm(f => ({ ...f, pinned: v }))} />
-              <Label>Pin this announcement</Label>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-2" onClick={handleCreate}>
-              <Send className="h-4 w-4" /> Publish
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5" onClick={handleCreate}>
+              <Send className="h-4 w-4" /> {form.scheduledDate ? "Schedule Bulletin" : "Publish Now"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* View Announcement Dialog */}
+      {/* VIEW ANNOUNCEMENT DETAIL DIALOG */}
       <Dialog open={!!viewAnn} onOpenChange={() => setViewAnn(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {viewAnn?.pinned && <Pin className="h-4 w-4 text-amber-500" />}
-              {viewAnn?.title}
-            </DialogTitle>
-          </DialogHeader>
-          {viewAnn && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Badge className={cn("text-xs", CATEGORY_COLORS[viewAnn.category] || CATEGORY_COLORS.General)}>{viewAnn.category}</Badge>
-                <Badge className={cn("text-xs", STATUS_CONF[viewAnn.status]?.className || "status-active")}>{STATUS_CONF[viewAnn.status]?.label || viewAnn.status}</Badge>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Megaphone className="h-5 w-5" />
               </div>
-              <p className="text-sm whitespace-pre-wrap">{viewAnn.content}</p>
+              <div className="flex-1 min-w-0">
+                <DialogTitle className="text-lg font-bold truncate flex items-center gap-2">
+                  {viewAnn?.pinned && <Pin className="h-4 w-4 text-amber-500 shrink-0" />}
+                  {viewAnn?.title}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Published by {viewAnn?.author || "Corporate HR"}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {viewAnn && (
+            <div className="space-y-4 mt-2">
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <Badge className={cn("text-xs font-semibold", CATEGORY_COLORS[viewAnn.category] || CATEGORY_COLORS.General)}>
+                  {viewAnn.category}
+                </Badge>
+                <Badge className={cn("text-xs", STATUS_CONF[viewAnn.status]?.className || "status-active")}>
+                  {STATUS_CONF[viewAnn.status]?.label || viewAnn.status}
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  Audience: {viewAnn.targetAudience || "All Employees"}
+                </Badge>
+              </div>
+
+              <div className="p-4 rounded-xl border bg-muted/20">
+                <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{viewAnn.content}</p>
+              </div>
+
               <Separator />
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>By {viewAnn.author || "Admin"}</span>
-                <span>{viewAnn.publishedAt ? new Date(viewAnn.publishedAt).toLocaleString() : "—"}</span>
+
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>Published: {viewAnn.publishedAt ? new Date(viewAnn.publishedAt).toLocaleString() : "—"}</span>
+                {viewAnn.pinned && <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1"><Pin className="h-3 w-3" /> Pinned Bulletin</span>}
               </div>
             </div>
           )}
+
+          <DialogFooter className="pt-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setViewAnn(null)}>Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
