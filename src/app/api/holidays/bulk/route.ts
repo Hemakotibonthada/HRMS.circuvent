@@ -23,6 +23,8 @@ import {
   apCalendarRows,
   dedupeAgainstExisting,
   parseHolidayCsv,
+  parseHolidaySpreadsheet,
+  weekendHolidayRows,
   type ParsedHolidayRow,
   type RowIssue,
 } from "@/lib/holiday-import";
@@ -31,6 +33,12 @@ const bodySchema = z.discriminatedUnion("source", [
   z.object({
     source: z.literal("ap-calendar"),
     year: z.number().int().min(1900).max(2999),
+    includeWeekends: z.boolean().optional(),
+    locationId: z.string().uuid().optional(),
+  }),
+  z.object({
+    source: z.literal("weekends"),
+    year: z.number().int().min(1900).max(2999),
     locationId: z.string().uuid().optional(),
   }),
   z.object({
@@ -38,18 +46,20 @@ const bodySchema = z.discriminatedUnion("source", [
     csv: z.string().min(1, "Paste at least one holiday").max(200_000),
     locationId: z.string().uuid().optional(),
   }),
+  z.object({
+    source: z.literal("file"),
+    fileBase64: z.string().min(1),
+    filename: z.string().default("holidays.xlsx"),
+    locationId: z.string().uuid().optional(),
+  }),
 ]);
 
-/** One year's calendar is about twenty-five rows; this is a guard against a paste gone wrong, not a quota. */
-const MAX_ROWS = 500;
+/** Guard against an unreasonably large upload. */
+const MAX_ROWS = 2000;
 
 export async function POST(request: NextRequest) {
   let ctx;
   try {
-    // Same restriction as the single-holiday POST alongside this: no
-    // `holidays.manage` permission exists, only `holidays.view`, which
-    // everyone holds. The calendar drives payroll working days and leave, so
-    // it is not an ordinary edit — and a bulk write of it least of all.
     ctx = await requireApiContext(request, ["owner", "admin", "hr"]);
   } catch (e) {
     const { body, status } = authErrorResponse(e);
@@ -76,10 +86,31 @@ export async function POST(request: NextRequest) {
 
   if (parsed.data.source === "ap-calendar") {
     try {
-      rows = apCalendarRows(parsed.data.year);
+      rows = apCalendarRows(parsed.data.year, parsed.data.includeWeekends ?? false);
     } catch (error) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "That year is not available." },
+        { status: 400 }
+      );
+    }
+  } else if (parsed.data.source === "weekends") {
+    try {
+      rows = weekendHolidayRows(parsed.data.year);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Could not generate weekend holidays." },
+        { status: 400 }
+      );
+    }
+  } else if (parsed.data.source === "file") {
+    try {
+      const buffer = Buffer.from(parsed.data.fileBase64, "base64");
+      const result = parseHolidaySpreadsheet(buffer, parsed.data.filename);
+      rows = result.rows;
+      issues = result.issues;
+    } catch (err) {
+      return NextResponse.json(
+        { error: `Failed to parse file: ${err instanceof Error ? err.message : "Unknown error"}` },
         { status: 400 }
       );
     }

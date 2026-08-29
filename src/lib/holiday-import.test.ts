@@ -7,8 +7,12 @@ import { describe, expect, it } from "vitest";
 import {
   apCalendarRows,
   dedupeAgainstExisting,
+  generateHolidayTemplateCsv,
+  generateHolidayTemplateXlsx,
   parseHolidayCsv,
   parseHolidayDate,
+  parseHolidaySpreadsheet,
+  weekendHolidayRows,
 } from "@/lib/holiday-import";
 import { SUPPORTED_YEARS, holidaysFor } from "@/lib/ap-holidays";
 
@@ -208,3 +212,48 @@ describe("importing the same year twice", () => {
     expect(duplicates).toHaveLength(rows.length);
   });
 });
+
+describe("weekend holiday generation", () => {
+  it("generates all 52 Saturdays and 52 Sundays for 2026", () => {
+    const rows = weekendHolidayRows(2026);
+    expect(rows).toHaveLength(104);
+    const saturdays = rows.filter((r) => r.name === "Saturday Off");
+    const sundays = rows.filter((r) => r.name === "Sunday Off");
+    expect(saturdays).toHaveLength(52);
+    expect(sundays).toHaveLength(52);
+    expect(saturdays[0].holidayDate).toBe("2026-01-03");
+    expect(sundays[0].holidayDate).toBe("2026-01-04");
+  });
+
+  it("can include weekends in the standard AP calendar", () => {
+    const standardOnly = apCalendarRows(2026, false);
+    const withWeekends = apCalendarRows(2026, true);
+    expect(withWeekends.length).toBeGreaterThan(standardOnly.length);
+    expect(withWeekends.some((r) => r.name === "Saturday Off")).toBe(true);
+    expect(withWeekends.some((r) => r.name === "Sunday Off")).toBe(true);
+  });
+});
+
+describe("holiday template generation", () => {
+  it("generates a CSV template containing headers and example rows", () => {
+    const csv = generateHolidayTemplateCsv();
+    const lines = csv.trim().split("\r\n");
+    expect(lines.length).toBe(5); // header + 4 example rows
+    expect(lines[0]).toContain("Holiday Name *");
+    expect(lines[0]).toContain("Date (YYYY-MM-DD) *");
+    expect(lines[1]).toContain("Republic Day");
+    expect(lines[3]).toContain("Saturday Off");
+  });
+
+  it("generates an Excel XLSX buffer readable by parseHolidaySpreadsheet", () => {
+    const buffer = generateHolidayTemplateXlsx();
+    expect(buffer).toBeInstanceOf(Buffer);
+    expect(buffer.length).toBeGreaterThan(0);
+
+    const parsed = parseHolidaySpreadsheet(buffer, "template.xlsx");
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.rows.length).toBeGreaterThanOrEqual(4);
+    expect(parsed.rows.some((r) => r.name === "Republic Day")).toBe(true);
+  });
+});
+

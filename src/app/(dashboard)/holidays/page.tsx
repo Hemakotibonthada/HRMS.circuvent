@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -17,14 +18,14 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarDays, Plus, Search, Sun, Star, Palmtree, Gift, Upload } from "lucide-react";
+import { CalendarDays, Plus, Search, Sun, Star, Palmtree, Gift, Upload, Download, FileSpreadsheet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useHolidayStore, startSync, type HolidayDoc } from "@/stores/unified-store";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { COLLECTIONS } from "@/lib/collection-service";
 import { SUPPORTED_YEARS, missingFor } from "@/lib/ap-holidays";
-import { parseHolidayCsv } from "@/lib/holiday-import";
+import { parseHolidayCsv, parseHolidaySpreadsheet, type ParsedHolidayImport } from "@/lib/holiday-import";
 
 // Dates from the API are plain YYYY-MM-DD. Read without an explicit UTC
 // suffix, `new Date("2026-01-26")` is UTC midnight while `toLocaleDateString`
@@ -58,6 +59,8 @@ function todayIso(): string {
 
 const CSV_PLACEHOLDER = `Ugadi,2027-03-28
 Sri Rama Navami,2027-04-15,no,Gazetted
+Saturday Off,2027-01-02,no,Weekly Weekend Holiday
+Sunday Off,2027-01-03,no,Weekly Weekend Holiday
 Bakrid,2027-05-17
 Founders Day,2027-07-15,yes,Company shutdown`;
 
@@ -98,9 +101,6 @@ export default function HolidaysPage() {
   const gazetted = items.filter((h) => !h.isOptional).length;
   const optional = items.filter((h) => h.isOptional).length;
   const upcoming = items.filter((h) => h.holidayDate >= today).length;
-  // A holiday landing on a weekend is a day nobody actually gets off: Indian
-  // public holidays are not moved to the following Monday, and a calendar that
-  // does not say so is one people book leave against unnecessarily.
   const onWeekend = items.filter((h) => isWeekend(h.holidayDate)).length;
 
   const monthBreakdown = useMemo(() => {
@@ -117,6 +117,30 @@ export default function HolidaysPage() {
   }, [items]);
 
   const refresh = () => startSync(COLLECTIONS.holidays, store);
+
+  const handleDownloadTemplate = async (format: "xlsx" | "csv" = "xlsx") => {
+    try {
+      const response = await fetch(`/api/holidays/template?format=${format}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        toast.error("Failed to download template");
+        return;
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `holiday-calendar-template.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(`Downloaded holiday template (.${format})`);
+    } catch {
+      toast.error("Could not download the template.");
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -164,16 +188,29 @@ export default function HolidaysPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
-            <Upload className="h-4 w-4" />
-            Bulk import
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/50 rounded-full h-9 px-4"
+            onClick={() => handleDownloadTemplate("xlsx")}
+          >
+            <Download className="h-4 w-4 shrink-0" />
+            <span>Download Template (.xlsx)</span>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setImportOpen(true)}
+            className="gap-2 rounded-full border-border shadow-sm hover:bg-accent/80 h-9 px-4"
+          >
+            <Upload className="h-4 w-4 shrink-0" />
+            <span>Bulk import</span>
           </Button>
           <Button
             onClick={() => setDialogOpen(true)}
-            className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-md gap-2"
+            className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-md gap-2 rounded-full h-9 px-4"
           >
-            <Plus className="h-4 w-4" />
-            Add Holiday
+            <Plus className="h-4 w-4 shrink-0" />
+            <span>Add Holiday</span>
           </Button>
         </div>
       </div>
@@ -359,26 +396,73 @@ function BulkImportDialog({
   onOpenChange: (open: boolean) => void;
   onImported: () => void;
 }) {
-  const [mode, setMode] = useState("ap-calendar");
+  const [mode, setMode] = useState<"ap-calendar" | "spreadsheet" | "csv">("ap-calendar");
   const [year, setYear] = useState(String(SUPPORTED_YEARS.first));
+  const [includeWeekends, setIncludeWeekends] = useState(true);
   const [csv, setCsv] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [fileBase64, setFileBase64] = useState<string>("");
+  const [filePreview, setFilePreview] = useState<ParsedHolidayImport | null>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
 
-  // Parsed with the same function the endpoint uses, so the count shown here
-  // is the count that gets written. A preview with a parser of its own is how
-  // a screen promises twenty-six and the import writes twenty-four.
   const preview = useMemo(() => (mode === "csv" ? parseHolidayCsv(csv) : null), [mode, csv]);
   const stillToConfirm = useMemo(() => missingFor(Number(year) || SUPPORTED_YEARS.first), [year]);
+
+  const handleFileChange = async (selectedFile: File | null) => {
+    setFile(selectedFile);
+    setFilePreview(null);
+    setFileBase64("");
+    if (!selectedFile) return;
+
+    try {
+      const buffer = Buffer.from(await selectedFile.arrayBuffer());
+      const base64 = buffer.toString("base64");
+      setFileBase64(base64);
+      const parsed = parseHolidaySpreadsheet(buffer, selectedFile.name);
+      setFilePreview(parsed);
+    } catch {
+      toast.error("Could not read the spreadsheet file.");
+    }
+  };
+
+  const handleDownloadTemplate = async (format: "xlsx" | "csv" = "xlsx") => {
+    try {
+      const response = await fetch(`/api/holidays/template?format=${format}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        toast.error("Failed to download template");
+        return;
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `holiday-calendar-template.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(`Downloaded holiday template (.${format})`);
+    } catch {
+      toast.error("Could not download the template.");
+    }
+  };
 
   const submit = async () => {
     setBusy(true);
     setOutcome(null);
     try {
-      const body =
-        mode === "ap-calendar"
-          ? { source: "ap-calendar" as const, year: Number(year) }
-          : { source: "csv" as const, csv };
+      let body: unknown;
+      if (mode === "ap-calendar") {
+        body = { source: "ap-calendar" as const, year: Number(year), includeWeekends };
+      } else if (mode === "spreadsheet") {
+        if (!fileBase64) throw new Error("Please select a file to import");
+        body = { source: "file" as const, fileBase64, filename: file?.name || "holidays.xlsx" };
+      } else {
+        body = { source: "csv" as const, csv };
+      }
 
       const response = await fetch("/api/holidays/bulk", {
         method: "POST",
@@ -406,6 +490,9 @@ function BulkImportDialog({
     if (!next) {
       setOutcome(null);
       setCsv("");
+      setFile(null);
+      setFileBase64("");
+      setFilePreview(null);
     }
     onOpenChange(next);
   };
@@ -416,21 +503,23 @@ function BulkImportDialog({
         <DialogHeader>
           <DialogTitle>Bulk import holidays</DialogTitle>
           <DialogDescription>
-            Importing the same year twice is safe — anything already on the calendar is skipped, not duplicated.
+            Import standard public holidays, weekly weekends (Saturday &amp; Sunday), or upload your custom calendar spreadsheet.
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={mode} onValueChange={setMode}>
-          <TabsList>
-            <TabsTrigger value="ap-calendar">Andhra Pradesh calendar</TabsTrigger>
+        <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)}>
+          <TabsList className="grid grid-cols-3">
+            <TabsTrigger value="ap-calendar">Standard Calendar</TabsTrigger>
+            <TabsTrigger value="spreadsheet">Upload Spreadsheet</TabsTrigger>
             <TabsTrigger value="csv">Paste a list</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="ap-calendar" className="space-y-3 mt-4">
+          {/* TAB 1: Standard & Weekend Calendar */}
+          <TabsContent value="ap-calendar" className="space-y-4 mt-4">
             <div>
-              <Label htmlFor="import-year">Year</Label>
+              <Label htmlFor="import-year">Calendar Year</Label>
               <Select value={year} onValueChange={setYear}>
-                <SelectTrigger id="import-year" className="w-40">
+                <SelectTrigger id="import-year" className="w-40 mt-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -443,21 +532,111 @@ function BulkImportDialog({
               </Select>
             </div>
 
+            {/* Saturday & Sunday Holiday Checkbox */}
+            <div className="flex items-start space-x-3 rounded-lg border p-3 bg-violet-50/50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-800/60">
+              <Checkbox
+                id="include-weekends"
+                checked={includeWeekends}
+                onCheckedChange={(checked) => setIncludeWeekends(!!checked)}
+                className="mt-0.5"
+              />
+              <div className="space-y-1">
+                <label htmlFor="include-weekends" className="text-sm font-semibold cursor-pointer text-foreground">
+                  Make Saturday and Sunday as weekly holidays
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Automatically marks all 52 Saturdays and 52 Sundays in {year} as company weekly weekend holidays.
+                </p>
+              </div>
+            </div>
+
             {stillToConfirm.length > 0 ? (
               <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
                 <p className="font-medium text-foreground">
-                  {stillToConfirm.length} festival dates are left out, deliberately
+                  {stillToConfirm.length} festival dates require local confirmation
                 </p>
                 <p>
-                  Telugu festivals follow the lunisolar calendar and Islamic dates are announced on moon sighting —
-                  neither can be computed from a fixed rule. Plausible dates for them would be a guess that payroll
-                  then acts on. Add them under &ldquo;Paste a list&rdquo; once the state gazette is out:{" "}
-                  {stillToConfirm.map((h) => h.name).join(", ")}.
+                  Telugu lunisolar and Islamic moon-sighting festival dates ({stillToConfirm.map((h) => h.name).join(", ")}) can be added under &ldquo;Upload Spreadsheet&rdquo; or &ldquo;Paste a list&rdquo; once the official gazette is notified.
                 </p>
               </div>
             ) : null}
           </TabsContent>
 
+          {/* TAB 2: Spreadsheet Upload & Template Download */}
+          <TabsContent value="spreadsheet" className="space-y-4 mt-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border bg-muted/30">
+              <div>
+                <p className="text-xs font-semibold">Download holiday template</p>
+                <p className="text-[11px] text-muted-foreground">Pre-formatted with example rows including holidays and weekends.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1 text-xs border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300"
+                  onClick={() => handleDownloadTemplate("xlsx")}
+                >
+                  <Download className="h-3 w-3" /> Excel (.xlsx)
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => handleDownloadTemplate("csv")}
+                >
+                  <Download className="h-3 w-3" /> CSV
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="holiday-file">Upload Modified Spreadsheet (.xlsx or .csv)</Label>
+              <Input
+                id="holiday-file"
+                type="file"
+                accept=".xlsx,.csv"
+                className="mt-1.5 cursor-pointer text-xs"
+                onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+              />
+            </div>
+
+            {filePreview && (
+              <div className="rounded-md border border-border p-3 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-foreground">
+                    {filePreview.rows.length} holiday{filePreview.rows.length === 1 ? "" : "s"} found in file
+                  </span>
+                  {filePreview.issues.length > 0 && (
+                    <Badge variant="destructive" className="text-[10px]">
+                      {filePreview.issues.length} issue(s) to check
+                    </Badge>
+                  )}
+                </div>
+                {filePreview.rows.length > 0 && (
+                  <div className="max-h-36 overflow-y-auto space-y-1 divide-y divide-border/40">
+                    {filePreview.rows.slice(0, 5).map((r, i) => (
+                      <div key={i} className="pt-1 flex items-center justify-between text-muted-foreground">
+                        <span className="font-medium text-foreground">{r.name}</span>
+                        <span>{r.holidayDate} ({r.isOptional ? "Optional" : "Gazetted / Off"})</span>
+                      </div>
+                    ))}
+                    {filePreview.rows.length > 5 && (
+                      <p className="text-[10px] text-muted-foreground pt-1 italic">
+                        + {filePreview.rows.length - 5} more holidays
+                      </p>
+                    )}
+                  </div>
+                )}
+                {filePreview.issues.slice(0, 3).map((issue) => (
+                  <p key={issue.line} className="text-destructive text-[11px]">
+                    Line {issue.line}: {issue.reason}
+                  </p>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* TAB 3: Paste a list */}
           <TabsContent value="csv" className="space-y-3 mt-4">
             <div>
               <Label htmlFor="import-csv">One holiday per line</Label>
@@ -465,14 +644,12 @@ function BulkImportDialog({
                 id="import-csv"
                 value={csv}
                 onChange={(e) => setCsv(e.target.value)}
-                rows={8}
+                rows={7}
                 placeholder={CSV_PLACEHOLDER}
-                className="font-mono text-xs"
+                className="font-mono text-xs mt-1"
               />
               <p className="text-xs text-muted-foreground mt-1.5">
-                Columns: name, date, optional, note. Dates must be <code>2027-03-28</code> or{" "}
-                <code>28-Mar-2027</code> — slash-separated dates are refused, because 03/04/2027 means two different
-                days either side of the Atlantic.
+                Columns: <code>Name, Date (YYYY-MM-DD), Optional (yes/no), Description</code>
               </p>
             </div>
 
@@ -499,8 +676,9 @@ function BulkImportDialog({
               {outcome.skipped > 0 ? `, skipped ${outcome.skipped} already on the calendar` : ""}
             </p>
             {outcome.skippedHolidays.length > 0 ? (
-              <p className="text-muted-foreground">
-                Already there: {outcome.skippedHolidays.map((h) => `${h.name} (${h.holidayDate})`).join(", ")}
+              <p className="text-muted-foreground truncate">
+                Already exists: {outcome.skippedHolidays.slice(0, 4).map((h) => `${h.name} (${h.holidayDate})`).join(", ")}
+                {outcome.skippedHolidays.length > 4 ? ` + ${outcome.skippedHolidays.length - 4} more` : ""}
               </p>
             ) : null}
           </div>
@@ -512,7 +690,11 @@ function BulkImportDialog({
           </Button>
           <Button
             onClick={submit}
-            disabled={busy || (mode === "csv" && (preview?.rows.length ?? 0) === 0)}
+            disabled={
+              busy ||
+              (mode === "csv" && (preview?.rows.length ?? 0) === 0) ||
+              (mode === "spreadsheet" && (!filePreview || filePreview.rows.length === 0))
+            }
             className="bg-gradient-to-r from-violet-500 to-purple-600 text-white"
           >
             {busy ? "Importing…" : "Import"}

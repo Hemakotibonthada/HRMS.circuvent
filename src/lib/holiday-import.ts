@@ -18,6 +18,7 @@
 // parsers is how a preview shows twenty-six holidays and the import writes
 // twenty-four.
 
+import * as XLSX from "xlsx";
 import { canonicalName, holidaysFor, SUPPORTED_YEARS } from "@/lib/ap-holidays";
 
 export interface ParsedHolidayRow {
@@ -67,13 +68,6 @@ function pad(value: number, width: number): string {
 
 /**
  * Reads a date, accepting only forms that cannot mean two things.
- *
- * `2026-01-26` and `26-Jan-2026` are accepted. `26/01/2026` is not, and the
- * refusal is the point: the same string is the 26th of January to an Indian
- * reader and an invalid month to an American one, and `03/04/2026` is a real
- * date under both readings with two months between them. A holiday calendar
- * silently off by a month marks a whole office absent, so this asks the person
- * pasting to disambiguate rather than guessing on their behalf.
  */
 export function parseHolidayDate(raw: string): string | null {
   const value = raw.trim();
@@ -105,9 +99,6 @@ function splitCsvLine(line: string): string[] {
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
     if (inQuotes) {
-      // A doubled quote inside a quoted field is a literal quote — the
-      // convention every spreadsheet writes and most hand-rolled splitters
-      // forget, turning one field into two from that point on.
       if (char === '"' && line[i + 1] === '"') {
         current += '"';
         i++;
@@ -129,21 +120,12 @@ function splitCsvLine(line: string): string[] {
   return fields.map((field) => field.trim());
 }
 
-const TRUTHY = new Set(["true", "yes", "y", "1", "optional", "restricted"]);
-const HEADER_FIRST_FIELDS = new Set(["name", "holiday", "holiday name", "festival"]);
+const TRUTHY = new Set(["true", "yes", "y", "1", "optional", "restricted", "floating"]);
+const HEADER_FIRST_FIELDS = new Set(["name", "holiday", "holiday name", "holiday name *", "festival", "title", "holiday_name"]);
 
 /**
- * Reads pasted text into holiday rows, reporting every bad line rather than
+ * Reads CSV text into holiday rows, reporting every bad line rather than
  * stopping at the first.
- *
- * Columns are `name, date, optional, description` — the last two may be
- * omitted. A header row is detected and skipped rather than required, because
- * a list copied out of a spreadsheet usually has one and a list typed by hand
- * usually does not.
- *
- * A row that cannot be read becomes an issue, not an exception. Someone
- * pasting twenty-five holidays wants to hear about all three typos at once,
- * and a partial import that silently dropped rows would be worse than either.
  */
 export function parseHolidayCsv(text: string): ParsedHolidayImport {
   const rows: ParsedHolidayRow[] = [];
@@ -160,7 +142,7 @@ export function parseHolidayCsv(text: string): ParsedHolidayImport {
     const fields = splitCsvLine(line);
     const [nameField, dateField, optionalField, descriptionField] = fields;
 
-    if (index === 0 && HEADER_FIRST_FIELDS.has((nameField ?? "").toLowerCase())) continue;
+    if (index === 0 && HEADER_FIRST_FIELDS.has((nameField ?? "").toLowerCase().replace(/[*_\s]+/g, " ").trim())) continue;
 
     if (!nameField) {
       issues.push({ line: lineNumber, text: line, reason: "No holiday name in the first column." });
@@ -193,9 +175,6 @@ export function parseHolidayCsv(text: string): ParsedHolidayImport {
       continue;
     }
 
-    // Same day, same holiday, pasted twice — common when two years' lists are
-    // concatenated. Keeping the first is right; reporting it stops the count
-    // from silently disagreeing with the number of lines pasted.
     const name = canonicalName(nameField);
     const key = `${holidayDate}|${name.toLowerCase()}`;
     if (seen.has(key)) {
@@ -218,18 +197,75 @@ export function parseHolidayCsv(text: string): ParsedHolidayImport {
 }
 
 /**
- * The curated Andhra Pradesh calendar for one year, in import shape.
- *
- * Only the dates `ap-holidays.ts` states with certainty — the fixed-Gregorian
- * and solar ones. The lunisolar and Islamic festivals it deliberately refuses
- * to compute are not silently filled in here either; `missingFor` is what the
- * screen uses to say so, and pasting them is what the CSV path is for.
- *
- * Restricted holidays arrive as `isOptional`, which is the same idea under the
- * two products' different names: a day drawn from a floating pool rather than
- * a closed day everyone gets.
+ * Parses an uploaded .xlsx or .csv spreadsheet file buffer into holiday rows.
  */
-export function apCalendarRows(year: number): ParsedHolidayRow[] {
+export function parseHolidaySpreadsheet(buffer: Buffer, _filename: string): ParsedHolidayImport {
+  try {
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) {
+      return { rows: [], issues: [{ line: 1, text: "", reason: "The uploaded workbook contains no sheets." }] };
+    }
+    const sheet = workbook.Sheets[firstSheetName];
+    const csv = XLSX.utils.sheet_to_csv(sheet);
+    return parseHolidayCsv(csv);
+  } catch (err) {
+    return {
+      rows: [],
+      issues: [
+        {
+          line: 1,
+          text: "",
+          reason: `Could not parse spreadsheet: ${err instanceof Error ? err.message : "Unknown error"}`,
+        },
+      ],
+    };
+  }
+}
+
+/**
+ * Generates all Saturdays and Sundays as weekly weekend holidays for a given year.
+ */
+export function weekendHolidayRows(year: number): ParsedHolidayRow[] {
+  if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+    throw new Error("Invalid year for weekend generation");
+  }
+
+  const rows: ParsedHolidayRow[] = [];
+  const start = new Date(Date.UTC(year, 0, 1));
+  const end = new Date(Date.UTC(year, 11, 31));
+
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const dayOfWeek = d.getUTCDay();
+    const iso = d.toISOString().slice(0, 10);
+    if (dayOfWeek === 6) {
+      // Saturday
+      rows.push({
+        name: "Saturday Off",
+        holidayDate: iso,
+        year,
+        isOptional: false,
+        description: "Weekly Weekend Holiday (Saturday)",
+      });
+    } else if (dayOfWeek === 0) {
+      // Sunday
+      rows.push({
+        name: "Sunday Off",
+        holidayDate: iso,
+        year,
+        isOptional: false,
+        description: "Weekly Weekend Holiday (Sunday)",
+      });
+    }
+  }
+
+  return rows;
+}
+
+/**
+ * The curated Andhra Pradesh calendar for one year, with optional weekend inclusion.
+ */
+export function apCalendarRows(year: number, includeWeekends: boolean = false): ParsedHolidayRow[] {
   if (!Number.isInteger(year) || year < SUPPORTED_YEARS.first || year > SUPPORTED_YEARS.last) {
     throw new Error(
       `The Andhra Pradesh calendar is only generated for ${SUPPORTED_YEARS.first}–${SUPPORTED_YEARS.last}. ` +
@@ -237,7 +273,7 @@ export function apCalendarRows(year: number): ParsedHolidayRow[] {
     );
   }
 
-  return holidaysFor(year).map((holiday) => ({
+  const apHolidays: ParsedHolidayRow[] = holidaysFor(year).map((holiday) => ({
     name: holiday.name,
     holidayDate: holiday.date,
     year: holiday.year,
@@ -246,6 +282,24 @@ export function apCalendarRows(year: number): ParsedHolidayRow[] {
       ? `${holiday.description} Falls on a weekend this year — Indian public holidays are not moved to the following Monday.`
       : holiday.description,
   }));
+
+  if (!includeWeekends) {
+    return apHolidays;
+  }
+
+  const weekends = weekendHolidayRows(year);
+  const existingDateMap = new Set(apHolidays.map((h) => h.holidayDate));
+  
+  // Combine public holidays and weekends (avoiding duplicate names on same dates)
+  const combined: ParsedHolidayRow[] = [...apHolidays];
+  for (const weekend of weekends) {
+    if (!existingDateMap.has(weekend.holidayDate)) {
+      combined.push(weekend);
+    }
+  }
+
+  combined.sort((a, b) => a.holidayDate.localeCompare(b.holidayDate));
+  return combined;
 }
 
 export interface ExistingHoliday {
@@ -260,13 +314,6 @@ export interface DedupedImport {
 
 /**
  * Splits rows into the ones worth writing and the ones already on file.
- *
- * `hrms.holidays` carries no unique constraint on (org, date, name), so
- * nothing in the database stops the same calendar being imported twice — and
- * "import the year again because two dates were added since" is exactly what
- * somebody will do. Matched on date *and* canonical name, so two genuinely
- * different holidays sharing a date both survive, which happens more often
- * than it sounds: Bhogi and New Year observances collide in some years.
  */
 export function dedupeAgainstExisting(
   rows: readonly ParsedHolidayRow[],
@@ -287,3 +334,43 @@ export function dedupeAgainstExisting(
 
   return { toInsert, duplicates };
 }
+
+// ─── Template Generation ─────────────────────────────────────
+
+function csvCell(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+export const HOLIDAY_TEMPLATE_COLUMNS = [
+  { header: "Holiday Name *", example1: "Republic Day", example2: "Diwali", example3: "Saturday Off", example4: "Sunday Off" },
+  { header: "Date (YYYY-MM-DD) *", example1: "2026-01-26", example2: "2026-11-08", example3: "2026-01-03", example4: "2026-01-04" },
+  { header: "Type (Gazetted / Optional / Weekend)", example1: "Gazetted", example2: "Gazetted", example3: "Weekend", example4: "Weekend" },
+  { header: "Description / Notes", example1: "National Holiday", example2: "Festival of Lights", example3: "Weekly Off", example4: "Weekly Off" },
+];
+
+export function generateHolidayTemplateCsv(): string {
+  const headers = HOLIDAY_TEMPLATE_COLUMNS.map((c) => c.header);
+  const row1 = HOLIDAY_TEMPLATE_COLUMNS.map((c) => c.example1);
+  const row2 = HOLIDAY_TEMPLATE_COLUMNS.map((c) => c.example2);
+  const row3 = HOLIDAY_TEMPLATE_COLUMNS.map((c) => c.example3);
+  const row4 = HOLIDAY_TEMPLATE_COLUMNS.map((c) => c.example4);
+  const table = [headers, row1, row2, row3, row4];
+  return table.map((cells) => cells.map(csvCell).join(",")).join("\r\n") + "\r\n";
+}
+
+export function generateHolidayTemplateXlsx(): Buffer {
+  const headers = HOLIDAY_TEMPLATE_COLUMNS.map((c) => c.header);
+  const row1 = HOLIDAY_TEMPLATE_COLUMNS.map((c) => c.example1);
+  const row2 = HOLIDAY_TEMPLATE_COLUMNS.map((c) => c.example2);
+  const row3 = HOLIDAY_TEMPLATE_COLUMNS.map((c) => c.example3);
+  const row4 = HOLIDAY_TEMPLATE_COLUMNS.map((c) => c.example4);
+  const data = [headers, row1, row2, row3, row4];
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 4, 18) }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Holiday Template");
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+}
+
