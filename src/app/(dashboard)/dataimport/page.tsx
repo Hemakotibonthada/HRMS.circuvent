@@ -131,7 +131,7 @@ export default function DataImportExportPage() {
                   <div className="flex justify-center gap-2 mt-2"><Badge variant="outline" className="text-[8px]">{t.fields} fields</Badge><Badge variant="outline" className="text-[8px]">{t.module}</Badge></div>
                   {built ? (
                     <Button size="sm" className="w-full mt-3 text-xs bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-1" asChild>
-                      <Link href="/employees/import"><Upload className="h-3 w-3" />Import</Link>
+                      <Link href="/employees/import" className="inline-flex items-center justify-center gap-1.5"><Upload className="h-3 w-3 shrink-0" /><span>Import</span></Link>
                     </Button>
                   ) : (
                     <Button size="sm" variant="outline" className="w-full mt-3 text-xs gap-1" disabled>Not available yet</Button>

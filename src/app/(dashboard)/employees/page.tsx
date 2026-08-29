@@ -212,13 +212,15 @@ export default function EmployeesPage() {
             {/* The way a company that already has staff gets started. Adding
                 people one at a time is fine for a hire; it is not how anybody
                 moves an existing payroll onto this product. */}
-            <Button variant="outline" className="gap-2" asChild>
-              <Link href="/employees/import">
-                <Upload className="h-4 w-4" />Import from spreadsheet
+            <Button variant="outline" className="gap-2 rounded-full border-border shadow-sm hover:bg-accent/80 h-9 px-4" asChild>
+              <Link href="/employees/import" className="inline-flex items-center gap-2">
+                <Upload className="h-4 w-4 shrink-0" />
+                <span>Import from spreadsheet</span>
               </Link>
             </Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-md gap-2" onClick={() => { resetForm(); setCreateOpen(true); }}>
-              <UserPlus className="h-4 w-4" />Add Employee
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 shadow-md gap-2 rounded-full h-9 px-4" onClick={() => { resetForm(); setCreateOpen(true); }}>
+              <UserPlus className="h-4 w-4 shrink-0" />
+              <span>Add Employee</span>
             </Button>
           </div>
         )}
