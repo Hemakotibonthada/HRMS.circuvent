@@ -45,6 +45,7 @@ const optionalUuid = z.preprocess((v) => {
 }, z.string().uuid().optional().nullable());
 
 const setupSchema = z.object({
+  employeeId: optionalUuid,
   candidateId: optionalUuid,
   applicationId: optionalUuid,
   offerId: optionalUuid,
@@ -164,19 +165,43 @@ export async function POST(request: NextRequest) {
         code = `CV-${String(maxNum + 1).padStart(3, "0")}`;
       }
 
-      // Check if employee already exists with this email or candidateId
+      // Check if employee already exists with this ID or email or candidateId
       let employeeId: string;
-      const existing = await tx
-        .select({ id: employees.id })
-        .from(employees)
-        .where(
-          and(
-            eq(employees.orgId, ctx.orgId),
-            eq(employees.workEmail, data.workEmail.toLowerCase()),
-            isNull(employees.deletedAt)
+      let existingEmp: { id: string; employeeCode: string } | null = null;
+
+      if (data.employeeId) {
+        const [byId] = await tx
+          .select({ id: employees.id, employeeCode: employees.employeeCode })
+          .from(employees)
+          .where(
+            and(
+              eq(employees.id, data.employeeId),
+              eq(employees.orgId, ctx.orgId),
+              isNull(employees.deletedAt)
+            )
           )
-        )
-        .limit(1);
+          .limit(1);
+        if (byId) {
+          existingEmp = byId;
+        }
+      }
+
+      if (!existingEmp) {
+        const [byEmail] = await tx
+          .select({ id: employees.id, employeeCode: employees.employeeCode })
+          .from(employees)
+          .where(
+            and(
+              eq(employees.orgId, ctx.orgId),
+              eq(employees.workEmail, data.workEmail.toLowerCase()),
+              isNull(employees.deletedAt)
+            )
+          )
+          .limit(1);
+        if (byEmail) {
+          existingEmp = byEmail;
+        }
+      }
 
       const empType = (normaliseEmploymentType(data.employmentType) || "full_time") as
         | "full_time"
@@ -219,13 +244,16 @@ export async function POST(request: NextRequest) {
 
       const ctcMinorVal = data.salary && data.salary > 0 ? BigInt(Math.round(data.salary * 100)) : null;
 
-      if (existing[0]) {
-        employeeId = existing[0].id;
+      if (existingEmp) {
+        employeeId = existingEmp.id;
+        const codeToUse = data.employeeCode?.trim() || existingEmp.employeeCode;
         await tx
           .update(employees)
           .set({
+            employeeCode: codeToUse,
             firstName: data.firstName,
             lastName: data.lastName,
+            workEmail: data.workEmail.toLowerCase(),
             personalEmail: data.personalEmail || null,
             phone: data.phone || null,
             gender: validGender,
@@ -304,24 +332,44 @@ export async function POST(request: NextRequest) {
             .limit(1)
         : [];
 
-      // Record initial salary structure if provided
+      // Record / Update salary structure if provided
       if (data.salary && data.salary > 0) {
         const ctcMinor = BigInt(Math.round(data.salary * 100));
         const basicMinor = (ctcMinor * 50n) / 100n;
         const hraMinor = (ctcMinor * 20n) / 100n;
         const specialAllowanceMinor = ctcMinor - basicMinor - hraMinor;
 
-        await tx.insert(salaryStructures).values({
-          id: randomUUID(),
-          orgId: ctx.orgId,
-          employeeId,
-          effectiveFrom: data.joiningDate,
-          ctcMinor,
-          basicMinor,
-          hraMinor,
-          specialAllowanceMinor,
-          revisionReason: "hire",
-        });
+        const [existingStructure] = await tx
+          .select({ id: salaryStructures.id })
+          .from(salaryStructures)
+          .where(and(eq(salaryStructures.employeeId, employeeId), eq(salaryStructures.orgId, ctx.orgId)))
+          .limit(1);
+
+        if (existingStructure) {
+          await tx
+            .update(salaryStructures)
+            .set({
+              effectiveFrom: data.joiningDate,
+              ctcMinor,
+              basicMinor,
+              hraMinor,
+              specialAllowanceMinor,
+              revisionReason: "update",
+            })
+            .where(eq(salaryStructures.id, existingStructure.id));
+        } else {
+          await tx.insert(salaryStructures).values({
+            id: randomUUID(),
+            orgId: ctx.orgId,
+            employeeId,
+            effectiveFrom: data.joiningDate,
+            ctcMinor,
+            basicMinor,
+            hraMinor,
+            specialAllowanceMinor,
+            revisionReason: "hire",
+          });
+        }
       }
 
       // If candidate / application provided, close application to 'hired'

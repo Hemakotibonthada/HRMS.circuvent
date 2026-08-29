@@ -224,12 +224,12 @@ export default function OnboardingPage() {
 
   // Modals state
   const [setupModalHire, setSetupModalHire] = useState<PendingHireItem | null>(null);
-  const [editProfileEmployee, setEditProfileEmployee] = useState<EmployeeItem | null>(null);
+  const [editingEmployee, setEditingEmployee] = useState<EmployeeItem | null>(null);
   const [letterModalEmployee, setLetterModalEmployee] = useState<EmployeeItem | null>(null);
   const [assetModalEmployee, setAssetModalEmployee] = useState<EmployeeItem | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Setup Form State
+  // Setup / Full Profile Form State
   const [setupForm, setSetupForm] = useState({
     employeeCode: "",
     firstName: "",
@@ -265,14 +265,6 @@ export default function OnboardingPage() {
     issueAppointmentLetter: true,
     triggerMailboxInvite: true,
     assetId: "none",
-  });
-
-  // Edit Profile Form State
-  const [editForm, setEditForm] = useState({
-    departmentId: "",
-    reportingToId: "",
-    designation: "",
-    phone: "",
   });
 
   // Asset Assignment Form State
@@ -634,6 +626,7 @@ export default function OnboardingPage() {
 
   // Open Setup Modal for Pending Hire
   const openSetupModal = (hire: PendingHireItem) => {
+    setEditingEmployee(null);
     setSetupModalHire(hire);
     const candidateMb = mailboxByCandidate[hire.candidateId];
     const claimedWorkEmail = hire.claimedWorkEmail || hire.mailboxEmail || candidateMb?.email?.trim() || "";
@@ -720,6 +713,90 @@ export default function OnboardingPage() {
     });
   };
 
+  // Open Full Edit Modal for Active Joiner
+  const openEditEmployeeModal = async (emp: EmployeeItem) => {
+    setSetupModalHire(null);
+    setEditingEmployee(emp);
+
+    // Populate initial state from known joiner object
+    setSetupForm({
+      employeeCode: emp.employeeCode || "",
+      firstName: emp.firstName,
+      lastName: emp.lastName,
+      workEmail: emp.workEmail || "",
+      personalEmail: emp.personalEmail || "",
+      phone: emp.phone || "",
+      gender: "prefer_not_to_say",
+      dateOfBirth: "",
+      bloodGroup: "",
+      panNumber: "",
+      aadhaarNumber: "",
+      designation: emp.designation || "",
+      departmentId: emp.departmentId || (departments[0]?.id ?? "none"),
+      locationId: emp.locationId || "none",
+      workstationDesk: "",
+      reportingToId: emp.reportingToId || "org",
+      buddyId: emp.buddyId || "none",
+      joiningDate: emp.joiningDate || new Date().toISOString().slice(0, 10),
+      probationMonths: "3",
+      salary: "",
+      employmentType: emp.employmentType || "full_time",
+      bankName: "",
+      accountHolderName: `${emp.firstName} ${emp.lastName}`.trim(),
+      accountNumber: "",
+      ifsc: "",
+      accountType: "savings",
+      emergencyContactName: "",
+      emergencyContactRelation: "",
+      emergencyContactPhone: "",
+      rightToWorkCollected: true,
+      backgroundCheckStatus: "verified",
+      issueAppointmentLetter: false,
+      triggerMailboxInvite: false,
+      assetId: "none",
+    });
+
+    // Deep-load full employee profile details (bank details, emergency contacts, PAN, Aadhaar, DOB, salary)
+    try {
+      const res = await fetch(`/api/employees/${emp.id}`, { credentials: "include" });
+      if (res.ok) {
+        const fullEmp = await res.json();
+        setSetupForm((prev) => ({
+          ...prev,
+          employeeCode: fullEmp.employeeCode || prev.employeeCode,
+          firstName: fullEmp.firstName || prev.firstName,
+          lastName: fullEmp.lastName || prev.lastName,
+          workEmail: fullEmp.workEmail || fullEmp.email || prev.workEmail,
+          personalEmail: fullEmp.personalEmail || prev.personalEmail,
+          phone: fullEmp.phone || prev.phone,
+          gender: fullEmp.gender || prev.gender,
+          dateOfBirth: fullEmp.dateOfBirth || prev.dateOfBirth,
+          bloodGroup: fullEmp.bloodGroup || prev.bloodGroup,
+          panNumber: fullEmp.panNumber || prev.panNumber,
+          aadhaarNumber: fullEmp.aadhaarNumber || prev.aadhaarNumber,
+          designation: fullEmp.designation || prev.designation,
+          departmentId: fullEmp.departmentId || prev.departmentId,
+          locationId: fullEmp.locationId || prev.locationId,
+          reportingToId: fullEmp.reportingToId || prev.reportingToId,
+          buddyId: fullEmp.buddyId || prev.buddyId,
+          joiningDate: fullEmp.joinDate || prev.joiningDate,
+          employmentType: fullEmp.employmentType || prev.employmentType,
+          salary: fullEmp.salary ? String(fullEmp.salary) : prev.salary,
+          bankName: fullEmp.bankDetails?.bankName || prev.bankName,
+          accountHolderName: fullEmp.bankDetails?.accountHolderName || prev.accountHolderName,
+          accountNumber: fullEmp.bankDetails?.accountNumber || prev.accountNumber,
+          ifsc: fullEmp.bankDetails?.ifsc || prev.ifsc,
+          accountType: fullEmp.bankDetails?.accountType || prev.accountType,
+          emergencyContactName: fullEmp.emergencyContact?.name || prev.emergencyContactName,
+          emergencyContactRelation: fullEmp.emergencyContact?.relationship || prev.emergencyContactRelation,
+          emergencyContactPhone: fullEmp.emergencyContact?.phone || prev.emergencyContactPhone,
+        }));
+      }
+    } catch (err) {
+      console.error("Error fetching full employee details:", err);
+    }
+  };
+
   const resendMailboxInvite = async (employeeId: string) => {
     setActionLoading(true);
     try {
@@ -743,13 +820,14 @@ export default function OnboardingPage() {
     }
   };
 
-  // Submit Setup Modal (Convert ATS Hire to HRMS Employee)
+  // Submit Setup Modal (Convert ATS Hire to HRMS Employee OR Update Active Joiner Full Profile)
   const handleSetupSubmit = async () => {
     if (!setupForm.firstName || !setupForm.lastName || !setupForm.workEmail || !setupForm.designation) {
       toast.error("Please fill all required fields");
       return;
     }
 
+    const isEditMode = !!editingEmployee;
     setActionLoading(true);
     try {
       const res = await fetch("/api/onboarding/setup", {
@@ -757,6 +835,7 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
+          employeeId: editingEmployee?.id,
           candidateId: setupModalHire?.candidateId,
           applicationId: setupModalHire?.applicationId,
           offerId: setupModalHire?.offerId,
@@ -802,62 +881,25 @@ export default function OnboardingPage() {
 
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
-        toast.error(errBody.error || "Failed to complete employee onboarding");
+        toast.error(errBody.error || (isEditMode ? "Failed to update employee profile" : "Failed to complete employee onboarding"));
         return;
       }
 
       const body = (await res.json().catch(() => ({}))) as { mailboxInviteDetail?: string };
-      toast.success(
-        body.mailboxInviteDetail
-          ? `Employee onboarded. ${body.mailboxInviteDetail}`
-          : "Employee onboarded! Manager assigned & appointment pack dispatched."
-      );
-      setSetupModalHire(null);
-      loadData();
-    } catch {
-      toast.error("Failed to complete onboarding");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Edit Profile Submit (Manager / Department)
-  const handleEditProfileSubmit = async () => {
-    if (!editProfileEmployee) return;
-    setActionLoading(true);
-    try {
-      const reportingToId =
-        editForm.reportingToId && editForm.reportingToId !== "org" && editForm.reportingToId !== "none"
-          ? editForm.reportingToId
-          : null;
-      const departmentId =
-        editForm.departmentId && editForm.departmentId !== "none"
-          ? editForm.departmentId
-          : null;
-
-      const res = await fetch(`/api/employees/${editProfileEmployee.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          departmentId,
-          reportingToId,
-          designation: editForm.designation.trim() || undefined,
-          phone: editForm.phone?.trim() || null,
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        toast.error(body.error || "Failed to update profile");
-        return;
+      if (isEditMode) {
+        toast.success("Employee onboarding profile & master record updated successfully");
+      } else {
+        toast.success(
+          body.mailboxInviteDetail
+            ? `Employee onboarded. ${body.mailboxInviteDetail}`
+            : "Employee onboarded! Manager assigned & appointment pack dispatched."
+        );
       }
-
-      toast.success("Onboarding profile & manager updated successfully");
-      setEditProfileEmployee(null);
+      setSetupModalHire(null);
+      setEditingEmployee(null);
       loadData();
     } catch {
-      toast.error("Failed to update profile");
+      toast.error(isEditMode ? "Failed to update employee profile" : "Failed to complete onboarding");
     } finally {
       setActionLoading(false);
     }
@@ -1124,8 +1166,12 @@ export default function OnboardingPage() {
                     <CardContent className="p-5 space-y-4">
                       {/* Top Row */}
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                          <Avatar className="h-12 w-12 border shadow-sm">
+                        <div
+                          className="flex items-center gap-4 cursor-pointer group/profile"
+                          onClick={() => openEditEmployeeModal(joiner)}
+                          title="Click to view and edit full employee onboarding profile"
+                        >
+                          <Avatar className="h-12 w-12 border shadow-sm transition-transform group-hover/profile:scale-105">
                             <AvatarFallback className="bg-gradient-to-br from-violet-500 to-indigo-600 text-white font-bold text-base">
                               {joiner.firstName[0]}
                               {joiner.lastName[0]}
@@ -1133,7 +1179,7 @@ export default function OnboardingPage() {
                           </Avatar>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="font-bold text-base">
+                              <h3 className="font-bold text-base group-hover/profile:text-violet-600 dark:group-hover/profile:text-violet-400 transition-colors">
                                 {joiner.firstName} {joiner.lastName}
                               </h3>
                               {joiner.employeeCode && (
@@ -1171,14 +1217,22 @@ export default function OnboardingPage() {
 
                         {/* Profile Badges: Manager & Buddy */}
                         <div className="flex items-center gap-2 flex-wrap">
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/60 border text-xs">
+                          <div
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/60 border text-xs cursor-pointer hover:bg-muted transition-colors"
+                            onClick={() => openEditEmployeeModal(joiner)}
+                            title="Click to edit manager and hierarchy"
+                          >
                             <UserCheck className="h-3.5 w-3.5 text-blue-500" />
                             <span className="text-muted-foreground">Manager:</span>
                             <span className="font-semibold">{joiner.reportingManager || "Direct (Leadership)"}</span>
                           </div>
 
                           {joiner.buddyName && (
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/60 border text-xs">
+                            <div
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/60 border text-xs cursor-pointer hover:bg-muted transition-colors"
+                              onClick={() => openEditEmployeeModal(joiner)}
+                              title="Click to edit buddy assignment"
+                            >
                               <HeartHandshake className="h-3.5 w-3.5 text-pink-500" />
                               <span className="text-muted-foreground">Buddy:</span>
                               <span className="font-semibold">{joiner.buddyName}</span>
@@ -1194,18 +1248,8 @@ export default function OnboardingPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56">
                               <DropdownMenuLabel>Onboarding Actions</DropdownMenuLabel>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setEditProfileEmployee(joiner);
-                                  setEditForm({
-                                    departmentId: joiner.departmentId || "",
-                                    reportingToId: joiner.reportingToId || "",
-                                    designation: joiner.designation,
-                                    phone: joiner.phone || "",
-                                  });
-                                }}
-                              >
-                                <UserCog className="h-4 w-4 mr-2 text-violet-600" /> Edit Manager &amp; Team
+                              <DropdownMenuItem onClick={() => openEditEmployeeModal(joiner)}>
+                                <UserCog className="h-4 w-4 mr-2 text-violet-600" /> Edit Employee Form &amp; Profile
                               </DropdownMenuItem>
 
                               <DropdownMenuItem onClick={() => handleIssueLetter(joiner)}>
@@ -1342,10 +1386,16 @@ export default function OnboardingPage() {
                     </TableHeader>
                     <TableBody>
                       {pendingHires.map((hire) => (
-                        <TableRow key={hire.candidateId} className="hover:bg-muted/40">
+                        <TableRow
+                          key={hire.candidateId}
+                          className="hover:bg-muted/40 cursor-pointer group"
+                          onClick={() => openSetupModal(hire)}
+                        >
                           <TableCell>
                             <div>
-                              <p className="font-bold text-sm">{hire.name}</p>
+                              <p className="font-bold text-sm text-foreground group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+                                {hire.name}
+                              </p>
                               <p className="text-xs text-muted-foreground">{hire.email}</p>
                             </div>
                           </TableCell>
@@ -1381,7 +1431,10 @@ export default function OnboardingPage() {
                             <Button
                               size="sm"
                               className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm gap-1.5"
-                              onClick={() => openSetupModal(hire)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openSetupModal(hire);
+                              }}
                             >
                               <UserPlus className="h-3.5 w-3.5" /> Complete Onboarding
                             </Button>
@@ -1398,16 +1451,44 @@ export default function OnboardingPage() {
       </Tabs>
 
       {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* MODAL: COMPLETE ONBOARDING SETUP (ATS HIRE -> HRMS)             */}
+      {/* MODAL: COMPLETE ONBOARDING SETUP / FULL PROFILE EDIT MODAL      */}
       {/* ═══════════════════════════════════════════════════════════════ */}
-      <Dialog open={!!setupModalHire} onOpenChange={(open) => !open && setSetupModalHire(null)}>
+      <Dialog
+        open={!!setupModalHire || !!editingEmployee}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSetupModalHire(null);
+            setEditingEmployee(null);
+          }
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg">
-              <Sparkles className="h-5 w-5 text-violet-600" /> Complete Employee Onboarding Setup
+              {editingEmployee ? (
+                <>
+                  <UserCog className="h-5 w-5 text-violet-600" /> Edit Employee Onboarding Profile &amp; Master Record
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-5 w-5 text-violet-600" /> Complete Employee Onboarding Setup
+                </>
+              )}
             </DialogTitle>
             <DialogDescription>
-              Configure employee profile, manager hierarchy, campus seating, banking, and trigger automated joining pack for <strong className="text-foreground">{setupModalHire?.name}</strong>.
+              {editingEmployee ? (
+                <>
+                  Update complete employee personal details, designation, department, reporting manager, compensation, bank accounts, and compliance verification for{" "}
+                  <strong className="text-foreground">
+                    {editingEmployee.firstName} {editingEmployee.lastName} ({editingEmployee.employeeCode || "Joiner"})
+                  </strong>.
+                </>
+              ) : (
+                <>
+                  Configure employee profile, manager hierarchy, campus seating, banking, and trigger automated joining pack for{" "}
+                  <strong className="text-foreground">{setupModalHire?.name}</strong>.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -1884,96 +1965,34 @@ export default function OnboardingPage() {
             </div>
           </div>
 
-          <DialogFooter className="border-t pt-4">
-            <Button variant="outline" onClick={() => setSetupModalHire(null)}>
+          <DialogFooter className="border-t pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSetupModalHire(null);
+                setEditingEmployee(null);
+              }}
+            >
               Cancel
             </Button>
             <Button
               onClick={handleSetupSubmit}
               disabled={actionLoading}
-              className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold shadow-md"
+              className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold shadow-md gap-2"
             >
-              {actionLoading ? "Provisioning Employee..." : "Create Employee & Dispatch Onboarding Pack"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* MODAL: EDIT ONBOARDING PROFILE & MANAGER                        */}
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      <Dialog open={!!editProfileEmployee} onOpenChange={(open) => !open && setEditProfileEmployee(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Onboarding Profile</DialogTitle>
-            <DialogDescription>
-              Update team, manager and contact details for {editProfileEmployee?.firstName}{" "}
-              {editProfileEmployee?.lastName}.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Reporting Manager</Label>
-              <Select
-                value={editForm.reportingToId || "org"}
-                onValueChange={(val) => setEditForm({ ...editForm, reportingToId: val })}
-              >
-                <SelectTrigger>
-                  <SelectValue>{employeeLabel(editForm.reportingToId)}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="org">Organization Direct (CEO / Leadership)</SelectItem>
-                  {employees
-                    .filter((e) => e.id !== editProfileEmployee?.id)
-                    .map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.firstName} {e.lastName} ({e.designation || e.employeeCode || "Admin"})
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Department</Label>
-              <Select
-                value={editForm.departmentId || "none"}
-                onValueChange={(val) => setEditForm({ ...editForm, departmentId: val })}
-              >
-                <SelectTrigger>
-                  <SelectValue>{departmentLabel(editForm.departmentId)}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">General / Unassigned</SelectItem>
-                  {departments.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name} ({d.code || "DEPT"})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Designation</Label>
-              <Input
-                value={editForm.designation}
-                onChange={(e) => setEditForm({ ...editForm, designation: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditProfileEmployee(null)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleEditProfileSubmit}
-              disabled={actionLoading}
-              className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white"
-            >
-              {actionLoading ? "Saving..." : "Save Profile"}
+              {actionLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" /> {editingEmployee ? "Saving Changes..." : "Provisioning Employee..."}
+                </>
+              ) : editingEmployee ? (
+                <>
+                  <Check className="h-4 w-4" /> Save Changes &amp; Update Record
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-4 w-4" /> Create Employee &amp; Dispatch Onboarding Pack
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

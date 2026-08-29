@@ -137,8 +137,26 @@ export interface EmployeeRecord {
   /** When `employeeCode` last changed because of a conversion. Undefined for anyone who has never converted. */
   codeChangedAt?: string;
   location?: string;
+  locationId?: string;
   personalEmail?: string;
   workEmail?: string;
+  gender?: string;
+  dateOfBirth?: string;
+  bloodGroup?: string;
+  panNumber?: string;
+  aadhaarNumber?: string;
+  bankDetails?: {
+    bankName: string;
+    accountHolderName: string;
+    accountNumber: string;
+    ifsc: string;
+    accountType: "savings" | "current";
+  };
+  emergencyContact?: {
+    name?: string;
+    relationship?: string;
+    phone?: string;
+  };
   /** Major currency units for display. Stored as minor units in Postgres. */
   salary?: number;
   currency: string;
