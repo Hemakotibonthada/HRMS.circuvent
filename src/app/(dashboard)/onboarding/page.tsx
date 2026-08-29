@@ -226,6 +226,8 @@ export default function OnboardingPage() {
   const [setupModalHire, setSetupModalHire] = useState<PendingHireItem | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<EmployeeItem | null>(null);
   const [letterModalEmployee, setLetterModalEmployee] = useState<EmployeeItem | null>(null);
+  const [joiningLetterModalEmployee, setJoiningLetterModalEmployee] = useState<EmployeeItem | null>(null);
+  const [autoCompletePrerequisites, setAutoCompletePrerequisites] = useState(true);
   const [assetModalEmployee, setAssetModalEmployee] = useState<EmployeeItem | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -905,6 +907,116 @@ export default function OnboardingPage() {
     }
   };
 
+  // Trigger Joining Letter Modal / Check Prerequisites
+  const handleTriggerJoiningLetterClick = (emp: EmployeeItem) => {
+    setJoiningLetterModalEmployee(emp);
+    setAutoCompletePrerequisites(true);
+  };
+
+  // Dispatch Official Joining Letter Mail
+  const handleSendJoiningLetter = async () => {
+    if (!joiningLetterModalEmployee) return;
+    const emp = joiningLetterModalEmployee;
+    setActionLoading(true);
+    try {
+      const targetEmail = emp.personalEmail || emp.workEmail || "employee@circuvent.com";
+      const docRes = await fetch("/api/documents/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          employeeId: emp.id,
+          title: `Joining Letter - ${emp.firstName} ${emp.lastName}`.trim(),
+          recipients: {
+            employee: {
+              email: targetEmail,
+              name: `${emp.firstName} ${emp.lastName}`.trim(),
+            },
+            candidate: {
+              email: targetEmail,
+              name: `${emp.firstName} ${emp.lastName}`.trim(),
+            },
+            signatory: {
+              email: "hr@circuvent.com",
+              name: "Authorised Signatory",
+            },
+          },
+          extraValues: {
+            candidate_name: `${emp.firstName} ${emp.lastName}`.trim(),
+            employee_name: `${emp.firstName} ${emp.lastName}`.trim(),
+            candidate_email: targetEmail,
+            personal_email: targetEmail,
+            designation: emp.designation,
+            join_date: emp.joiningDate,
+          },
+        }),
+      });
+
+      if (!docRes.ok) {
+        const body = await docRes.json().catch(() => ({}));
+        toast.error(body.error || "Could not generate Joining Letter");
+        return;
+      }
+
+      const document = (await docRes.json()) as { id: string };
+      const sendResult = await sendDocument(document.id);
+      const described = describeDelivery(sendResult);
+      if (described.tone === "success") {
+        toast.success(`Official Joining Letter successfully dispatched to ${targetEmail}`);
+      } else {
+        toast.warning(described.message);
+      }
+
+      // If requested, ensure BGC & Offer letter signed tasks are marked completed
+      if (autoCompletePrerequisites) {
+        const bgcDone = isTaskDone(emp.id, "pre", "Background check");
+        const docsDone = isTaskDone(emp.id, "pre", "Offer letter signed");
+
+        if (!bgcDone) {
+          await fetch(`/api/lifecycle/tasks/toggle`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              employeeId: emp.id,
+              taskKey: "pre__background_check",
+              title: "Background check",
+              phase: "pre",
+              phaseOrder: 0,
+              mandatory: true,
+              completed: true,
+            }),
+          }).catch(() => {});
+        }
+
+        if (!docsDone) {
+          await fetch(`/api/lifecycle/tasks/toggle`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              employeeId: emp.id,
+              taskKey: "pre__offer_letter_signed",
+              title: "Offer letter signed",
+              phase: "pre",
+              phaseOrder: 0,
+              mandatory: true,
+              completed: true,
+            }),
+          }).catch(() => {});
+        }
+      }
+
+      setJoiningLetterModalEmployee(null);
+      loadData();
+    } catch (err) {
+      console.error("Error triggering joining letter:", err);
+      toast.error("Could not dispatch Joining Letter");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Issue Appointment Letter directly from action
   const handleIssueLetter = async (emp: EmployeeItem) => {
     setActionLoading(true);
@@ -1158,6 +1270,10 @@ export default function OnboardingPage() {
                 const totalTasksCount = journey?.progress?.total ?? 20;
                 const progressPercent = journey?.progress?.percent ?? 0;
 
+                const isBgcDone = isTaskDone(joiner.id, "pre", "Background check");
+                const isDocsSigned = isTaskDone(joiner.id, "pre", "Offer letter signed");
+                const isReadyForJoiningLetter = isBgcDone && isDocsSigned;
+
                 return (
                   <Card
                     key={joiner.id}
@@ -1190,6 +1306,25 @@ export default function OnboardingPage() {
                               <Badge variant="outline" className={cn("text-xs", phaseInfo.badgeColor)}>
                                 {phaseInfo.label}
                               </Badge>
+
+                              {/* BGC & Document Signature Status Badge */}
+                              {isReadyForJoiningLetter ? (
+                                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 text-[11px] font-semibold flex items-center gap-1">
+                                  <ShieldCheck className="h-3 w-3 text-emerald-600" /> BGC &amp; Docs Signed
+                                </Badge>
+                              ) : isBgcDone ? (
+                                <Badge variant="outline" className="bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800 text-[11px] font-medium flex items-center gap-1">
+                                  <Clock className="h-3 w-3 text-amber-500" /> Docs Signature Pending
+                                </Badge>
+                              ) : isDocsSigned ? (
+                                <Badge variant="outline" className="bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800 text-[11px] font-medium flex items-center gap-1">
+                                  <Clock className="h-3 w-3 text-amber-500" /> BGC Pending
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-400 border-slate-300 dark:border-slate-800 text-[11px] font-medium flex items-center gap-1">
+                                  <Clock className="h-3 w-3 text-slate-400" /> BGC &amp; Docs In Progress
+                                </Badge>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
@@ -1215,7 +1350,7 @@ export default function OnboardingPage() {
                           </div>
                         </div>
 
-                        {/* Profile Badges: Manager & Buddy */}
+                        {/* Profile Badges: Manager & Buddy & Joining Letter Quick Action */}
                         <div className="flex items-center gap-2 flex-wrap">
                           <div
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/60 border text-xs cursor-pointer hover:bg-muted transition-colors"
@@ -1239,6 +1374,27 @@ export default function OnboardingPage() {
                             </div>
                           )}
 
+                          {/* Quick Trigger Joining Letter Button */}
+                          <Button
+                            size="sm"
+                            onClick={() => handleTriggerJoiningLetterClick(joiner)}
+                            disabled={actionLoading}
+                            className={cn(
+                              "gap-1.5 h-8 text-xs font-semibold shadow-sm transition-all",
+                              isReadyForJoiningLetter
+                                ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white"
+                                : "bg-muted text-foreground hover:bg-muted/80 border"
+                            )}
+                            title={
+                              isReadyForJoiningLetter
+                                ? "BGC & Docs completed! Click to trigger official Joining Letter email"
+                                : "Trigger Joining Letter (BGC/Docs pending)"
+                            }
+                          >
+                            <Send className={cn("h-3.5 w-3.5", isReadyForJoiningLetter ? "text-white" : "text-emerald-600")} />
+                            Trigger Joining Letter Mail
+                          </Button>
+
                           {/* Action Dropdown */}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -1246,10 +1402,17 @@ export default function OnboardingPage() {
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuContent align="end" className="w-60">
                               <DropdownMenuLabel>Onboarding Actions</DropdownMenuLabel>
                               <DropdownMenuItem onClick={() => openEditEmployeeModal(joiner)}>
                                 <UserCog className="h-4 w-4 mr-2 text-violet-600" /> Edit Employee Form &amp; Profile
+                              </DropdownMenuItem>
+
+                              <DropdownMenuItem
+                                onClick={() => handleTriggerJoiningLetterClick(joiner)}
+                                className={isReadyForJoiningLetter ? "text-emerald-700 dark:text-emerald-400 font-semibold" : ""}
+                              >
+                                <Send className="h-4 w-4 mr-2 text-emerald-600" /> Trigger Joining Letter Mail {isReadyForJoiningLetter ? "✓" : ""}
                               </DropdownMenuItem>
 
                               <DropdownMenuItem onClick={() => handleIssueLetter(joiner)}>
@@ -2047,6 +2210,142 @@ export default function OnboardingPage() {
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {actionLoading ? "Allocating..." : "Confirm Allocation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* MODAL: TRIGGER OFFICIAL JOINING LETTER MAIL                     */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      <Dialog
+        open={!!joiningLetterModalEmployee}
+        onOpenChange={(open) => !open && setJoiningLetterModalEmployee(null)}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Mail className="h-5 w-5 text-emerald-600" /> Trigger Official Joining Letter Mail
+            </DialogTitle>
+            <DialogDescription>
+              Generate and dispatch official Joining Letter with verified employment terms, joining date, and formal company letterhead for{" "}
+              <strong className="text-foreground">
+                {joiningLetterModalEmployee?.firstName} {joiningLetterModalEmployee?.lastName}
+              </strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          {joiningLetterModalEmployee && (() => {
+            const emp = joiningLetterModalEmployee;
+            const isBgcDone = isTaskDone(emp.id, "pre", "Background check");
+            const isDocsSigned = isTaskDone(emp.id, "pre", "Offer letter signed");
+            const targetEmail = emp.personalEmail || emp.workEmail || "employee@circuvent.com";
+
+            return (
+              <div className="space-y-4 py-2 text-sm">
+                {/* Prerequisites Status Box */}
+                <div className="rounded-xl border p-3.5 bg-muted/40 space-y-2.5">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Onboarding Prerequisites Check
+                  </p>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {isBgcDone ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        ) : (
+                          <Clock className="h-4 w-4 text-amber-500" />
+                        )}
+                        <span className="font-medium text-foreground">Background Verification (BGC)</span>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={isBgcDone ? "bg-emerald-50 text-emerald-700 border-emerald-300" : "bg-amber-50 text-amber-700 border-amber-300"}
+                      >
+                        {isBgcDone ? "Verified & Cleared" : "Pending / In Progress"}
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {isDocsSigned ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        ) : (
+                          <Clock className="h-4 w-4 text-amber-500" />
+                        )}
+                        <span className="font-medium text-foreground">Document Signatures (Offer &amp; Terms)</span>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={isDocsSigned ? "bg-emerald-50 text-emerald-700 border-emerald-300" : "bg-amber-50 text-amber-700 border-amber-300"}
+                      >
+                        {isDocsSigned ? "Signed & Stored" : "Pending Signature"}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recipient & Letter Preview */}
+                <div className="rounded-xl border p-3.5 bg-card space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Dispatch Details
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-muted-foreground">Recipient Email:</span>
+                      <p className="font-semibold text-foreground truncate">{targetEmail}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Designation:</span>
+                      <p className="font-semibold text-foreground truncate">{emp.designation}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Joining Date:</span>
+                      <p className="font-semibold text-foreground">{emp.joiningDate}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Document Format:</span>
+                      <p className="font-semibold text-foreground">Official PDF with Stamp &amp; e-Sign Token</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Auto-complete option if pending */}
+                {(!isBgcDone || !isDocsSigned) && (
+                  <div className="flex items-start gap-2.5 p-3 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/20">
+                    <Checkbox
+                      id="chk-autocomplete"
+                      checked={autoCompletePrerequisites}
+                      onCheckedChange={(c) => setAutoCompletePrerequisites(Boolean(c))}
+                      className="mt-0.5"
+                    />
+                    <label htmlFor="chk-autocomplete" className="text-xs leading-snug cursor-pointer font-medium text-foreground">
+                      Mark BGC and Document Signature as completed upon dispatching this Joining Letter
+                    </label>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          <DialogFooter className="flex items-center justify-between gap-3 pt-2 border-t">
+            <Button variant="outline" onClick={() => setJoiningLetterModalEmployee(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSendJoiningLetter}
+              disabled={actionLoading}
+              className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold shadow-md gap-2"
+            >
+              {actionLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" /> Dispatching Letter...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" /> Send Joining Letter Email
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
