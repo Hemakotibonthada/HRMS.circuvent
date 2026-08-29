@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -134,7 +134,12 @@ export default function MyProfilePage() {
       <div className="animate-slide-up">
         <div className="rounded-2xl bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-600 p-6 text-white shadow-xl">
           <div className="flex items-center gap-4">
-            <Avatar className="h-20 w-20 border-3 border-white/30">
+            <Avatar className="h-20 w-20 border-3 border-white/30 overflow-hidden shrink-0">
+              <AvatarImage
+                src={myProfile?.avatarUrl || user?.avatarUrl || (user?.uid ? `https://auth.circuvent.com/api/profile/avatar/${user.uid}` : undefined)}
+                alt={displayName}
+                className="object-cover h-full w-full"
+              />
               <AvatarFallback className="bg-white/20 text-white text-2xl font-bold">{initials}</AvatarFallback>
             </Avatar>
             <div className="flex-1">

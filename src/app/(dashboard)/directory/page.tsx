@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import {
   Users, Search, LayoutGrid, List, Mail, Phone, MapPin,
@@ -127,7 +127,10 @@ export default function DirectoryPage() {
           {filtered.map(emp => (
             <Card key={emp.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => { setSelected(emp); setProfileTab("employment"); }}>
               <CardContent className="p-5 space-y-3 text-center">
-                <Avatar className="h-16 w-16 mx-auto">
+                <Avatar className="h-16 w-16 mx-auto overflow-hidden">
+                  {emp.avatarUrl && (
+                    <AvatarImage src={emp.avatarUrl} alt={`${emp.firstName} ${emp.lastName}`} className="object-cover h-full w-full" />
+                  )}
                   <AvatarFallback className={cn("bg-gradient-to-br text-white text-lg font-bold", getGradient(emp.id))}>
                     {emp.firstName?.[0]}{emp.lastName?.[0]}
                   </AvatarFallback>
@@ -156,7 +159,10 @@ export default function DirectoryPage() {
           {filtered.map(emp => (
             <Card key={emp.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => { setSelected(emp); setProfileTab("employment"); }}>
               <CardContent className="p-4 flex items-center gap-4">
-                <Avatar className="h-10 w-10">
+                <Avatar className="h-10 w-10 overflow-hidden shrink-0">
+                  {emp.avatarUrl && (
+                    <AvatarImage src={emp.avatarUrl} alt={`${emp.firstName} ${emp.lastName}`} className="object-cover h-full w-full" />
+                  )}
                   <AvatarFallback className={cn("bg-gradient-to-br text-white text-xs font-bold", getGradient(emp.id))}>
                     {emp.firstName[0]}{emp.lastName[0]}
                   </AvatarFallback>
@@ -185,7 +191,10 @@ export default function DirectoryPage() {
           {selected && (
             <div className="space-y-4">
               <div className="flex items-center gap-4">
-                <Avatar className="h-16 w-16">
+                <Avatar className="h-16 w-16 overflow-hidden shrink-0">
+                  {selected.avatarUrl && (
+                    <AvatarImage src={selected.avatarUrl} alt={`${selected.firstName} ${selected.lastName}`} className="object-cover h-full w-full" />
+                  )}
                   <AvatarFallback className={cn("bg-gradient-to-br text-white text-lg font-bold", getGradient(selected.id))}>
                     {selected.firstName?.[0]}{selected.lastName?.[0]}
                   </AvatarFallback>

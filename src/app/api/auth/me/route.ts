@@ -44,9 +44,18 @@ export async function GET(request: NextRequest) {
   // being unable to name your employee record is not a reason to be signed out.
   let identity: { id: string; employeeCode: string; avatarUrl: string | null } | null = null;
   try {
-    identity = await currentEmployeeIdentity({ orgId: claims.org, userId: claims.sub });
+    identity = await currentEmployeeIdentity({
+      orgId: claims.org,
+      userId: claims.sub,
+      email: claims.email,
+    });
   } catch (error) {
     console.error("Could not resolve the employee record for the session:", error);
+  }
+
+  let avatarUrl = identity?.avatarUrl ?? null;
+  if (!avatarUrl && claims.sub && /^[0-9a-f-]{36}$/i.test(claims.sub)) {
+    avatarUrl = `https://auth.circuvent.com/api/profile/avatar/${claims.sub}`;
   }
 
   return NextResponse.json({
@@ -66,7 +75,7 @@ export async function GET(request: NextRequest) {
       // Falls back from the employment record to the account, because the
       // suite's other apps write the account's picture and somebody who set
       // one once should not have to set it again to be recognised here.
-      avatarUrl: identity?.avatarUrl ?? null,
+      avatarUrl,
       role: claims.role,
       email: claims.email,
       displayName,

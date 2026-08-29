@@ -118,9 +118,11 @@ export function AppSidebar() {
             <DropdownMenu>
               <DropdownMenuTrigger render={<SidebarMenuButton size="lg" className="w-full" />}>
                   <Avatar className="h-8 w-8 rounded-lg overflow-hidden shrink-0">
-                    {user?.avatarUrl && (
-                      <AvatarImage src={user.avatarUrl} alt={user?.displayName || "User"} className="object-cover" />
-                    )}
+                    <AvatarImage
+                      src={user?.avatarUrl || (user?.uid ? `https://auth.circuvent.com/api/profile/avatar/${user.uid}` : undefined)}
+                      alt={user?.displayName || "User"}
+                      className="object-cover h-full w-full"
+                    />
                     <AvatarFallback className="rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-xs text-white font-semibold">
                       {initials}
                     </AvatarFallback>

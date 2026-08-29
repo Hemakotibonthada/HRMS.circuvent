@@ -30,6 +30,7 @@ import { users } from "@/db/schema/identity";
 export interface EmployeeLookupContext {
   orgId: string;
   userId: string;
+  email?: string | null;
 }
 
 /** Raised when the caller has an account but no employment record. */
@@ -74,20 +75,24 @@ export async function currentEmployeeId(
       return (rows.find((r) => r.userId === ctx.userId) ?? rows[0]).id;
     }
 
-    // Fallback: match by login email from identity.users
-    const userRows = await t
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.id, ctx.userId))
-      .limit(1);
+    // Fallback: match by login email from context or identity.users
+    let userEmail = ctx.email?.toLowerCase().trim();
+    if (!userEmail) {
+      const userRows = await t
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, ctx.userId))
+        .limit(1);
+      userEmail = userRows[0]?.email?.toLowerCase().trim();
+    }
 
-    if (userRows[0]?.email) {
+    if (userEmail) {
       const emailMatch = await t
         .select({ id: employees.id })
         .from(employees)
         .where(
           and(
-            eq(employees.workEmail, userRows[0].email.toLowerCase()),
+            eq(employees.workEmail, userEmail),
             isNull(employees.deletedAt)
           )
         )
@@ -151,8 +156,50 @@ export async function currentEmployeeIdentity(
       )
       .limit(2);
 
-    if (rows.length === 0) return null;
-    const row = rows.find((r) => r.userId === ctx.userId) ?? rows[0];
+    let row = rows.find((r) => r.userId === ctx.userId) ?? rows[0];
+
+    // Fallback: match by email from context or identity.users
+    if (!row) {
+      let userEmail = ctx.email?.toLowerCase().trim();
+      if (!userEmail) {
+        const userRows = await t
+          .select({ email: users.email })
+          .from(users)
+          .where(eq(users.id, ctx.userId))
+          .limit(1);
+        userEmail = userRows[0]?.email?.toLowerCase().trim();
+      }
+
+      if (userEmail) {
+        const emailMatches = await t
+          .select({
+            id: employees.id,
+            userId: employees.userId,
+            employeeCode: employees.employeeCode,
+            avatarUrl: employees.avatarUrl,
+          })
+          .from(employees)
+          .where(
+            and(
+              eq(employees.workEmail, userEmail),
+              isNull(employees.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (emailMatches[0]) {
+          row = emailMatches[0];
+          // Link user_id for future fast lookups
+          await t
+            .update(employees)
+            .set({ userId: ctx.userId })
+            .where(eq(employees.id, row.id))
+            .catch(() => {});
+        }
+      }
+    }
+
+    if (!row) return null;
 
     let avatarUrl = row.avatarUrl;
     if (!avatarUrl) {
