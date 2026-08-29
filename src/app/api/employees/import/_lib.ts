@@ -9,7 +9,7 @@
 import type { NextRequest } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
-import { departments, employees } from "@/db/schema/hrms";
+import { departments, employees, locations } from "@/db/schema/hrms";
 import { defaultTeamId } from "@/lib/default-team";
 import { employeeCodePrefixFor } from "@/lib/employee-code";
 import { IMPORT_FIELD_OPTIONS, type CanonicalRow, type ImportField } from "@/lib/employee-import";
@@ -186,26 +186,28 @@ export async function commitImport(
   if (rows.length === 0) return [];
 
   return withTenant(ctx, async (tx) => {
-    // Resolved once per commit, not once per row: a several-hundred-row file
-    // for one org has at most a handful of distinct department spellings,
-    // and re-querying the same table once per row would be that many wasted
-    // round trips inside a transaction that is already taking a lock per
-    // code it allocates below.
+    // Resolved once per commit, not once per row:
     const deptRows = await tx.select({ id: departments.id, name: departments.name }).from(departments);
     const deptByName = new Map(deptRows.map((d) => [d.name.trim().toLowerCase(), d.id]));
 
+    const locRows = await tx.select({ id: locations.id, name: locations.name, code: locations.code }).from(locations);
+    const locByName = new Map<string, string>();
+    for (const l of locRows) {
+      locByName.set(l.name.trim().toLowerCase(), l.id);
+      locByName.set(l.code.trim().toLowerCase(), l.id);
+    }
+
+    const empRows = await tx
+      .select({ id: employees.id, workEmail: employees.workEmail, firstName: employees.firstName, lastName: employees.lastName })
+      .from(employees);
+    const empByEmailOrName = new Map<string, string>();
+    for (const e of empRows) {
+      empByEmailOrName.set(e.workEmail.trim().toLowerCase(), e.id);
+      empByEmailOrName.set(`${e.firstName} ${e.lastName}`.trim().toLowerCase(), e.id);
+    }
+
     const created: CommittedEmployee[] = [];
     for (const row of rows) {
-      // The code always comes from `hrms.next_employee_code`, never guessed
-      // here — see the identical call and its comment in
-      // `NeonEmployeeRepository.create()` (`db/repositories/employee.neon.ts`
-      // around line 313). That function holds a transaction-scoped advisory
-      // lock and scans every code ever issued, including soft-deleted rows,
-      // which is what makes two concurrent hires — or, here, two rows in the
-      // same file — incapable of colliding. Called once per row rather than
-      // once for the whole batch because the prefix (and therefore the
-      // sequence drawn from) can differ row to row: an intern and a
-      // permanent hire in the same file draw from CVI- and CV- respectively.
       const prefix = employeeCodePrefixFor(row.employmentType);
       const codeResult = await tx.execute(
         sql`SELECT hrms.next_employee_code(${ctx.orgId}::uuid, ${prefix}) AS code`
@@ -217,15 +219,43 @@ export async function commitImport(
         );
       }
 
-      // An unrecognised or blank department name falls back to the org's
-      // default team rather than rejecting the row — department was never a
-      // required field for this feature, and "General" is the same fallback
-      // a hire through the single-add form gets when no department is
-      // chosen. See `lib/default-team.ts` for why landing somewhere beats
-      // landing nowhere.
       const departmentId =
         (row.department && deptByName.get(row.department.trim().toLowerCase())) ||
         (await defaultTeamId(tx, ctx.orgId));
+
+      const locationId =
+        (row.location && locByName.get(row.location.trim().toLowerCase())) || null;
+
+      const reportingToId =
+        (row.reportingManager && empByEmailOrName.get(row.reportingManager.trim().toLowerCase())) || null;
+
+      let ctcMinor: bigint | null = null;
+      if (row.annualCtc) {
+        const cleanCtc = Number(row.annualCtc.replace(/[^0-9.]/g, ""));
+        if (!isNaN(cleanCtc) && cleanCtc > 0) {
+          ctcMinor = BigInt(Math.round(cleanCtc * 100));
+        }
+      }
+
+      const bankDetails =
+        row.bankName || row.accountNumber || row.ifsc
+          ? {
+              bankName: row.bankName || "",
+              accountHolderName: row.accountHolderName || `${row.firstName} ${row.lastName}`.trim(),
+              accountNumber: row.accountNumber || "",
+              ifsc: row.ifsc || "",
+              accountType: (row.accountType || "savings") as "savings" | "current",
+            }
+          : null;
+
+      const emergencyContact =
+        row.emergencyContactName || row.emergencyContactPhone
+          ? {
+              name: row.emergencyContactName || "",
+              relationship: row.emergencyContactRelationship || "",
+              phone: row.emergencyContactPhone || "",
+            }
+          : null;
 
       const [inserted] = await tx
         .insert(employees)
@@ -235,12 +265,28 @@ export async function commitImport(
           firstName: row.firstName,
           lastName: row.lastName,
           workEmail: row.workEmail,
-          phone: row.phone,
+          personalEmail: row.personalEmail || null,
+          phone: row.phone || null,
+          gender: row.gender || null,
+          dateOfBirth: row.dateOfBirth || null,
+          bloodGroup: row.bloodGroup || null,
           departmentId,
+          locationId,
+          reportingToId,
           designation: row.designation,
           employmentType: (row.employmentType ?? "full_time") as never,
           status: "active" as never,
           joinDate: row.joinDate,
+          ctcMinor,
+          bankDetails: bankDetails as never,
+          emergencyContact: emergencyContact as never,
+          panNumber: row.panNumber || null,
+          aadhaarNumber: row.aadhaarNumber || null,
+          uanNumber: row.uanNumber || null,
+          addressLine1: row.address || null,
+          city: row.city || null,
+          state: row.state || null,
+          postalCode: row.postalCode || null,
         })
         .returning({
           id: employees.id,

@@ -68,13 +68,33 @@ export type ImportField =
   | "joinDate"
   | "designation"
   | "department"
+  | "reportingManager"
+  | "location"
   | "employmentType"
-  | "phone";
+  | "personalEmail"
+  | "phone"
+  | "gender"
+  | "dateOfBirth"
+  | "bloodGroup"
+  | "annualCtc"
+  | "bankName"
+  | "accountHolderName"
+  | "accountNumber"
+  | "ifsc"
+  | "accountType"
+  | "panNumber"
+  | "aadhaarNumber"
+  | "uanNumber"
+  | "emergencyContactName"
+  | "emergencyContactRelationship"
+  | "emergencyContactPhone"
+  | "address"
+  | "city"
+  | "state"
+  | "postalCode";
 
 /**
- * One source of truth for the mapping UI, the same shape as
- * `EMPLOYMENT_TYPE_OPTIONS` in `employee-rules.ts` — a dropdown built from an
- * array here cannot drift from what the importer actually accepts.
+ * One source of truth for the mapping UI, matching all employee & onboarding columns.
  */
 export const IMPORT_FIELD_OPTIONS: ReadonlyArray<{
   value: ImportField;
@@ -88,8 +108,30 @@ export const IMPORT_FIELD_OPTIONS: ReadonlyArray<{
   { value: "joinDate", label: "Join Date", required: true },
   { value: "designation", label: "Designation", required: true },
   { value: "department", label: "Department", required: false },
+  { value: "reportingManager", label: "Reporting Manager", required: false },
+  { value: "location", label: "Work Location", required: false },
   { value: "employmentType", label: "Employment Type", required: false },
+  { value: "personalEmail", label: "Personal Email", required: false },
   { value: "phone", label: "Phone", required: false },
+  { value: "gender", label: "Gender", required: false },
+  { value: "dateOfBirth", label: "Date of Birth", required: false },
+  { value: "bloodGroup", label: "Blood Group", required: false },
+  { value: "annualCtc", label: "Annual CTC (₹)", required: false },
+  { value: "bankName", label: "Bank Name", required: false },
+  { value: "accountHolderName", label: "Account Holder Name", required: false },
+  { value: "accountNumber", label: "Account Number", required: false },
+  { value: "ifsc", label: "IFSC Code", required: false },
+  { value: "accountType", label: "Account Type", required: false },
+  { value: "panNumber", label: "PAN Number", required: false },
+  { value: "aadhaarNumber", label: "Aadhaar Number", required: false },
+  { value: "uanNumber", label: "UAN Number", required: false },
+  { value: "emergencyContactName", label: "Emergency Contact Name", required: false },
+  { value: "emergencyContactRelationship", label: "Emergency Contact Relationship", required: false },
+  { value: "emergencyContactPhone", label: "Emergency Contact Phone", required: false },
+  { value: "address", label: "Address", required: false },
+  { value: "city", label: "City", required: false },
+  { value: "state", label: "State", required: false },
+  { value: "postalCode", label: "Postal Code", required: false },
 ];
 
 /** Spellings a customer's export is likely to use for each field, beyond the field's own name. */
@@ -120,8 +162,76 @@ const FIELD_ALIASES: Record<ImportField, string[]> = {
   ],
   designation: ["designation", "job title", "title", "role", "position"],
   department: ["department", "dept", "team", "division", "business unit"],
+  reportingManager: [
+    "reporting manager",
+    "manager",
+    "reporting to",
+    "reports to",
+    "manager email",
+    "reporting manager email",
+    "supervisor",
+  ],
+  location: [
+    "location",
+    "work location",
+    "campus",
+    "office",
+    "branch",
+    "office location",
+    "site",
+  ],
   employmentType: ["employment type", "emp type", "employee type", "worker type"],
+  personalEmail: [
+    "personal email",
+    "personal email address",
+    "alt email",
+    "alternative email",
+    "secondary email",
+  ],
   phone: ["phone", "phone number", "mobile", "mobile number", "contact number", "telephone"],
+  gender: ["gender", "sex"],
+  dateOfBirth: ["date of birth", "dob", "birth date", "birthdate", "birthday"],
+  bloodGroup: ["blood group", "blood type", "blood"],
+  annualCtc: [
+    "annual ctc",
+    "ctc",
+    "salary",
+    "annual salary",
+    "compensation",
+    "package",
+    "gross salary",
+  ],
+  bankName: ["bank name", "bank"],
+  accountHolderName: ["account holder name", "account holder", "beneficiary name", "name as per bank"],
+  accountNumber: ["account number", "bank account number", "bank account", "acc number", "a/c no"],
+  ifsc: ["ifsc", "ifsc code", "bank ifsc"],
+  accountType: ["account type", "bank account type"],
+  panNumber: ["pan number", "pan", "pan card", "income tax pan"],
+  aadhaarNumber: ["aadhaar number", "aadhaar", "aadhar", "aadhar number", "uid"],
+  uanNumber: ["uan number", "uan", "pf uan", "universal account number"],
+  emergencyContactName: [
+    "emergency contact name",
+    "emergency contact",
+    "emergency contact person",
+    "next of kin name",
+  ],
+  emergencyContactRelationship: [
+    "emergency contact relationship",
+    "emergency contact relation",
+    "relationship",
+    "relation",
+    "emergency relation",
+  ],
+  emergencyContactPhone: [
+    "emergency contact phone",
+    "emergency phone",
+    "emergency contact number",
+    "emergency mobile",
+  ],
+  address: ["address", "address line 1", "street address", "permanent address", "residential address"],
+  city: ["city", "town"],
+  state: ["state", "province"],
+  postalCode: ["postal code", "zip", "zip code", "pincode", "pin code"],
 };
 
 /**
@@ -462,9 +572,31 @@ export interface CanonicalRow {
   joinDate: string;
   designation: string;
   department?: string;
+  reportingManager?: string;
+  location?: string;
   /** Normalised to a stored enum value (e.g. "full_time"), never the raw spelling. */
   employmentType?: string;
+  personalEmail?: string;
   phone?: string;
+  gender?: "male" | "female" | "other" | "prefer_not_to_say";
+  dateOfBirth?: string;
+  bloodGroup?: string;
+  annualCtc?: string;
+  bankName?: string;
+  accountHolderName?: string;
+  accountNumber?: string;
+  ifsc?: string;
+  accountType?: "savings" | "current";
+  panNumber?: string;
+  aadhaarNumber?: string;
+  uanNumber?: string;
+  emergencyContactName?: string;
+  emergencyContactRelationship?: string;
+  emergencyContactPhone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
 }
 
 export interface RejectedRow {
@@ -527,31 +659,25 @@ function resolveName(values: Partial<Record<ImportField, string>>): {
   return { firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1], nameReasons: [] };
 }
 
+function normaliseGender(raw: string): "male" | "female" | "other" | "prefer_not_to_say" | undefined {
+  const lower = raw.trim().toLowerCase();
+  if (lower === "male" || lower === "m") return "male";
+  if (lower === "female" || lower === "f") return "female";
+  if (lower === "other" || lower === "o") return "other";
+  if (lower.includes("prefer") || lower.includes("not")) return "prefer_not_to_say";
+  return undefined;
+}
+
+function normaliseAccountType(raw: string): "savings" | "current" | undefined {
+  const lower = raw.trim().toLowerCase();
+  if (lower.includes("saving")) return "savings";
+  if (lower.includes("current") || lower.includes("salary")) return "current";
+  return undefined;
+}
+
 /**
  * Validates and buckets every row, collecting every problem a row has rather
- * than stopping at its first — the same reason `validateEmployeeFields`
- * returns an array instead of throwing on the first issue.
- *
- * `existingEmails` is the org's current employees (see the collision note on
- * `CanonicalRow.workEmail`), matched case-insensitively; it must include
- * soft-deleted employees, because `employees_org_work_email_key` does — an
- * email is not available again just because the person who held it left.
- * Fetching that set is a database concern and stays out of this file; the
- * caller (`_lib.ts`) supplies it.
- *
- * Bucketing: a row with no problems at all creates. A row whose *only*
- * problem is that the email already belongs to an employee in this
- * organisation skips — that is the ordinary, harmless outcome of importing
- * the same file twice, not a mistake to fix. Anything else rejects, even if
- * a collision is also present, because there is a real data problem the user
- * needs to see regardless of what re-running would do.
- *
- * A duplicate email *within this file* is resolved by file order: the first
- * row to use an email is judged entirely on its own merits (and may itself be
- * rejected for an unrelated reason); every later row with the same email is
- * rejected as a duplicate, full stop. This is simpler to predict than trying
- * to track which duplicate "would have won" — the user fixes or removes the
- * duplicate and re-uploads, same as any other rejection.
+ * than stopping at its first.
  */
 export function planImport(input: {
   rows: ParsedSpreadsheet["rows"];
@@ -617,6 +743,26 @@ export function planImport(input: {
       }
     }
 
+    let dateOfBirth: string | undefined;
+    const dobRaw = (values.dateOfBirth ?? "").trim();
+    if (dobRaw) {
+      const parsedDob = parseTolerantDate(dobRaw);
+      if (!parsedDob) hardReasons.push(`Date of birth "${dobRaw}" could not be parsed`);
+      else dateOfBirth = parsedDob;
+    }
+
+    let gender: "male" | "female" | "other" | "prefer_not_to_say" | undefined;
+    const genderRaw = (values.gender ?? "").trim();
+    if (genderRaw) {
+      gender = normaliseGender(genderRaw) ?? "other";
+    }
+
+    let accountType: "savings" | "current" | undefined;
+    const accTypeRaw = (values.accountType ?? "").trim();
+    if (accTypeRaw) {
+      accountType = normaliseAccountType(accTypeRaw) ?? "savings";
+    }
+
     if (hardReasons.length > 0) {
       toReject.push({
         rowNumber: row.rowNumber,
@@ -638,8 +784,30 @@ export function planImport(input: {
       joinDate,
       designation,
       department: values.department?.trim() || undefined,
+      reportingManager: values.reportingManager?.trim() || undefined,
+      location: values.location?.trim() || undefined,
       employmentType,
+      personalEmail: values.personalEmail?.trim() || undefined,
       phone: values.phone?.trim() || undefined,
+      gender,
+      dateOfBirth,
+      bloodGroup: values.bloodGroup?.trim().toUpperCase() || undefined,
+      annualCtc: values.annualCtc?.trim() || undefined,
+      bankName: values.bankName?.trim() || undefined,
+      accountHolderName: values.accountHolderName?.trim() || undefined,
+      accountNumber: values.accountNumber?.trim() || undefined,
+      ifsc: values.ifsc?.trim().toUpperCase() || undefined,
+      accountType,
+      panNumber: values.panNumber?.trim().toUpperCase() || undefined,
+      aadhaarNumber: values.aadhaarNumber?.trim() || undefined,
+      uanNumber: values.uanNumber?.trim() || undefined,
+      emergencyContactName: values.emergencyContactName?.trim() || undefined,
+      emergencyContactRelationship: values.emergencyContactRelationship?.trim() || undefined,
+      emergencyContactPhone: values.emergencyContactPhone?.trim() || undefined,
+      address: values.address?.trim() || undefined,
+      city: values.city?.trim() || undefined,
+      state: values.state?.trim() || undefined,
+      postalCode: values.postalCode?.trim() || undefined,
     });
   }
 
@@ -654,9 +822,7 @@ function csvCell(value: string): string {
 
 /**
  * The downloadable report: one line per row that did not create, in file
- * order, with every reason collected for it. Rows that *did* create are not
- * in here — this file exists so HR can fix problems and re-upload, and a
- * successfully created row is not a problem.
+ * order, with every reason collected for it.
  */
 export function buildErrorReportCsv(plan: Pick<ImportPlan, "toReject" | "toSkip">): string {
   const lines = [
@@ -681,3 +847,61 @@ export function buildErrorReportCsv(plan: Pick<ImportPlan, "toReject" | "toSkip"
 
   return table.map((cells) => cells.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
+
+// ─── Template generation ─────────────────────────────────────
+
+export const TEMPLATE_COLUMNS = [
+  { header: "First Name *", example1: "Aditi", example2: "Rajesh" },
+  { header: "Last Name *", example1: "Rao", example2: "Sharma" },
+  { header: "Work Email *", example1: "aditi.rao@circuvent.com", example2: "rajesh.sharma@circuvent.com" },
+  { header: "Join Date (YYYY-MM-DD) *", example1: "2024-01-15", example2: "2024-03-01" },
+  { header: "Designation *", example1: "Senior Software Engineer", example2: "Product Manager" },
+  { header: "Department", example1: "Engineering", example2: "Product" },
+  { header: "Reporting Manager Email", example1: "vema@circuvent.com", example2: "aditi.rao@circuvent.com" },
+  { header: "Work Location", example1: "Bangalore HQ", example2: "Hyderabad" },
+  { header: "Employment Type", example1: "full_time", example2: "contract" },
+  { header: "Personal Email", example1: "aditi.rao99@gmail.com", example2: "rajesh.personal@gmail.com" },
+  { header: "Mobile Phone", example1: "+91 9876543210", example2: "+91 9876543211" },
+  { header: "Gender", example1: "female", example2: "male" },
+  { header: "Date of Birth (YYYY-MM-DD)", example1: "1995-06-20", example2: "1992-11-14" },
+  { header: "Blood Group", example1: "O+", example2: "B+" },
+  { header: "Annual CTC", example1: "1800000", example2: "2200000" },
+  { header: "Bank Name", example1: "HDFC Bank", example2: "ICICI Bank" },
+  { header: "Account Holder Name", example1: "Aditi Rao", example2: "Rajesh Sharma" },
+  { header: "Bank Account Number", example1: "5010023456789", example2: "000105009876" },
+  { header: "IFSC Code", example1: "HDFC0001234", example2: "ICIC0000001" },
+  { header: "Account Type", example1: "savings", example2: "current" },
+  { header: "PAN Number", example1: "ABCDE1234F", example2: "WXYZP5678Q" },
+  { header: "Aadhaar Number", example1: "123456789012", example2: "987654321098" },
+  { header: "UAN Number", example1: "100904123456", example2: "100904987654" },
+  { header: "Emergency Contact Name", example1: "Kavita Rao", example2: "Sunita Sharma" },
+  { header: "Emergency Contact Relationship", example1: "Mother", example2: "Spouse" },
+  { header: "Emergency Contact Phone", example1: "+91 9876500001", example2: "+91 9876500002" },
+  { header: "Address", example1: "Flat 402, Green Glen Layout", example2: "Plot 88, Jubilee Hills" },
+  { header: "City", example1: "Bangalore", example2: "Hyderabad" },
+  { header: "State", example1: "Karnataka", example2: "Telangana" },
+  { header: "Postal Code", example1: "560103", example2: "500033" },
+];
+
+export function generateTemplateCsv(): string {
+  const headers = TEMPLATE_COLUMNS.map((c) => c.header);
+  const row1 = TEMPLATE_COLUMNS.map((c) => c.example1);
+  const row2 = TEMPLATE_COLUMNS.map((c) => c.example2);
+  const table = [headers, row1, row2];
+  return table.map((cells) => cells.map(csvCell).join(",")).join("\r\n") + "\r\n";
+}
+
+export function generateTemplateXlsx(): Buffer {
+  const headers = TEMPLATE_COLUMNS.map((c) => c.header);
+  const row1 = TEMPLATE_COLUMNS.map((c) => c.example1);
+  const row2 = TEMPLATE_COLUMNS.map((c) => c.example2);
+  const data = [headers, row1, row2];
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 4, 16) }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Employee Template");
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+}
+

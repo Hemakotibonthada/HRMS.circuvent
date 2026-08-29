@@ -189,6 +189,23 @@ export default function EmployeeImportPage() {
     }
   }
 
+  async function downloadTemplate(format: "xlsx" | "csv" = "xlsx") {
+    try {
+      const response = await fetch(`/api/employees/import/template?format=${format}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        toast.error(await readApiError(response));
+        return;
+      }
+      const blob = await response.blob();
+      triggerCsvDownload(blob, `employee-import-template.${format}`);
+      toast.success(`Downloaded employee import template (.${format})`);
+    } catch {
+      toast.error("Could not download the template.");
+    }
+  }
+
   async function downloadErrors(toReject: RejectedRow[], toSkip: SkippedRow[]) {
     try {
       const response = await fetch("/api/employees/import/errors", {
@@ -231,18 +248,37 @@ export default function EmployeeImportPage() {
       <div>
         <h1 className="text-2xl font-semibold">Import Employees</h1>
         <p className="text-sm text-muted-foreground">
-          Upload a spreadsheet of your existing staff. Nothing is saved until you review a preview and
-          press Commit.
+          Upload a spreadsheet of your existing staff. Download the template below, modify it with your employee data, and upload it to review a preview before committing.
         </p>
       </div>
 
-      {/* ── Upload ── */}
+      {/* ── 1. Upload & Download Template ── */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <FileSpreadsheet className="h-4 w-4" /> 1. Choose a file
-          </CardTitle>
-          <CardDescription>.xlsx or .csv, up to 2,000 rows and 8MB.</CardDescription>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4 text-violet-600" /> 1. Choose a file or download template
+            </CardTitle>
+            <CardDescription>.xlsx or .csv, up to 2,000 rows and 8MB. Includes all onboarding &amp; employee profile fields.</CardDescription>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/50"
+              onClick={() => downloadTemplate("xlsx")}
+            >
+              <Download className="h-3.5 w-3.5" /> Download Excel (.xlsx)
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+              onClick={() => downloadTemplate("csv")}
+            >
+              <Download className="h-3.5 w-3.5" /> CSV
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="flex items-center gap-3">
           <input
@@ -343,14 +379,31 @@ export default function EmployeeImportPage() {
                 <BucketTable
                   rows={preview.plan.toCreate}
                   empty="No rows are ready to create."
-                  columns={["Row", "Name", "Work Email", "Join Date", "Designation", "Department"]}
+                  columns={[
+                    "Row",
+                    "Name",
+                    "Work Email",
+                    "Phone",
+                    "Join Date",
+                    "Designation",
+                    "Department",
+                    "Location",
+                    "Manager",
+                    "Annual CTC",
+                  ]}
                   render={(r) => [
                     r.rowNumber,
                     `${r.firstName} ${r.lastName}`,
                     r.workEmail,
+                    r.phone || "—",
                     r.joinDate,
                     r.designation,
                     r.department || "—",
+                    r.location || "—",
+                    r.reportingManager || "—",
+                    r.annualCtc && !isNaN(Number(r.annualCtc.replace(/[^0-9.]/g, "")))
+                      ? `₹${Number(r.annualCtc.replace(/[^0-9.]/g, "")).toLocaleString("en-IN")}`
+                      : "—",
                   ]}
                 />
               </TabsContent>

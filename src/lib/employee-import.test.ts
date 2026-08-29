@@ -18,6 +18,8 @@ import {
   parseTolerantDate,
   planImport,
   suggestColumnMapping,
+  generateTemplateCsv,
+  generateTemplateXlsx,
   type ImportField,
 } from "./employee-import";
 
@@ -605,3 +607,36 @@ describe("buildErrorReportCsv", () => {
     expect(csv).toBe("Row,Status,Work Email,Problems\r\n");
   });
 });
+
+describe("template generation", () => {
+  it("generates a CSV template containing all onboarding fields and sample rows", () => {
+    const csv = generateTemplateCsv();
+    const lines = csv.trim().split("\r\n");
+    expect(lines.length).toBe(3); // header + 2 example rows
+    expect(lines[0]).toContain("First Name *");
+    expect(lines[0]).toContain("Work Email *");
+    expect(lines[0]).toContain("Designation *");
+    expect(lines[0]).toContain("Department");
+    expect(lines[0]).toContain("Reporting Manager Email");
+    expect(lines[0]).toContain("Work Location");
+    expect(lines[0]).toContain("Bank Name");
+    expect(lines[0]).toContain("PAN Number");
+    expect(lines[0]).toContain("Aadhaar Number");
+    expect(lines[0]).toContain("Emergency Contact Name");
+    expect(lines[1]).toContain("aditi.rao@circuvent.com");
+    expect(lines[2]).toContain("rajesh.sharma@circuvent.com");
+  });
+
+  it("generates a valid XLSX buffer readable by parseSpreadsheet", () => {
+    const buffer = generateTemplateXlsx();
+    expect(buffer).toBeInstanceOf(Buffer);
+    expect(buffer.length).toBeGreaterThan(0);
+
+    const parsed = parseSpreadsheet(buffer, "template.xlsx");
+    expect(parsed.headers).toContain("First Name *");
+    expect(parsed.headers).toContain("Work Email *");
+    expect(parsed.rows.length).toBe(2);
+    expect(parsed.rows[0].values[0]).toBe("Aditi");
+  });
+});
+
