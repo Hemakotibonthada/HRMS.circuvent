@@ -212,6 +212,7 @@ export const DELEGATABLE_APPS = [
   "office",
   "cv365",
   "mail",
+  "share",
 ] as const;
 
 /**
