@@ -1,7 +1,7 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, after } from "next/server";
 import { cookies } from "next/headers";
 import { exchangeCode, requestedApp, safeReturnTo, ssoEnabled, verifyToken } from "@/lib/circuvent-sso";
-import { signInWithSso, type SignInFailure } from "@/lib/auth/session";
+import { signInWithSso, recordSignInWorkLog, type SignInFailure } from "@/lib/auth/session";
 import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
@@ -112,6 +112,11 @@ export async function GET(req: NextRequest) {
     const res = NextResponse.redirect(destination);
     res.cookies.set(ACCESS_COOKIE, result.accessToken, accessCookieOptions());
     res.cookies.set(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions());
+
+    after(async () => {
+      await recordSignInWorkLog(result.user.id, result.user.orgId, result.user.email);
+    });
+
     return res;
   } catch (e) {
     console.error("SSO callback failed:", e);

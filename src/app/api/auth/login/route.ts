@@ -10,9 +10,9 @@
 // address return the same status and message, because differing responses turn
 // the form into an account-enumeration oracle.
 
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, after } from "next/server";
 import { z } from "zod";
-import { signIn, type SignInFailure } from "@/lib/auth/session";
+import { signIn, recordSignInWorkLog, type SignInFailure } from "@/lib/auth/session";
 import {
   ACCESS_COOKIE,
   ACCESS_TOKEN_TTL_SECONDS,
@@ -123,5 +123,10 @@ export async function POST(request: NextRequest) {
   });
   response.cookies.set(ACCESS_COOKIE, result.accessToken, accessCookieOptions());
   response.cookies.set(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions());
+
+  after(async () => {
+    await recordSignInWorkLog(result.user.id, result.user.orgId, result.user.email);
+  });
+
   return response;
 }
