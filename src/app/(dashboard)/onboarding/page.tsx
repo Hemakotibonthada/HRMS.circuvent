@@ -64,6 +64,8 @@ const MANDATORY_TASKS = new Set([
   "90-day completion review",
 ]);
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function taskKeyFor(phase: string, task: string): string {
   return `${phase}__${task.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")}`;
 }
@@ -96,6 +98,15 @@ export interface DepartmentItem {
   code: string;
 }
 
+export interface LocationItem {
+  id: string;
+  name: string;
+  code?: string;
+  city?: string;
+  country?: string;
+  isActive?: boolean;
+}
+
 export interface AssetItem {
   id: string;
   assetTag: string;
@@ -126,6 +137,9 @@ export interface PendingHireItem {
   designation: string | null;
   departmentId: string | null;
   departmentName: string | null;
+  location?: string | null;
+  locationId?: string | null;
+  locationName?: string | null;
   offerStatus: string | null;
   annualCtcMinor: string | null;
   proposedStartDate: string | null;
@@ -208,6 +222,7 @@ export default function OnboardingPage() {
   const rbac = useRBAC();
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [departments, setDepartments] = useState<DepartmentItem[]>([]);
+  const [locations, setLocations] = useState<LocationItem[]>([]);
   const [pendingHires, setPendingHires] = useState<PendingHireItem[]>([]);
   const [availableAssets, setAvailableAssets] = useState<AssetItem[]>([]);
   const [journeys, setJourneys] = useState<Record<string, LifecycleJourney>>({});
@@ -276,9 +291,10 @@ export default function OnboardingPage() {
   const loadData = useCallback(async () => {
     try {
       setRefreshing(true);
-      const [empRes, deptRes, pendingRes, journeysRes, assetsRes] = await Promise.all([
+      const [empRes, deptRes, locRes, pendingRes, journeysRes, assetsRes] = await Promise.all([
         fetch("/api/employees?pageSize=200", { credentials: "include" }),
         fetch("/api/departments", { credentials: "include" }),
+        fetch("/api/locations", { credentials: "include" }),
         fetch("/api/hires/pending", { credentials: "include" }),
         fetch("/api/lifecycle?kind=onboarding&pageSize=200", { credentials: "include" }),
         fetch("/api/assets?state=in_stock&pageSize=100", { credentials: "include" }),
@@ -344,6 +360,19 @@ export default function OnboardingPage() {
           code: d.code || "DEPT",
         }));
         setDepartments(list);
+      }
+
+      if (locRes.ok) {
+        const data = await locRes.json();
+        const list = (data.items || data.locations || data.data || []).map((l: any) => ({
+          id: String(l.id),
+          name: l.name || "Campus",
+          code: l.code || "",
+          city: l.city || "",
+          country: l.country || "India",
+          isActive: l.isActive ?? true,
+        }));
+        setLocations(list);
       }
 
       if (pendingRes.ok) {
@@ -591,6 +620,17 @@ export default function OnboardingPage() {
     return "General / Unassigned";
   };
 
+  const locationLabel = (id?: string | null) => {
+    if (!id || id === "none" || id === "unassigned") return "General / Unassigned Campus";
+    const match = locations.find((l) => l.id === id);
+    if (match) return `${match.name} ${match.city ? `(${match.city})` : ""}`.trim();
+    const nameMatch = locations.find(
+      (l) => l.name.toLowerCase() === id.toLowerCase() || (l.code && l.code.toLowerCase() === id.toLowerCase())
+    );
+    if (nameMatch) return `${nameMatch.name} ${nameMatch.city ? `(${nameMatch.city})` : ""}`.trim();
+    return "General / Unassigned Campus";
+  };
+
   const employeeLabel = (id?: string | null) => {
     if (!id || id === "none" || id === "org") return "Organization Direct (CEO / Leadership)";
     const match = employees.find((e) => e.id === id);
@@ -677,6 +717,23 @@ export default function OnboardingPage() {
       resolvedDeptId = departments[0].id;
     }
 
+    let resolvedLocId = "none";
+    const locSearch = hire.location || hire.locationName || "";
+    if (hire.locationId && locations.some((l) => l.id === hire.locationId)) {
+      resolvedLocId = hire.locationId;
+    } else if (locSearch) {
+      const locMatch = locations.find(
+        (l) =>
+          l.name.toLowerCase().includes(locSearch.toLowerCase()) ||
+          (l.city && l.city.toLowerCase().includes(locSearch.toLowerCase())) ||
+          (l.code && l.code.toLowerCase() === locSearch.toLowerCase())
+      );
+      if (locMatch) resolvedLocId = locMatch.id;
+    }
+    if (resolvedLocId === "none" && locations.length > 0) {
+      resolvedLocId = locations[0].id;
+    }
+
     setSetupForm({
       employeeCode: nextCode,
       firstName: hire.firstName,
@@ -691,7 +748,7 @@ export default function OnboardingPage() {
       aadhaarNumber: hire.aadhaarNumber || "",
       designation: hire.designation || "Software Engineer",
       departmentId: resolvedDeptId,
-      locationId: "none",
+      locationId: resolvedLocId,
       workstationDesk: "",
       reportingToId: "org",
       buddyId: "none",
@@ -720,6 +777,14 @@ export default function OnboardingPage() {
     setSetupModalHire(null);
     setEditingEmployee(emp);
 
+    let initialLocId = emp.locationId || "none";
+    if (initialLocId !== "none" && !locations.some((l) => l.id === initialLocId)) {
+      const match = locations.find(
+        (l) => l.name.toLowerCase() === initialLocId.toLowerCase() || (l.code && l.code.toLowerCase() === initialLocId.toLowerCase())
+      );
+      if (match) initialLocId = match.id;
+    }
+
     // Populate initial state from known joiner object
     setSetupForm({
       employeeCode: emp.employeeCode || "",
@@ -735,7 +800,7 @@ export default function OnboardingPage() {
       aadhaarNumber: "",
       designation: emp.designation || "",
       departmentId: emp.departmentId || (departments[0]?.id ?? "none"),
-      locationId: emp.locationId || "none",
+      locationId: initialLocId,
       workstationDesk: "",
       reportingToId: emp.reportingToId || "org",
       buddyId: emp.buddyId || "none",
@@ -763,6 +828,15 @@ export default function OnboardingPage() {
       const res = await fetch(`/api/employees/${emp.id}`, { credentials: "include" });
       if (res.ok) {
         const fullEmp = await res.json();
+        const rawLoc = fullEmp.locationId || emp.locationId;
+        let deepLoc = rawLoc || "none";
+        if (deepLoc !== "none" && !locations.some((l) => l.id === deepLoc)) {
+          const match = locations.find(
+            (l) => l.name.toLowerCase() === deepLoc.toLowerCase() || (l.code && l.code.toLowerCase() === deepLoc.toLowerCase())
+          );
+          if (match) deepLoc = match.id;
+        }
+
         setSetupForm((prev) => ({
           ...prev,
           employeeCode: fullEmp.employeeCode || prev.employeeCode,
@@ -778,7 +852,7 @@ export default function OnboardingPage() {
           aadhaarNumber: fullEmp.aadhaarNumber || prev.aadhaarNumber,
           designation: fullEmp.designation || prev.designation,
           departmentId: fullEmp.departmentId || prev.departmentId,
-          locationId: fullEmp.locationId || prev.locationId,
+          locationId: deepLoc,
           reportingToId: fullEmp.reportingToId || prev.reportingToId,
           buddyId: fullEmp.buddyId || prev.buddyId,
           joiningDate: fullEmp.joinDate || prev.joiningDate,
@@ -830,6 +904,44 @@ export default function OnboardingPage() {
     }
 
     const isEditMode = !!editingEmployee;
+    const resolvedDeptId =
+      setupForm.departmentId && setupForm.departmentId !== "none"
+        ? departments.find(
+            (d) =>
+              d.id === setupForm.departmentId ||
+              d.name.toLowerCase() === setupForm.departmentId.toLowerCase() ||
+              (d.code && d.code.toLowerCase() === setupForm.departmentId.toLowerCase())
+          )?.id || (UUID_REGEX.test(setupForm.departmentId) ? setupForm.departmentId : undefined)
+        : undefined;
+
+    const resolvedLocId =
+      setupForm.locationId && setupForm.locationId !== "none" && setupForm.locationId !== "unassigned"
+        ? locations.find(
+            (l) =>
+              l.id === setupForm.locationId ||
+              l.name.toLowerCase() === setupForm.locationId.toLowerCase() ||
+              (l.code && l.code.toLowerCase() === setupForm.locationId.toLowerCase())
+          )?.id || (UUID_REGEX.test(setupForm.locationId) ? setupForm.locationId : undefined)
+        : undefined;
+
+    const resolvedReportingId =
+      setupForm.reportingToId && setupForm.reportingToId !== "none" && setupForm.reportingToId !== "org"
+        ? employees.find((e) => e.id === setupForm.reportingToId)?.id ||
+          (UUID_REGEX.test(setupForm.reportingToId) ? setupForm.reportingToId : undefined)
+        : undefined;
+
+    const resolvedBuddyId =
+      setupForm.buddyId && setupForm.buddyId !== "none"
+        ? employees.find((e) => e.id === setupForm.buddyId)?.id ||
+          (UUID_REGEX.test(setupForm.buddyId) ? setupForm.buddyId : undefined)
+        : undefined;
+
+    const resolvedAssetId =
+      setupForm.assetId && setupForm.assetId !== "none"
+        ? availableAssets.find((a) => a.id === setupForm.assetId)?.id ||
+          (UUID_REGEX.test(setupForm.assetId) ? setupForm.assetId : undefined)
+        : undefined;
+
     setActionLoading(true);
     try {
       const res = await fetch("/api/onboarding/setup", {
@@ -853,14 +965,11 @@ export default function OnboardingPage() {
           panNumber: setupForm.panNumber || undefined,
           aadhaarNumber: setupForm.aadhaarNumber || undefined,
           designation: setupForm.designation,
-          departmentId: setupForm.departmentId && setupForm.departmentId !== "none" ? setupForm.departmentId : undefined,
-          locationId: setupForm.locationId && setupForm.locationId !== "none" ? setupForm.locationId : undefined,
+          departmentId: resolvedDeptId,
+          locationId: resolvedLocId,
           workstationDesk: setupForm.workstationDesk || undefined,
-          reportingToId:
-            setupForm.reportingToId && setupForm.reportingToId !== "none" && setupForm.reportingToId !== "org"
-              ? setupForm.reportingToId
-              : undefined,
-          buddyId: setupForm.buddyId && setupForm.buddyId !== "none" ? setupForm.buddyId : undefined,
+          reportingToId: resolvedReportingId,
+          buddyId: resolvedBuddyId,
           joiningDate: setupForm.joiningDate,
           probationMonths: setupForm.probationMonths ? Number(setupForm.probationMonths) : undefined,
           salary: setupForm.salary ? Number(setupForm.salary) : undefined,
@@ -877,7 +986,7 @@ export default function OnboardingPage() {
           backgroundCheckStatus: setupForm.backgroundCheckStatus,
           issueAppointmentLetter: setupForm.issueAppointmentLetter,
           triggerMailboxInvite: setupForm.triggerMailboxInvite,
-          assetId: setupForm.assetId && setupForm.assetId !== "none" ? setupForm.assetId : undefined,
+          assetId: resolvedAssetId,
         }),
       });
 
@@ -1893,17 +2002,21 @@ export default function OnboardingPage() {
                 <div className="space-y-1.5 min-w-0">
                   <Label className="text-xs">Campus / Work Location</Label>
                   <Select
-                    value={setupForm.locationId}
+                    value={setupForm.locationId || "none"}
                     onValueChange={(val) => setSetupForm({ ...setupForm, locationId: val })}
                   >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select location" />
+                    <SelectTrigger className="w-full truncate">
+                      <SelectValue placeholder="Select location">
+                        {locationLabel(setupForm.locationId)}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Bangalore HQ (Main Campus)</SelectItem>
-                      <SelectItem value="hyd">Hyderabad Innovation Labs</SelectItem>
-                      <SelectItem value="vja">Vijayawada Tech Park</SelectItem>
-                      <SelectItem value="remote">Remote / WFH</SelectItem>
+                      <SelectItem value="none">General / Unassigned Campus</SelectItem>
+                      {locations.map((loc) => (
+                        <SelectItem key={loc.id} value={loc.id}>
+                          {loc.name} {loc.city ? `(${loc.city})` : ""}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

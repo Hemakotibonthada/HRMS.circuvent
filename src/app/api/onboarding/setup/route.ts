@@ -36,10 +36,22 @@ import { sendMailboxInvite } from "@/lib/onboarding/mailbox-invite";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const optionalUuid = z.preprocess((v) => {
   if (typeof v === "string") {
     const trimmed = v.trim();
-    if (!trimmed || trimmed === "none" || trimmed === "null" || trimmed === "undefined") return null;
+    if (
+      !trimmed ||
+      trimmed === "none" ||
+      trimmed === "org" ||
+      trimmed === "null" ||
+      trimmed === "undefined" ||
+      !UUID_REGEX.test(trimmed)
+    ) {
+      return null;
+    }
+    return trimmed;
   }
   return v;
 }, z.string().uuid().optional().nullable());
