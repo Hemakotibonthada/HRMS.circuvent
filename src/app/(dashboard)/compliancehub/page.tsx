@@ -10,12 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import {
   Shield, Plus, Search, CheckCircle2, AlertTriangle, Clock, XCircle,
-  FileText, Scale, HardHat, Lock, GraduationCap, BarChart3,
+  FileText, Scale, HardHat, Lock, GraduationCap, BarChart3, Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -324,50 +324,73 @@ export default function ComplianceHubPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Create Dialog */}
+      {/* ENHANCED CREATE COMPLIANCE ITEM DIALOG */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add Compliance Item</DialogTitle></DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Title</Label>
-              <Input id="title" name="title" required placeholder="e.g. Annual safety audit" />
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-md">
+                <Shield className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">Add Compliance Requirement</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Track statutory guidelines, periodic labor audits, and legal mandates.
+                </DialogDescription>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select name="category" required>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+          </DialogHeader>
+
+          <form onSubmit={handleCreate} className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="title" className="text-xs font-semibold">Requirement Title <span className="text-destructive">*</span></Label>
+              <Input id="title" name="title" required placeholder="e.g. Annual Workplace Safety &amp; Fire Drill Audit" className="h-9 text-xs" />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Regulatory Category <span className="text-destructive">*</span></Label>
+                <Select name="category" defaultValue={COMPLIANCE_CATEGORIES[0].value} required>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     {COMPLIANCE_CATEGORIES.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      <SelectItem key={c.value} value={c.value} className="text-xs">{c.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Priority</Label>
-                <Select name="priority" required>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Priority Level <span className="text-destructive">*</span></Label>
+                <Select name="priority" defaultValue="high" required>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select priority" /></SelectTrigger>
                   <SelectContent>
                     {PRIORITIES.map((p) => (
-                      <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>
+                      <SelectItem key={p} value={p} className="capitalize text-xs">{p}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="dueDate">Due Date</Label>
-              <Input id="dueDate" name="dueDate" type="date" required />
+
+            <div className="space-y-1.5">
+              <Label htmlFor="dueDate" className="text-xs font-semibold flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                Mandatory Compliance Deadline <span className="text-destructive">*</span>
+              </Label>
+              <Input id="dueDate" name="dueDate" type="date" required className="h-9 text-xs" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea id="description" name="description" rows={3} placeholder="Describe the compliance requirement..." />
+
+            <div className="space-y-1.5">
+              <Label htmlFor="description" className="text-xs font-semibold">Compliance Details &amp; Guidelines</Label>
+              <Textarea id="description" name="description" rows={3} placeholder="Provide audit prerequisites, filing guidelines, or regulatory authorities involved..." className="text-xs resize-none" />
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0">Create</Button>
+
+            <DialogFooter className="pt-2 gap-2">
+              <Button type="button" variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5">
+                <Plus className="h-4 w-4" /> Save Requirement
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

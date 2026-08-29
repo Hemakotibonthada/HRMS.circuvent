@@ -8,17 +8,18 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import {
   Car, Plus, Search, CheckCircle2, Clock, MapPin,
   AlertTriangle, Wrench, Building2, Calendar,
-  ParkingCircle, Square, CircleDot,
+  ParkingCircle, Square, CircleDot, User, Zap, Bike,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { genericService } from "@/lib/collection-service";
+import { genericService, COLLECTIONS } from "@/lib/collection-service";
+import { useEmployeeStore, startSync } from "@/stores/unified-store";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { clickable } from "@/lib/a11y/clickable";
 
@@ -75,31 +76,34 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function ParkingPage() {
   const store = useParkingStore();
+  const empStore = useEmployeeStore();
   const { items: spots, loading } = store;
+  const { items: employees, initialized: empInit } = empStore;
+
   const [initialized, setInitialized] = useState(false);
   const [selectedFloor, setSelectedFloor] = useState("Ground");
   const [bookOpen, setBookOpen] = useState(false);
   const [tab, setTab] = useState("floorplan");
+  const [vehicleType, setVehicleType] = useState("car");
   const [form, setForm] = useState({
-    floor: "Ground", zone: "A", spot: "1", date: "", vehicle: "", bookedBy: "",
+    floor: "Ground", zone: "A", spot: "1", date: new Date().toISOString().slice(0, 10), vehicle: "", bookedBy: "",
   });
 
   useEffect(() => {
-    if (initialized) return;
-    store.setLoading(true);
-    genericService("parking").getAll().then((data) => {
-      store.setItems(data as unknown as ParkingSpot[]);
-      setInitialized(true);
-    }).catch(() => {
-      store.setError("Failed to load parking data");
-      store.setLoading(false);
-      setInitialized(true);
-    });
-    // `store` is deliberately not a dependency — it is the whole zustand state
-    // object, so setLoading() above replaces it and listing it here re-triggers
-    // this effect forever. `initialized` is the real guard.
+    if (!initialized) {
+      store.setLoading(true);
+      genericService("parking").getAll().then((data) => {
+        store.setItems(data as unknown as ParkingSpot[]);
+        setInitialized(true);
+      }).catch(() => {
+        store.setError("Failed to load parking data");
+        store.setLoading(false);
+        setInitialized(true);
+      });
+    }
+    if (!empInit) startSync(COLLECTIONS.employees, empStore);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialized]);
+  }, [initialized, empInit]);
 
   // KPIs
   const totalSpots = FLOORS.length * ZONES.length * SPOTS_PER_ZONE;
@@ -268,48 +272,50 @@ export default function ParkingPage() {
           {myBookings.length === 0 ? (
             <DataEmptyState icon={Car} title="No bookings" description="Book a parking spot to see it here." compact actionLabel="Book Spot" onAction={() => setBookOpen(true)} />
           ) : myBookings.map(b => (
-            <Card key={b.id} className="border-0 shadow-sm">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-                      <Car className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold">{b.zone}-{b.spot}</h3>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                        <span className="flex items-center gap-1"><Building2 className="h-3 w-3" />{b.floor}</span>
-                        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{b.date}</span>
-                        <span>{b.vehicle}</span>
-                      </div>
-                    </div>
+            <Card key={b.id} className="border hover:shadow-xs transition-shadow">
+              <CardContent className="p-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center">
+                    <Car className="h-4 w-4" />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className="status-active">Booked</Badge>
-                    <span className="text-sm font-medium">{b.bookedBy}</span>
+                  <div>
+                    <h3 className="font-semibold text-sm">Zone {b.zone}-{b.spot} ({b.floor} Level)</h3>
+                    <p className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+                      <span>{b.date}</span>
+                      <span>&middot;</span>
+                      <span>{b.vehicle}</span>
+                      <span>&middot;</span>
+                      <span className="font-medium text-foreground">{b.bookedBy}</span>
+                    </p>
                   </div>
                 </div>
+                <Badge className="bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs">Booked</Badge>
               </CardContent>
             </Card>
           ))}
         </TabsContent>
 
-        {/* Summary */}
-        <TabsContent value="summary" className="mt-4">
-          <Card className="border-0 shadow-sm">
-            <CardHeader><CardTitle className="text-base">Daily Availability Summary</CardTitle></CardHeader>
+        {/* Occupancy Analytics */}
+        <TabsContent value="occupancy" className="mt-4">
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-semibold">Level-wise Parking Availability</CardTitle></CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {dailySummary.map(s => (
-                  <div key={s.floor} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                  <div key={s.floor} className="flex items-center justify-between p-3.5 rounded-xl border bg-muted/20">
                     <div className="flex items-center gap-3">
-                      <Building2 className="h-5 w-5 text-muted-foreground" />
-                      <span className="font-medium">{s.floor}</span>
+                      <div className="p-2 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600">
+                        <Building2 className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-sm">{s.floor} Level</p>
+                        <p className="text-xs text-muted-foreground">{s.total} total spaces</p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4 text-sm">
-                      <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3 w-3" />{s.available} available</span>
-                      <span className="flex items-center gap-1 text-violet-600"><Car className="h-3 w-3" />{s.booked} booked</span>
-                      <span className="flex items-center gap-1 text-amber-600"><Wrench className="h-3 w-3" />{s.maint} maintenance</span>
+                    <div className="flex items-center gap-3 text-xs">
+                      <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30">{s.available} free</Badge>
+                      <Badge variant="outline" className="text-violet-600 border-violet-200 bg-violet-50 dark:bg-violet-950/30">{s.booked} occupied</Badge>
+                      {s.maint > 0 && <Badge variant="outline" className="text-amber-600 border-amber-200">{s.maint} maint</Badge>}
                     </div>
                   </div>
                 ))}
@@ -319,61 +325,162 @@ export default function ParkingPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Book Dialog */}
+      {/* ENHANCED BOOK PARKING DIALOG */}
       <Dialog open={bookOpen} onOpenChange={setBookOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Book Parking Spot</DialogTitle></DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Floor</Label>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Car className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">Book Parking Spot</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Reserve a dedicated vehicle parking bay for office transit.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            {/* Employee Selector */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-violet-500" />
+                Employee Name <span className="text-destructive">*</span>
+              </Label>
+              {employees && employees.length > 0 ? (
+                <Select value={form.bookedBy} onValueChange={v => setForm(f => ({ ...f, bookedBy: v }))}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Select employee..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employees.map((emp) => {
+                      const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                      const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                      return (
+                        <SelectItem key={emp.id} value={name} className="text-xs">
+                          <span className="font-medium">{name}</span>
+                          {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={form.bookedBy}
+                  onChange={e => setForm(f => ({ ...f, bookedBy: e.target.value }))}
+                  placeholder="e.g. Rahul Sharma"
+                  className="h-9 text-xs"
+                  required
+                />
+              )}
+            </div>
+
+            {/* Vehicle Type Pills */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Vehicle Type</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "car", label: "Car (4-Wheeler)", icon: Car },
+                  { id: "bike", label: "Two-Wheeler", icon: Bike },
+                  { id: "ev", label: "EV Charging Bay", icon: Zap },
+                ].map(vt => {
+                  const Icon = vt.icon;
+                  const active = vehicleType === vt.id;
+                  return (
+                    <button
+                      key={vt.id}
+                      type="button"
+                      onClick={() => setVehicleType(vt.id)}
+                      className={cn(
+                        "p-2 rounded-lg border text-left flex items-center gap-2 transition-all",
+                        active
+                          ? "bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-700 dark:text-violet-300 shadow-xs"
+                          : "bg-background hover:bg-muted/50 text-muted-foreground border-border"
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+                      <span className="font-medium text-xs truncate">{vt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Floor, Zone, Spot */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Level / Floor</Label>
                 <Select value={form.floor} onValueChange={v => setForm(f => ({ ...f, floor: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {FLOORS.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                    {FLOORS.map(f => <SelectItem key={f} value={f} className="text-xs">{f}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Zone</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Zone</Label>
                 <Select value={form.zone} onValueChange={v => setForm(f => ({ ...f, zone: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {ZONES.map(z => <SelectItem key={z} value={z}>{z}</SelectItem>)}
+                    {ZONES.map(z => <SelectItem key={z} value={z} className="text-xs">Zone {z}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Spot</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Slot #</Label>
                 <Select value={form.spot} onValueChange={v => setForm(f => ({ ...f, spot: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Array.from({ length: SPOTS_PER_ZONE }, (_, i) => (
-                      <SelectItem key={i + 1} value={`${i + 1}`}>{i + 1}</SelectItem>
+                      <SelectItem key={i + 1} value={`${i + 1}`} className="text-xs">Slot {i + 1}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Date *</Label>
-                <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+
+            {/* Date & Vehicle Number */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                  Booking Date <span className="text-destructive">*</span>
+                </Label>
+                <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="h-9 text-xs" required />
               </div>
-              <div className="space-y-2">
-                <Label>Vehicle Number *</Label>
-                <Input value={form.vehicle} onChange={e => setForm(f => ({ ...f, vehicle: e.target.value }))} placeholder="KA-01-XX-1234" />
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Car className="h-3.5 w-3.5 text-muted-foreground" />
+                  Vehicle Reg Number <span className="text-destructive">*</span>
+                </Label>
+                <Input value={form.vehicle} onChange={e => setForm(f => ({ ...f, vehicle: e.target.value }))} placeholder="e.g. KA-01-AB-1234" className="h-9 text-xs" required />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Your Name *</Label>
-              <Input value={form.bookedBy} onChange={e => setForm(f => ({ ...f, bookedBy: e.target.value }))} placeholder="Employee name" />
+
+            {/* Spot Preview Card */}
+            <div className="p-3 rounded-lg border bg-violet-50/60 dark:bg-violet-950/30 border-violet-200 dark:border-violet-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ParkingCircle className="h-4 w-4 text-violet-600" />
+                <div>
+                  <p className="text-xs font-bold text-foreground">
+                    Allocated Bay: {form.floor} Floor · Zone {form.zone}-{form.spot}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {form.bookedBy ? form.bookedBy : "Selected Employee"} · {vehicleType.toUpperCase()}
+                  </p>
+                </div>
+              </div>
+              <Badge className="bg-emerald-600 text-white text-[10px]">Ready</Badge>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBookOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleBook}>
-              <Plus className="h-4 w-4 mr-2" /> Book
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setBookOpen(false)}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all" onClick={handleBook}>
+              <Plus className="h-4 w-4 mr-1.5" /> Confirm Reservation
             </Button>
           </DialogFooter>
         </DialogContent>

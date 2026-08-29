@@ -10,14 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   Award, Plus, Search, Trophy, Crown, Star,
   Medal, Target, Users, TrendingUp, Gift,
-  Sparkles, Shield, Zap, Gem,
+  Sparkles, Shield, Zap, Gem, User, CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -348,86 +348,190 @@ export default function BadgesPage() {
 
       {/* Create Badge Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Create Badge</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="space-y-2">
-              <Label>Badge Name *</Label>
-              <Input placeholder="e.g. Innovation Champion" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Level</Label>
-                <Select value={form.level} onValueChange={v => setForm(f => ({ ...f, level: v, points: String(LEVELS.find(l => l.key === v)?.points || 10) }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{LEVELS.map(l => <SelectItem key={l.key} value={l.key}>{l.key} ({l.points} pts)</SelectItem>)}</SelectContent>
-                </Select>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Sparkles className="h-5 w-5" />
               </div>
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{BADGE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                </Select>
+              <div>
+                <DialogTitle className="text-lg font-bold">Create Gamification Badge</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Design new achievement badges and configure point reward thresholds.
+                </DialogDescription>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Icon</Label>
-              <div className="flex gap-2 flex-wrap">
-                {BADGE_ICONS.map(bi => {
-                  const Icon = bi.icon;
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Badge Title &amp; Name <span className="text-destructive">*</span></Label>
+              <Input
+                placeholder="e.g. Innovation Champion, Sprint MVP"
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className="h-9 text-xs"
+                required
+              />
+            </div>
+
+            {/* Level Selector Pills */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Badge Tier &amp; Points</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {LEVELS.map(l => {
+                  const active = form.level === l.key;
                   return (
-                    <Button key={bi.key} size="icon" variant={form.icon === bi.key ? "default" : "outline"} className={cn("h-9 w-9", form.icon === bi.key && "bg-gradient-to-r from-violet-500 to-purple-600 text-white")} onClick={() => setForm(f => ({ ...f, icon: bi.key }))}>
-                      <Icon className="h-4 w-4" />
-                    </Button>
+                    <button
+                      key={l.key}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, level: l.key, points: String(l.points) }))}
+                      className={cn(
+                        "p-2 rounded-lg border text-center transition-all",
+                        active
+                          ? "bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-700 dark:text-violet-300 shadow-xs"
+                          : "bg-background hover:bg-muted/50 text-muted-foreground border-border"
+                      )}
+                    >
+                      <p className="font-bold text-xs">{l.key}</p>
+                      <p className="text-[10px] text-muted-foreground">{l.points} pts</p>
+                    </button>
                   );
                 })}
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea placeholder="Badge description..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Category</Label>
+                <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {BADGE_CATEGORIES.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Award Points</Label>
+                <Input
+                  type="number"
+                  value={form.points}
+                  onChange={e => setForm(f => ({ ...f, points: e.target.value }))}
+                  className="h-9 text-xs"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Criteria</Label>
-              <Input placeholder="How to earn this badge" value={form.criteria} onChange={e => setForm(f => ({ ...f, criteria: e.target.value }))} />
+
+            {/* Icon Grid */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Select Badge Icon</Label>
+              <div className="flex gap-2 flex-wrap p-2 rounded-lg border bg-muted/20">
+                {BADGE_ICONS.map(bi => {
+                  const Icon = bi.icon;
+                  const active = form.icon === bi.key;
+                  return (
+                    <button
+                      key={bi.key}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, icon: bi.key }))}
+                      className={cn(
+                        "h-9 w-9 rounded-lg border flex items-center justify-center transition-all cursor-pointer",
+                        active
+                          ? "bg-gradient-to-r from-violet-500 to-purple-600 text-white border-violet-600 shadow-xs scale-110"
+                          : "bg-background hover:bg-muted text-muted-foreground border-border"
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Description &amp; Criteria</Label>
+              <Textarea
+                placeholder="What this badge honors and guidelines for unlocking it..."
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                rows={2}
+                className="text-xs resize-none"
+              />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleCreate}>Create Badge</Button>
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all" onClick={handleCreate}>
+              <Plus className="h-4 w-4 mr-1.5" /> Create Badge
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Award Badge Dialog */}
       <Dialog open={awardOpen} onOpenChange={setAwardOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Gift className="h-5 w-5 text-violet-500" />
-              Award Badge: {awardBadge?.name}
-            </DialogTitle>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-md">
+                <Gift className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">Award Badge</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Confer "{awardBadge?.name}" upon a deserving team member.
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Select Employee</Label>
+
+          <div className="space-y-4 mt-2">
+            {awardBadge && (
+              <div className="p-3 rounded-xl border bg-muted/20 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-xs text-foreground">{awardBadge.name}</p>
+                    <p className="text-[11px] text-muted-foreground">{awardBadge.category} &middot; {awardBadge.level}</p>
+                  </div>
+                </div>
+                <Badge className="bg-amber-500 text-white text-xs font-bold">+{awardBadge.points} pts</Badge>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-violet-500" />
+                Select Recipient <span className="text-destructive">*</span>
+              </Label>
               <Select value={awardEmployee} onValueChange={setAwardEmployee}>
-                <SelectTrigger><SelectValue placeholder="Choose employee" /></SelectTrigger>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Choose employee..." />
+                </SelectTrigger>
                 <SelectContent>
-                  {employees.map(emp => (
-                    <SelectItem key={emp.id} value={`${emp.firstName} ${emp.lastName}`}>
-                      {emp.firstName} {emp.lastName} — {emp.department}
-                    </SelectItem>
-                  ))}
+                  {employees.map(emp => {
+                    const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                    const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                    return (
+                      <SelectItem key={emp.id} value={name} className="text-xs">
+                        <span className="font-medium">{name}</span>
+                        {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAwardOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-2" onClick={handleAward}>
-              <Gift className="h-4 w-4" /> Award Badge
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setAwardOpen(false)}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5" onClick={handleAward}>
+              <Gift className="h-4 w-4" /> Bestow Badge
             </Button>
           </DialogFooter>
         </DialogContent>

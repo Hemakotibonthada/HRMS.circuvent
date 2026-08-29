@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Building2, Search, Plus, MapPin, Users, Globe, LayoutGrid, List, Wifi, Coffee, ParkingCircle, Dumbbell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -192,31 +192,99 @@ export default function LocationsPage() {
         </div>
       )}
 
+      {/* ENHANCED ADD LOCATION DIALOG */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Add Office Location</DialogTitle></DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div><Label>Location Name</Label><Input name="name" required placeholder="e.g., Bengaluru HQ" /></div>
-            <div><Label>Address</Label><Textarea name="address" rows={2} required placeholder="Full address" /></div>
-            <div className="grid grid-cols-3 gap-3">
-              <div><Label>City</Label><Input name="city" required /></div>
-              <div><Label>State</Label><Input name="state" /></div>
-              <div><Label>Country</Label><Input name="country" required defaultValue="India" /></div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div><Label>Capacity</Label><Input name="capacity" type="number" required /></div>
-              <div><Label>Type</Label><Select name="type"><SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger><SelectContent>{LOCATION_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
-              <div><Label>Timezone</Label><Input name="timezone" defaultValue="IST" /></div>
-            </div>
-            <div>
-              <Label>Amenities</Label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {AMENITY_OPTIONS.map(a => (
-                  <Badge key={a} variant={selectedAmenities.includes(a) ? "default" : "outline"} className="cursor-pointer text-xs" onClick={() => toggleAmenity(a)}>{a}</Badge>
-                ))}
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">Add Office Facility</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Register regional office hubs, capacity benchmarks, and campus amenities.
+                </DialogDescription>
               </div>
             </div>
-            <DialogFooter><Button type="submit" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 gap-2"><Plus className="h-4 w-4" />Add</Button></DialogFooter>
+          </DialogHeader>
+
+          <form onSubmit={handleCreate} className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Location / Facility Name <span className="text-destructive">*</span></Label>
+              <Input name="name" required placeholder="e.g. Bengaluru Innovation Hub, London Tech Center" className="h-9 text-xs" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Street &amp; Campus Address <span className="text-destructive">*</span></Label>
+              <Textarea name="address" rows={2} required placeholder="Building, floor, tech park, street..." className="text-xs resize-none" />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">City <span className="text-destructive">*</span></Label>
+                <Input name="city" required placeholder="Bengaluru" className="h-9 text-xs" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">State / Region</Label>
+                <Input name="state" placeholder="Karnataka" className="h-9 text-xs" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Country <span className="text-destructive">*</span></Label>
+                <Input name="country" required defaultValue="India" className="h-9 text-xs" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Max Capacity</Label>
+                <Input name="capacity" type="number" defaultValue={250} required className="h-9 text-xs" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Facility Type</Label>
+                <Select name="type" defaultValue={LOCATION_TYPES[0]}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
+                  <SelectContent>
+                    {LOCATION_TYPES.map(t => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Timezone</Label>
+                <Input name="timezone" defaultValue="Asia/Kolkata (IST)" className="h-9 text-xs" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Campus Amenities &amp; Services</Label>
+              <div className="flex flex-wrap gap-1.5 mt-1 p-2.5 rounded-lg border bg-muted/20">
+                {AMENITY_OPTIONS.map(a => {
+                  const selected = selectedAmenities.includes(a);
+                  return (
+                    <button
+                      key={a}
+                      type="button"
+                      onClick={() => toggleAmenity(a)}
+                      className={cn(
+                        "px-2.5 py-1 rounded-full text-xs font-medium border transition-all cursor-pointer",
+                        selected
+                          ? "bg-violet-600 text-white border-violet-600 shadow-xs"
+                          : "bg-background text-muted-foreground border-border hover:bg-muted"
+                      )}
+                    >
+                      {a}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2 gap-2">
+              <Button type="button" variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5">
+                <Plus className="h-4 w-4" /> Save Facility
+              </Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

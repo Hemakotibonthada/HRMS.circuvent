@@ -28,9 +28,10 @@ import {
   PieChart, Pie, Cell, Legend, AreaChart, Area,
   Tooltip as RTooltip,
 } from "recharts";
-import { useLeaveStore, startSync, type LeaveDoc } from "@/stores/unified-store";
+import { useLeaveStore, useEmployeeStore, startSync, type LeaveDoc } from "@/stores/unified-store";
 import { genericService, COLLECTIONS } from "@/lib/collection-service";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
+import { DialogDescription } from "@/components/ui/dialog";
 
 // ═══════════════════════════════════════════════════════════════
 // LEAVE MANAGEMENT — Leave balance, requests, calendar,
@@ -57,7 +58,10 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function LeavePage() {
   const rbac = useRBAC();
   const store = useLeaveStore();
+  const empStore = useEmployeeStore();
   const { items, loading, initialized } = store;
+  const employees = empStore.items;
+
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -65,11 +69,16 @@ export default function LeavePage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedLeave, setSelectedLeave] = useState<LeaveDoc | null>(null);
   const [form, setForm] = useState({
-    employeeName: "", department: "", leaveType: "",
-    fromDate: "", toDate: "", reason: "",
+    employeeName: "", department: "", leaveType: "casual",
+    fromDate: new Date().toISOString().slice(0, 10),
+    toDate: new Date().toISOString().slice(0, 10),
+    reason: "",
   });
 
-  useEffect(() => { if (!initialized) startSync(COLLECTIONS.leaves, store); }, [initialized, store]);
+  useEffect(() => {
+    if (!initialized) startSync(COLLECTIONS.leaves, store);
+    if (!empStore.initialized) startSync(COLLECTIONS.employees, empStore);
+  }, [initialized, store, empStore]);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -427,49 +436,69 @@ export default function LeavePage() {
 
       {/* Leave Detail Dialog */}
       <Dialog open={!!selectedLeave} onOpenChange={(v) => { if (!v) setSelectedLeave(null); }}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           {selectedLeave && (
             <>
-              <DialogHeader><DialogTitle>Leave Request Details</DialogTitle></DialogHeader>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-12 w-12">
-                    <AvatarFallback className="bg-gradient-to-br from-violet-500 to-purple-600 text-white">
-                      {selectedLeave.employeeName?.split(" ").map(n => n[0]).join("").slice(0, 2)}
+              <DialogHeader>
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                    <CalendarDays className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <DialogTitle className="text-lg font-bold">Leave Request Details</DialogTitle>
+                    <DialogDescription className="text-xs text-muted-foreground">
+                      Review employee time-off application and take approval action.
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+              <div className="space-y-4 mt-2">
+                <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/20">
+                  <Avatar className="h-11 w-11">
+                    <AvatarFallback className="bg-gradient-to-br from-violet-500 to-purple-600 text-white font-bold text-xs">
+                      {selectedLeave.employeeName?.split(" ").map(n => n[0]).join("").slice(0, 2) || "EM"}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="font-semibold">{selectedLeave.employeeName}</p>
-                    <p className="text-sm text-muted-foreground">{selectedLeave.department}</p>
+                    <p className="font-semibold text-sm">{selectedLeave.employeeName}</p>
+                    <p className="text-xs text-muted-foreground">{selectedLeave.department || "General"}</p>
                   </div>
                 </div>
-                <Separator />
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div><p className="text-muted-foreground">Leave Type</p><p className="font-medium">{LEAVE_TYPES.find(t => t.value === selectedLeave.leaveType)?.label || selectedLeave.leaveType}</p></div>
-                  <div><p className="text-muted-foreground">Status</p><Badge className={(STATUS_CONF[selectedLeave.status] || STATUS_CONF.pending).className}>{(STATUS_CONF[selectedLeave.status] || STATUS_CONF.pending).label}</Badge></div>
-                  <div><p className="text-muted-foreground">From</p><p className="font-medium">{selectedLeave.fromDate}</p></div>
-                  <div><p className="text-muted-foreground">To</p><p className="font-medium">{selectedLeave.toDate}</p></div>
-                  <div><p className="text-muted-foreground">Duration</p><p className="font-medium">{selectedLeave.days} day{(selectedLeave.days || 0) > 1 ? "s" : ""}</p></div>
-                  <div><p className="text-muted-foreground">Applied On</p><p className="font-medium">{selectedLeave.appliedOn}</p></div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-2.5 rounded-lg border bg-background">
+                    <p className="text-muted-foreground">Leave Type</p>
+                    <p className="font-semibold text-foreground mt-0.5">{LEAVE_TYPES.find(t => t.value === selectedLeave.leaveType)?.label || selectedLeave.leaveType}</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg border bg-background">
+                    <p className="text-muted-foreground">Status</p>
+                    <Badge className={cn("mt-1 text-[11px]", (STATUS_CONF[selectedLeave.status] || STATUS_CONF.pending).className)}>
+                      {(STATUS_CONF[selectedLeave.status] || STATUS_CONF.pending).label}
+                    </Badge>
+                  </div>
+                  <div className="p-2.5 rounded-lg border bg-background">
+                    <p className="text-muted-foreground">Dates</p>
+                    <p className="font-semibold text-foreground mt-0.5">{selectedLeave.fromDate} → {selectedLeave.toDate}</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg border bg-background">
+                    <p className="text-muted-foreground">Duration</p>
+                    <p className="font-semibold text-violet-600 dark:text-violet-400 mt-0.5">{selectedLeave.days} day{(selectedLeave.days || 0) > 1 ? "s" : ""}</p>
+                  </div>
                 </div>
                 {selectedLeave.reason && (
-                  <>
-                    <Separator />
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Reason</p>
-                      <p className="text-sm">{selectedLeave.reason}</p>
-                    </div>
-                  </>
+                  <div className="p-3 rounded-lg border bg-muted/30">
+                    <p className="text-xs font-semibold text-muted-foreground mb-1">Reason / Notes</p>
+                    <p className="text-xs text-foreground">{selectedLeave.reason}</p>
+                  </div>
                 )}
               </div>
-              <DialogFooter className="gap-2">
+              <DialogFooter className="gap-2 pt-2">
                 {selectedLeave.status === "pending" && (
                   <>
-                    <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => handleAction(selectedLeave.id, "rejected")}>
-                      <ThumbsDown className="h-4 w-4 mr-2" /> Reject
+                    <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 rounded-full text-xs h-9 px-4" onClick={() => handleAction(selectedLeave.id, "rejected")}>
+                      <ThumbsDown className="h-3.5 w-3.5 mr-1.5" /> Reject
                     </Button>
-                    <Button className="bg-gradient-to-r from-emerald-500 to-green-600 text-white border-0" onClick={() => handleAction(selectedLeave.id, "approved")}>
-                      <ThumbsUp className="h-4 w-4 mr-2" /> Approve
+                    <Button className="bg-gradient-to-r from-emerald-500 to-green-600 text-white border-0 rounded-full text-xs h-9 px-5 shadow-md" onClick={() => handleAction(selectedLeave.id, "approved")}>
+                      <ThumbsUp className="h-3.5 w-3.5 mr-1.5" /> Approve Leave
                     </Button>
                   </>
                 )}
@@ -481,59 +510,137 @@ export default function LeavePage() {
 
       {/* Apply Leave Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Apply for Leave</DialogTitle></DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Employee Name *</Label>
-                <Input value={form.employeeName} onChange={(e) => setForm(f => ({ ...f, employeeName: e.target.value }))} placeholder="Your name" />
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Palmtree className="h-5 w-5" />
               </div>
-              <div className="space-y-2">
-                <Label>Department</Label>
-                <Input value={form.department} onChange={(e) => setForm(f => ({ ...f, department: e.target.value }))} placeholder="Department" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Leave Type *</Label>
-              <Select value={form.leaveType} onValueChange={(v) => setForm(f => ({ ...f, leaveType: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select leave type" /></SelectTrigger>
-                <SelectContent>
-                  {LEAVE_TYPES.map(lt => {
-                    const b = balances.find(x => x.value === lt.value);
-                    return (
-                      <SelectItem key={lt.value} value={lt.value}>
-                        {lt.label} ({b?.remaining || lt.total} remaining)
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>From Date *</Label>
-                <Input type="date" value={form.fromDate} onChange={(e) => setForm(f => ({ ...f, fromDate: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label>To Date *</Label>
-                <Input type="date" value={form.toDate} onChange={(e) => setForm(f => ({ ...f, toDate: e.target.value }))} />
+              <div>
+                <DialogTitle className="text-lg font-bold">Apply for Leave</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Submit a time-off request with automated leave balance deduction.
+                </DialogDescription>
               </div>
             </div>
-            {form.fromDate && form.toDate && (
-              <div className="p-2 rounded-lg bg-muted/30 text-sm text-center">
-                Duration: <span className="font-bold">{calcDays(form.fromDate, form.toDate)} day{calcDays(form.fromDate, form.toDate) > 1 ? "s" : ""}</span>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            {/* Employee & Department */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Employee <span className="text-destructive">*</span></Label>
+                {employees && employees.length > 0 ? (
+                  <Select
+                    value={form.employeeName}
+                    onValueChange={(val) => {
+                      const emp = employees.find(e => [e.firstName, e.lastName].filter(Boolean).join(" ") === val);
+                      setForm(f => ({ ...f, employeeName: val, department: emp?.department || f.department }));
+                    }}
+                  >
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Select employee..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map((emp) => {
+                        const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                        const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                        return (
+                          <SelectItem key={emp.id} value={name} className="text-xs">
+                            <span className="font-medium">{name}</span>
+                            {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={form.employeeName}
+                    onChange={(e) => setForm(f => ({ ...f, employeeName: e.target.value }))}
+                    placeholder="e.g. Rahul Sharma"
+                    className="h-9 text-xs"
+                    required
+                  />
+                )}
               </div>
-            )}
-            <div className="space-y-2">
-              <Label>Reason</Label>
-              <Textarea value={form.reason} onChange={(e) => setForm(f => ({ ...f, reason: e.target.value }))} placeholder="Reason for leave..." rows={3} />
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Department</Label>
+                <Input
+                  value={form.department}
+                  onChange={(e) => setForm(f => ({ ...f, department: e.target.value }))}
+                  placeholder="Department"
+                  className="h-9 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Leave Type Selector Pills */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Leave Type <span className="text-destructive">*</span></Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {LEAVE_TYPES.map(lt => {
+                  const b = balances.find(x => x.value === lt.value);
+                  const Icon = lt.icon;
+                  const active = form.leaveType === lt.value;
+                  return (
+                    <button
+                      key={lt.value}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, leaveType: lt.value }))}
+                      className={cn(
+                        "p-2.5 rounded-lg border text-left transition-all",
+                        active
+                          ? "bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-700 dark:text-violet-300 shadow-xs"
+                          : "bg-background hover:bg-muted/50 text-muted-foreground border-border"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Icon className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+                        <span className="font-semibold text-xs text-foreground truncate">{lt.label}</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">{b?.remaining || lt.total} days left</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Dates & Live Duration */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">From Date <span className="text-destructive">*</span></Label>
+                <Input type="date" value={form.fromDate} onChange={(e) => setForm(f => ({ ...f, fromDate: e.target.value }))} className="h-9 text-xs" required />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">To Date <span className="text-destructive">*</span></Label>
+                <Input type="date" value={form.toDate} min={form.fromDate} onChange={(e) => setForm(f => ({ ...f, toDate: e.target.value }))} className="h-9 text-xs" required />
+              </div>
+              <div className="p-2 rounded-lg border bg-violet-50/50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-800 text-center flex flex-col justify-center h-9">
+                <span className="text-xs font-bold text-violet-700 dark:text-violet-300">
+                  {calcDays(form.fromDate, form.toDate)} {calcDays(form.fromDate, form.toDate) === 1 ? "Day" : "Days"} Off
+                </span>
+              </div>
+            </div>
+
+            {/* Reason */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Reason for Leave</Label>
+              <Textarea
+                value={form.reason}
+                onChange={(e) => setForm(f => ({ ...f, reason: e.target.value }))}
+                placeholder="Brief reason for time-off..."
+                rows={2}
+                className="text-xs resize-none"
+              />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleCreate}>
-              <Plus className="h-4 w-4 mr-2" /> Submit Request
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all" onClick={handleCreate}>
+              <Plus className="h-4 w-4 mr-1.5" /> Submit Request
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -9,13 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import {
   Users, Plus, Search, UserCheck, Building2, Star,
   Target, Shield, Eye, Trash2, Grid3X3,
-  BarChart3, ArrowUpRight, Briefcase, Award,
+  BarChart3, ArrowUpRight, Briefcase, Award, User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -377,76 +377,167 @@ export default function TeamsPage() {
 
       {/* Create Team Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>Create Team</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="space-y-2">
-              <Label>Team Name *</Label>
-              <Input placeholder="e.g. Platform Squad" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Team Lead</Label>
-                <Input placeholder="Lead name" value={form.lead} onChange={e => setForm(f => ({ ...f, lead: e.target.value }))} />
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Users className="h-5 w-5" />
               </div>
-              <div className="space-y-2">
-                <Label>Department *</Label>
+              <div>
+                <DialogTitle className="text-lg font-bold">Form New Team / Squad</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Create functional workgroups, assign leadership, and align cross-functional teams.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Team Name <span className="text-destructive">*</span></Label>
+              <Input
+                placeholder="e.g. Core Platform Squad, Growth Marketing"
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className="h-9 text-xs"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-violet-500" />
+                  Team Lead / Manager
+                </Label>
+                {employees && employees.length > 0 ? (
+                  <Select value={form.lead} onValueChange={v => setForm(f => ({ ...f, lead: v }))}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Select team lead..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map(emp => {
+                        const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                        const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                        return (
+                          <SelectItem key={emp.id} value={name} className="text-xs">
+                            <span className="font-medium">{name}</span>
+                            {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    placeholder="Lead name"
+                    value={form.lead}
+                    onChange={e => setForm(f => ({ ...f, lead: e.target.value }))}
+                    className="h-9 text-xs"
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  Primary Department <span className="text-destructive">*</span>
+                </Label>
                 <Select value={form.department} onValueChange={v => setForm(f => ({ ...f, department: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select department" /></SelectTrigger>
+                  <SelectContent>
+                    {DEPARTMENTS.map(d => <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>)}
+                  </SelectContent>
                 </Select>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea placeholder="Team description..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} />
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Team Charter &amp; Objective</Label>
+              <Textarea
+                placeholder="Key missions, technical responsibilities, and team scope..."
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                rows={3}
+                className="text-xs resize-none"
+              />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0" onClick={handleCreate}>Create Team</Button>
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all" onClick={handleCreate}>
+              <Plus className="h-4 w-4 mr-1.5" /> Create Team
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Team Detail Dialog */}
       <Dialog open={!!detailTeam} onOpenChange={() => setDetailTeam(null)}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-                <Users className="h-5 w-5 text-white" />
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <Users className="h-5 w-5" />
               </div>
-              {detailTeam?.name}
-            </DialogTitle>
-          </DialogHeader>
-          {detailTeam && (
-            <div className="space-y-4 py-2">
-              <div className="grid grid-cols-3 gap-4">
-                <div><p className="text-sm text-muted-foreground">Department</p><p className="font-medium">{detailTeam.department}</p></div>
-                <div><p className="text-sm text-muted-foreground">Lead</p><p className="font-medium">{detailTeam.lead || "—"}</p></div>
-                <div><p className="text-sm text-muted-foreground">Status</p><Badge className={cn(STATUS_CONF[detailTeam.status]?.className || "status-active")}>{STATUS_CONF[detailTeam.status]?.label || detailTeam.status}</Badge></div>
-              </div>
-              {detailTeam.description && <p className="text-sm text-muted-foreground">{detailTeam.description}</p>}
-              <Separator />
               <div>
-                <h4 className="font-semibold mb-3 flex items-center gap-2"><Users className="h-4 w-4" /> Members ({teamMembers.length})</h4>
+                <DialogTitle className="text-lg font-bold">{detailTeam?.name}</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  {detailTeam?.department} Department &middot; Led by {detailTeam?.lead || "Unassigned"}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {detailTeam && (
+            <div className="space-y-4 mt-2">
+              <div className="grid grid-cols-3 gap-2.5 text-xs">
+                <div className="p-2.5 rounded-lg border bg-background">
+                  <p className="text-muted-foreground">Department</p>
+                  <p className="font-semibold text-foreground mt-0.5">{detailTeam.department}</p>
+                </div>
+                <div className="p-2.5 rounded-lg border bg-background">
+                  <p className="text-muted-foreground">Team Lead</p>
+                  <p className="font-semibold text-foreground mt-0.5">{detailTeam.lead || "—"}</p>
+                </div>
+                <div className="p-2.5 rounded-lg border bg-background">
+                  <p className="text-muted-foreground">Status</p>
+                  <Badge className={cn("mt-1 text-[11px]", STATUS_CONF[detailTeam.status]?.className || "status-active")}>
+                    {STATUS_CONF[detailTeam.status]?.label || detailTeam.status}
+                  </Badge>
+                </div>
+              </div>
+
+              {detailTeam.description && (
+                <div className="p-3 rounded-lg border bg-muted/20">
+                  <p className="text-xs font-semibold text-muted-foreground mb-1">Team Charter</p>
+                  <p className="text-xs text-foreground leading-relaxed">{detailTeam.description}</p>
+                </div>
+              )}
+
+              <Separator />
+
+              <div>
+                <h4 className="font-semibold text-xs mb-3 flex items-center gap-2">
+                  <Users className="h-4 w-4 text-violet-500" /> Team Roster ({teamMembers.length} Members)
+                </h4>
                 {teamMembers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No members found.</p>
+                  <p className="text-xs text-muted-foreground py-4 text-center">No members tagged under this team's department yet.</p>
                 ) : (
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
                     {teamMembers.map(emp => (
-                      <div key={emp.id} className="flex items-center gap-3 p-2 rounded-lg border hover:bg-muted/50">
+                      <div key={emp.id} className="flex items-center gap-3 p-2.5 rounded-xl border bg-muted/20 hover:bg-muted/40 transition-colors">
                         <Avatar className="h-8 w-8">
-                          <AvatarFallback className="text-xs bg-gradient-to-br from-violet-500 to-purple-600 text-white">
+                          <AvatarFallback className="text-[11px] font-bold bg-gradient-to-br from-violet-500 to-purple-600 text-white">
                             {emp.firstName?.[0]}{emp.lastName?.[0]}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{emp.firstName} {emp.lastName}</p>
-                          <p className="text-xs text-muted-foreground">{emp.designation || "—"}</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold truncate">{emp.firstName} {emp.lastName}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">{emp.designation || "Team Member"} &middot; {emp.email}</p>
                         </div>
-                        <Badge variant="outline" className="text-xs">{emp.status}</Badge>
+                        <Badge variant="outline" className="text-[10px] uppercase font-semibold">{emp.status}</Badge>
                       </div>
                     ))}
                   </div>
@@ -454,6 +545,10 @@ export default function TeamsPage() {
               </div>
             </div>
           )}
+
+          <DialogFooter className="pt-2">
+            <Button variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setDetailTeam(null)}>Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

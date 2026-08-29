@@ -7,12 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Plus, Search, FolderOpen, HardDrive, CheckCircle2, Upload } from "lucide-react";
+import { FileText, Plus, Search, FolderOpen, HardDrive, CheckCircle2, Upload, User, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useDocumentStore, startSync } from "@/stores/unified-store";
+import { useDocumentStore, useEmployeeStore, startSync } from "@/stores/unified-store";
 import { DataEmptyState, DataLoadingSkeleton, EMPTY_STATES } from "@/components/data-empty-state";
 import { genericService, COLLECTIONS } from "@/lib/collection-service";
 
@@ -24,14 +24,18 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function DocumentsPage() {
   const store = useDocumentStore();
+  const empStore = useEmployeeStore();
   const { items, loading, initialized } = store;
+  const { items: employees, initialized: empInit } = empStore;
+
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("list");
   const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!initialized) startSync(COLLECTIONS.documents, store);
-  }, [initialized, store]);
+    if (!empInit) startSync(COLLECTIONS.employees, empStore);
+  }, [initialized, store, empInit, empStore]);
 
   const filtered = useMemo(() => {
     if (!search) return items;
@@ -212,40 +216,91 @@ export default function DocumentsPage() {
         </TabsContent>
       </Tabs>
 
+      {/* ENHANCED UPLOAD DOCUMENT DIALOG */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Upload Document</DialogTitle></DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-3">
-            <div><Label>Document Name</Label><Input name="name" required /></div>
-            <div className="grid grid-cols-2 gap-3">
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md">
+                <FolderOpen className="h-5 w-5" />
+              </div>
               <div>
-                <Label>Type</Label>
-                <Select name="type">
-                  <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                <DialogTitle className="text-lg font-bold">Upload Corporate Document</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Store policies, contract templates, employee handbooks, and compliance SOPs.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <form onSubmit={handleCreate} className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Document Title / File Name <span className="text-destructive">*</span></Label>
+              <Input name="name" required placeholder="e.g. FY2026 Employee Code of Conduct &amp; Ethics" className="h-9 text-xs" />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">File Format</Label>
+                <Select name="type" defaultValue="PDF">
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select type" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="PDF">PDF</SelectItem>
-                    <SelectItem value="DOCX">DOCX</SelectItem>
-                    <SelectItem value="XLSX">XLSX</SelectItem>
-                    <SelectItem value="PPT">PPT</SelectItem>
+                    <SelectItem value="PDF" className="text-xs">PDF Document (.pdf)</SelectItem>
+                    <SelectItem value="DOCX" className="text-xs">Word Document (.docx)</SelectItem>
+                    <SelectItem value="XLSX" className="text-xs">Excel Spreadsheet (.xlsx)</SelectItem>
+                    <SelectItem value="PPT" className="text-xs">PowerPoint Deck (.pptx)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label>Category</Label>
-                <Select name="category">
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Category</Label>
+                <Select name="category" defaultValue="HR Policy">
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="HR Policy">HR Policy</SelectItem>
-                    <SelectItem value="Template">Template</SelectItem>
-                    <SelectItem value="Report">Report</SelectItem>
-                    <SelectItem value="SOP">SOP</SelectItem>
+                    <SelectItem value="HR Policy" className="text-xs">HR Policy &amp; Guidelines</SelectItem>
+                    <SelectItem value="Template" className="text-xs">Employment Template</SelectItem>
+                    <SelectItem value="Report" className="text-xs">Audit &amp; Compliance Report</SelectItem>
+                    <SelectItem value="SOP" className="text-xs">Standard Operating Procedure (SOP)</SelectItem>
+                    <SelectItem value="Handbook" className="text-xs">Company Handbook</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
-            <div><Label>Uploaded By</Label><Input name="uploadedBy" required /></div>
-            <DialogFooter>
-              <Button type="submit" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white">Upload</Button>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-violet-500" />
+                Uploaded By <span className="text-destructive">*</span>
+              </Label>
+              {employees && employees.length > 0 ? (
+                <Select name="uploadedBy" defaultValue={[employees[0].firstName, employees[0].lastName].filter(Boolean).join(" ") || String(employees[0].id)}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Select author / uploader..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employees.map(emp => {
+                      const name = [emp.firstName, emp.lastName].filter(Boolean).join(" ") || String(emp.id);
+                      const sub = [emp.designation, emp.department].filter(Boolean).join(" · ");
+                      return (
+                        <SelectItem key={emp.id} value={name} className="text-xs">
+                          <span className="font-medium">{name}</span>
+                          {sub ? <span className="text-muted-foreground ml-2 text-[11px]">({sub})</span> : null}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input name="uploadedBy" required placeholder="Author name" className="h-9 text-xs" />
+              )}
+            </div>
+
+            <DialogFooter className="pt-2 gap-2">
+              <Button type="button" variant="outline" className="rounded-full text-xs h-9 px-4" onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs h-9 px-5 shadow-md hover:shadow-lg transition-all gap-1.5">
+                <Upload className="h-4 w-4" /> Upload Document
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
