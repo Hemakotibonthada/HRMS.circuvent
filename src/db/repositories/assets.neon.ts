@@ -815,6 +815,9 @@ export class NeonAssetsRepository {
         throw new RepositoryError("Cannot delete an asset that is currently assigned to an employee", 400);
       }
 
+      // asset_events is append-only, but CASCADE deletes from assets must be
+      // allowed or every delete fails with a trigger exception.
+      await tx.execute(sql`SELECT set_config('hrms.asset_cascade_delete', 'on', true)`);
       await tx.delete(assets).where(eq(assets.id, id));
     });
   }
