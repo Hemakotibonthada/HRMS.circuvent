@@ -16,7 +16,13 @@ Enterprise-grade device security, USB removable storage blocking, and Data Loss 
    - Outbound mail traffic on ports 25, 465, and 587 is locked down to **`mx.circuvent.com`** only.
    - Prevents background exfiltration scripts or unapproved mail clients from pushing company data to personal mail relays.
 
-3. **Real-Time Watchdog (`CircuventGuard`)**:
+3. **Automatic HRMS Asset Management Registration**:
+   - Automatically gathers hardware telemetry: BIOS Serial Number, Manufacturer (Dell/Lenovo/HP/Apple), Model, CPU, RAM (GB), Storage (GB), and Hostname.
+   - Creates or updates the laptop record in **HRMS Asset Management** (`/assets`) under "Laptops & Notebooks".
+   - Automatically links and assigns the asset directly to the specified Employee profile (`assignedToId`, `state = assigned`).
+   - Generates an official asset tag (e.g. `CIR-AST-<SERIAL>`) and records an audit event in `asset_events`.
+
+4. **Real-Time Watchdog (`CircuventGuard`)**:
    - Runs as a persistent background service under `NT AUTHORITY\SYSTEM`.
    - Subscribes to WMI `Win32_LogicalDisk` and `Win32_VolumeChangeEvent` to detect any external storage arrival within 2 seconds.
    - Instantly forces dismount (`mountvol /D` + Shell Eject) and displays an alert toast to the employee.

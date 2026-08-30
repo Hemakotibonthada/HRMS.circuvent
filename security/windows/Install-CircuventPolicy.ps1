@@ -172,19 +172,43 @@ Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 Write-Host "  -> Scheduled Task '$taskName' registered and started." -ForegroundColor Gray
 
 # ------------------------------------------------------------------
-# STEP 5: Enroll Device with HRMS Security Server
+# STEP 5: Enroll Device with HRMS Security Server & Asset Management
 # ------------------------------------------------------------------
-Write-Host "`n[5/5] Enrolling Device with Circuvent Security Console..." -ForegroundColor Green
+Write-Host "`n[5/5] Enrolling Device into HRMS Asset Management & Security Console..." -ForegroundColor Green
 
 try {
+    # Gather hardware telemetry for Asset Register & Security
+    $bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue
+    $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+    $cpu = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+    $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+    $disk = Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue | Where-Object { $_.MediaType -like '*Fixed*' -or $_.InterfaceType -ne 'USB' } | Select-Object -First 1
+    $nic = Get-CimInstance Win32_NetworkAdapterConfiguration -ErrorAction SilentlyContinue | Where-Object { $_.IPEnabled -eq $true } | Select-Object -First 1
+
+    $ramGb = 0
+    if ($cs -and $cs.TotalPhysicalMemory) {
+        $ramGb = [math]::Round($cs.TotalPhysicalMemory / 1GB)
+    }
+
+    $diskGb = 0
+    if ($disk -and $disk.Size) {
+        $diskGb = [math]::Round($disk.Size / 1GB)
+    }
+
     $enrollPayload = @{
         deviceHostname = $env:COMPUTERNAME
-        deviceSerial   = (Get-CimInstance Win32_BIOS).SerialNumber
+        deviceSerial   = if ($bios.SerialNumber) { $bios.SerialNumber.Trim() } else { "UNKNOWN" }
+        manufacturer   = if ($cs.Manufacturer) { $cs.Manufacturer.Trim() } else { "Enterprise" }
+        model          = if ($cs.Model) { $cs.Model.Trim() } else { "Laptop" }
+        processor      = if ($cpu.Name) { $cpu.Name.Trim() } else { "N/A" }
+        ramGb          = $ramGb
+        diskGb         = $diskGb
+        macAddress     = if ($nic.MACAddress) { $nic.MACAddress } else { "N/A" }
         employeeEmail  = $EmployeeEmail
         employeeCode   = $EmployeeCode
         orgId          = $OrgId
         agentVersion   = "2.4.0"
-        osVersion      = (Get-CimInstance Win32_OperatingSystem).Caption
+        osVersion      = if ($os.Caption) { $os.Caption.Trim() } else { "Windows 11" }
         policyMode     = "strict_block"
         usbBlocked     = $true
         firewallActive = $true
@@ -193,8 +217,12 @@ try {
     $headers = @{ "Content-Type" = "application/json" }
     if ($ApiKey) { $headers["X-API-Key"] = $ApiKey }
 
-    $enrollRes = Invoke-RestMethod -Uri "$ServerUrl/api/security/devices/enroll" -Method Post -Body $enrollPayload -Headers $headers -TimeoutSec 10
-    Write-Host "  -> Device successfully enrolled with Circuvent HRMS! (Device ID: $($enrollRes.id))" -ForegroundColor Green
+    $enrollRes = Invoke-RestMethod -Uri "$ServerUrl/api/security/devices/enroll" -Method Post -Body $enrollPayload -Headers $headers -TimeoutSec 15
+    
+    if ($enrollRes.asset) {
+        Write-Host "  -> [ASSET MANAGEMENT] Auto-registered Asset: $($enrollRes.asset.name) (Tag: $($enrollRes.asset.assetTag), Serial: $($enrollRes.asset.serialNumber))" -ForegroundColor Cyan
+    }
+    Write-Host "  -> [SECURITY CONSOLE] Endpoint successfully enrolled with Circuvent HRMS! (Device ID: $($enrollRes.device.id))" -ForegroundColor Green
 }
 catch {
     Write-Warning "  -> Could not reach enrollment server: $_. Enrollment will retry automatically on first heartbeat."
