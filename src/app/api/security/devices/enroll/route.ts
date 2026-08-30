@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     const cleanHostname = deviceHostname.toUpperCase().trim();
 
     // 1. Resolve Organization ID (from enroll token / agent key — never trust body alone)
-    let resolvedOrgId = auth.orgId ?? orgId;
+    let resolvedOrgId: string | undefined = auth.orgId ?? orgId;
     if (!resolvedOrgId) {
       const org = await database.query.organizations.findFirst({
         columns: { id: true },
