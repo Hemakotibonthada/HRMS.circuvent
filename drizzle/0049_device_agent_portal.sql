@@ -3,8 +3,8 @@
 
 CREATE TABLE IF NOT EXISTS hrms.device_enroll_tokens (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id          UUID NOT NULL REFERENCES identity.organizations(id) ON DELETE CASCADE,
-  employee_id     UUID REFERENCES hrms.employees(id) ON DELETE SET NULL,
+  org_id          UUID NOT NULL,
+  employee_id     UUID,
   employee_email  TEXT NOT NULL,
   employee_code   TEXT,
   token_hash      TEXT NOT NULL UNIQUE,
@@ -23,8 +23,8 @@ CREATE INDEX IF NOT EXISTS device_enroll_tokens_org_idx
 
 CREATE TABLE IF NOT EXISTS hrms.device_agent_keys (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id          UUID NOT NULL REFERENCES identity.organizations(id) ON DELETE CASCADE,
-  device_id       UUID REFERENCES hrms.device_security_policies(id) ON DELETE CASCADE,
+  org_id          UUID NOT NULL,
+  device_id       UUID,
   device_hostname TEXT NOT NULL,
   key_hash        TEXT NOT NULL,
   key_prefix      TEXT NOT NULL UNIQUE,
