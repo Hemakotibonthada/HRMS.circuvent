@@ -164,17 +164,32 @@ const STATE_CONFIG: Record<string, { label: string; badgeClass: string; icon: ty
 
 const CATEGORY_ICONS: Record<string, typeof Package> = {
   "Laptops & Notebooks": Laptop,
-  "Laptop": Laptop,
+  Laptop: Laptop,
+  "Workstations & Desktops": Monitor,
   "Workstations & Displays": Monitor,
-  "Monitor": Monitor,
-  "Desktop": Monitor,
+  "Monitors & External Displays": Monitor,
+  Monitor: Monitor,
+  Desktop: Monitor,
   "Mobile Devices & Tablets": Smartphone,
-  "Mobile": Smartphone,
+  Mobile: Smartphone,
   "Servers & Network Equipment": Server,
-  "Server": Server,
-  "Network": Server,
+  "Storage & NAS Devices": Server,
+  Server: Server,
+  Network: Server,
+  "Printers & Scanners": Package,
+  "Peripherals & Accessories": Package,
+  "Audio / Video Equipment": Package,
+  "Conference Room Equipment": Package,
+  "Security & Surveillance": ShieldCheck,
   "Office Furniture & Setup": Layers,
-  "Furniture": Layers,
+  Furniture: Layers,
+  "SIM Cards & Telecom": Smartphone,
+  "IoT & Smart Devices": Package,
+  Wearables: Smartphone,
+  "Tools & Field Equipment": Wrench,
+  Vehicles: Package,
+  "Software Licenses": Package,
+  "Other / Miscellaneous": Package,
 };
 
 function formatRupees(minorString?: string | null): string {
@@ -1652,11 +1667,7 @@ export default function AssetsPage() {
             <div className="space-y-2">
               <Label>Category *</Label>
               <Select
-                value={
-                  form.categoryId && categories.some((c) => c.id === form.categoryId)
-                    ? form.categoryId
-                    : categories.find((c) => c.name === form.category)?.id ?? ""
-                }
+                value={form.category || categories[0]?.name || ""}
                 onValueChange={handleCategorySelect}
               >
                 <SelectTrigger>
@@ -1664,7 +1675,7 @@ export default function AssetsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
+                    <SelectItem key={c.id} value={c.name}>
                       {c.name}
                     </SelectItem>
                   ))}
