@@ -13,7 +13,7 @@
  * draw an avatar is still a mail client.
  */
 
-const ISSUER = (process.env.AUTH_ISSUER ?? "https://auth.circuvent.com").replace(
+const ISSUER = (process.env.AUTH_ISSUER ?? "https://myaccount.circuvent.com").replace(
   /\/+$/,
   ""
 );

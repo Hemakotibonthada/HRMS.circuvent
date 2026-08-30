@@ -8,6 +8,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { ACCESS_COOKIE, verifyAccessToken } from "@/lib/auth/tokens";
+import { accountPortalUrl } from "@/lib/account-portal";
 import { currentEmployeeIdentity } from "@/lib/current-employee";
 
 export async function GET(request: NextRequest) {
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
 
   let avatarUrl = identity?.avatarUrl ?? null;
   if (!avatarUrl && claims.sub && /^[0-9a-f-]{36}$/i.test(claims.sub)) {
-    avatarUrl = `https://auth.circuvent.com/api/profile/avatar/${claims.sub}`;
+    avatarUrl = `${accountPortalUrl()}/api/profile/avatar/${claims.sub}`;
   }
 
   return NextResponse.json({

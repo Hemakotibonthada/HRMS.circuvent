@@ -22,6 +22,7 @@ import {
   PolarAngleAxis, PolarRadiusAxis,
 } from "recharts";
 import { cn } from "@/lib/utils";
+import { accountPortalUrl } from "@/lib/account-portal";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useRBAC } from "@/hooks/use-rbac";
@@ -136,7 +137,7 @@ export default function MyProfilePage() {
           <div className="flex items-center gap-4">
             <Avatar className="h-20 w-20 border-3 border-white/30 overflow-hidden shrink-0">
               <AvatarImage
-                src={myProfile?.avatarUrl || user?.avatarUrl || (user?.uid ? `https://auth.circuvent.com/api/profile/avatar/${user.uid}` : undefined)}
+                src={myProfile?.avatarUrl || user?.avatarUrl || (user?.uid ? `${accountPortalUrl()}/api/profile/avatar/${user.uid}` : undefined)}
                 alt={displayName}
                 className="object-cover h-full w-full"
               />

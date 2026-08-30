@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { groupModulesByCategory } from "@/lib/constants";
 import { useAuth, signOutSession } from "@/hooks/use-auth";
+import { accountPortalUrl } from "@/lib/account-portal";
 import { useRBAC } from "@/hooks/use-rbac";
 import { getRoleLabel, getRoleBadgeColor } from "@/lib/rbac";
 import { useAppStore } from "@/stores/app-store";
@@ -119,7 +120,7 @@ export function AppSidebar() {
               <DropdownMenuTrigger render={<SidebarMenuButton size="lg" className="w-full" />}>
                   <Avatar className="h-8 w-8 rounded-lg overflow-hidden shrink-0">
                     <AvatarImage
-                      src={user?.avatarUrl || (user?.uid ? `https://auth.circuvent.com/api/profile/avatar/${user.uid}` : undefined)}
+                      src={user?.avatarUrl || (user?.uid ? `${accountPortalUrl()}/api/profile/avatar/${user.uid}` : undefined)}
                       alt={user?.displayName || "User"}
                       className="object-cover h-full w-full"
                     />

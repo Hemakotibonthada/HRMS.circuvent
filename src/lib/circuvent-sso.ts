@@ -12,7 +12,7 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { createHash, randomBytes } from "node:crypto";
 import type { AppId } from "@/lib/auth/tokens";
 
-const ISSUER = (process.env.AUTH_ISSUER ?? "https://auth.circuvent.com").replace(
+const ISSUER = (process.env.AUTH_ISSUER ?? "https://myaccount.circuvent.com").replace(
   /\/+$/,
   ""
 );
