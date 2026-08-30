@@ -423,6 +423,10 @@ export const MODULE_PERMISSION_MAP: Record<string, Permission> = {
   selfservice: "dashboard.view",
   dataimport: "settings.view",
   notifications: "dashboard.view",
+  "security-incidents": "audit.view",
+  "security-devices": "assets.view",
+  "security/incidents": "audit.view",
+  "security/devices": "assets.view",
 };
 
 // ─── HELPER FUNCTIONS ────────────────────────────────────────

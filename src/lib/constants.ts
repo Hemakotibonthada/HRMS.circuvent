@@ -10,6 +10,7 @@ import {
   FolderKanban, Sparkles, GitBranch, MessageSquare, Activity,
   Scale, Monitor, Map,
   Bot, Upload, Fingerprint, Umbrella, Landmark, LayoutTemplate,
+  ShieldAlert, HardDrive,
   type LucideIcon
 } from "lucide-react";
 
@@ -617,6 +618,26 @@ export const MODULES: NavItem[] = [
     icon: BarChart3,
     href: "/analytics",
     color: "oklch(0.58 0.20 280)",
+    category: "admin",
+  },
+  {
+    id: "security-incidents",
+    name: "Security & DLP",
+    shortName: "DLP",
+    description: "Endpoint security, USB block & DLP incidents",
+    icon: ShieldAlert,
+    href: "/security/incidents",
+    color: "oklch(0.60 0.22 25)",
+    category: "admin",
+  },
+  {
+    id: "security-devices",
+    name: "Device Guard",
+    shortName: "Devices",
+    description: "Windows laptop policy & hardware protection",
+    icon: HardDrive,
+    href: "/security/devices",
+    color: "oklch(0.55 0.18 220)",
     category: "admin",
   },
 ];

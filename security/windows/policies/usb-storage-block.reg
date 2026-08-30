@@ -1,0 +1,46 @@
+Windows Registry Editor Version 5.00
+
+; ===================================================================
+; Circuvent Technologies - Enterprise Endpoint Storage Hardening
+; Enforces complete USB Mass Storage, Removable Disk, and MTP Phone Block
+; ===================================================================
+
+; 1. Disable USB Mass Storage Driver Startup
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\USBSTOR]
+"Start"=dword:00000004
+"Type"=dword:00000001
+"ErrorControl"=dword:00000003
+
+; 2. Enforce Removable Storage Group Policy - Deny All Access
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices]
+"Deny_All"=dword:00000001
+
+; 3. Deny Removable Disk Class Read & Write
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices\{53f5630d-b6bf-11d0-94f2-00a0c91efb8b}]
+"Deny_Read"=dword:00000001
+"Deny_Write"=dword:00000001
+
+; 4. Deny CD/DVD/Optical Drives Read & Write
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices\{53f56308-b6bf-11d0-94f2-00a0c91efb8b}]
+"Deny_Read"=dword:00000001
+"Deny_Write"=dword:00000001
+
+; 5. Deny WPD / MTP Mobile Devices (Smartphones via USB) Read & Write
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices\{6AC27878-A6FA-4155-BA85-F98F491D4F33}]
+"Deny_Read"=dword:00000001
+"Deny_Write"=dword:00000001
+
+; 6. Deny Tape Drives & Custom Storage Classes
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices\{53f5630b-b6bf-11d0-94f2-00a0c91efb8b}]
+"Deny_Read"=dword:00000001
+"Deny_Write"=dword:00000001
+
+; 7. Prevent installation of new storage controller devices
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions]
+"DenyDeviceClasses"=dword:00000001
+"DenyDeviceClassesRetroactive"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions\DenyDeviceClasses]
+"1"="{4d36e967-e325-11ce-bfc1-08002be10318}" ; Disk Drives
+"2"="{4d36e970-e325-11ce-bfc1-08002be10318}" ; Storage Volumes
+"3"="{eec5ad98-8080-425f-922a-dabf3de3f69a}" ; WPD Devices (Smartphones)
