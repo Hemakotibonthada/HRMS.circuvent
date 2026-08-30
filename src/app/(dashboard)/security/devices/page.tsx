@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { DataEmptyState } from "@/components/data-empty-state";
+import { DeviceInstallPanel } from "@/components/device-install-panel";
 
 interface DevicePolicy {
   id: string;
@@ -92,12 +93,7 @@ export default function SecurityDevicesPage() {
 
   // Modals
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
-  const [enrollHostname, setEnrollHostname] = useState("");
-  const [enrollSerial, setEnrollSerial] = useState("");
   const [enrollEmail, setEnrollEmail] = useState("");
-  const [enrollCode, setEnrollCode] = useState("");
-  const [enrollOs, setEnrollOs] = useState<"windows" | "macos" | "linux">("windows");
-  const [enrolling, setEnrolling] = useState(false);
 
   // Detail Modal
   const [detailDevice, setDetailDevice] = useState<DevicePolicy | null>(null);
@@ -199,46 +195,6 @@ export default function SecurityDevicesPage() {
     }
   };
 
-  const handleEnrollDevice = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!enrollHostname.trim()) {
-      toast.error("Device hostname is required");
-      return;
-    }
-    try {
-      setEnrolling(true);
-      const res = await fetch("/api/security/devices/enroll", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          deviceHostname: enrollHostname.trim().toUpperCase(),
-          deviceSerial: enrollSerial.trim() || undefined,
-          employeeEmail: enrollEmail.trim().toLowerCase() || undefined,
-          employeeCode: enrollCode.trim().toUpperCase() || undefined,
-          osFamily: enrollOs,
-          osVersion: enrollOs === "macos" ? "macOS 15.0" : enrollOs === "linux" ? "Ubuntu 24.04 LTS" : "Windows 11 Enterprise",
-          encryptionStatus: "unknown",
-          policyMode: "strict_block",
-          usbBlocked: true,
-          firewallActive: true,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Enrollment failed");
-      toast.success(`Device ${enrollHostname.toUpperCase()} enrolled successfully`);
-      setEnrollModalOpen(false);
-      setEnrollHostname("");
-      setEnrollSerial("");
-      setEnrollEmail("");
-      setEnrollCode("");
-      await fetchDevices();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to enroll device");
-    } finally {
-      setEnrolling(false);
-    }
-  };
-
   const copyCommand = (os: string, cmd: string) => {
     navigator.clipboard.writeText(cmd);
     setCopiedOs(os);
@@ -332,7 +288,7 @@ export default function SecurityDevicesPage() {
             className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs"
           >
             <Plus className="h-4 w-4 mr-1.5" />
-            Enroll Workstation
+            Generate installer
           </Button>
         </div>
       </div>
@@ -406,12 +362,15 @@ export default function SecurityDevicesPage() {
             Multi-OS Endpoint Provisioning &amp; Agent Deployment
           </CardTitle>
           <CardDescription className="text-xs text-muted-foreground">
-            Sign in at{" "}
+            Use <strong>Generate installer</strong> above for IT-provisioned laptops, or sign in at{" "}
+            <a href="https://myaccount.circuvent.com/account/endpoint-security" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+              myaccount → Endpoint security
+            </a>{" "}
+            /{" "}
             <a href="https://devices.circuvent.com" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
               devices.circuvent.com
             </a>{" "}
-            to generate a personal enroll token, then run the command below as Administrator on the workstation.
-            This is not Windows &quot;Connect work or school&quot; (that requires Microsoft Intune).
+            for self-service. Run the Windows launcher as Administrator — not <code>irm | iex</code>.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -433,20 +392,15 @@ export default function SecurityDevicesPage() {
               <div className="flex items-center gap-2 bg-background/90 p-2.5 rounded-lg border border-border font-mono text-xs text-muted-foreground overflow-x-auto">
                 <span className="text-emerald-400 font-bold select-none">PS&gt;</span>
                 <span className="flex-1 text-foreground select-all">
-                  powershell.exe -ExecutionPolicy Bypass -Command &quot;irm https://devices.circuvent.com/api/install/windows | iex&quot;
+                  Generate a token first, then download CircuventInstall.cmd from the installer dialog.
                 </span>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() =>
-                    copyCommand(
-                      "Windows",
-                      `powershell.exe -ExecutionPolicy Bypass -Command "irm https://devices.circuvent.com/api/install/windows | iex"`
-                    )
-                  }
+                  onClick={() => setEnrollModalOpen(true)}
                   className="h-7 px-2 text-xs hover:bg-muted"
                 >
-                  {copiedOs === "Windows" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                  Generate
                 </Button>
               </div>
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground pt-1">
@@ -1066,111 +1020,45 @@ export default function SecurityDevicesPage() {
       </Dialog>
 
       {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* MODAL: MANUAL ENROLL WORKSTATION                               */}
+      {/* MODAL: GENERATE ENDPOINT INSTALLER (IT)                          */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       <Dialog open={enrollModalOpen} onOpenChange={setEnrollModalOpen}>
-        <DialogContent className="sm:max-w-[480px] bg-card border-border text-foreground">
-          <form onSubmit={handleEnrollDevice}>
-            <DialogHeader>
-              <DialogTitle className="text-lg font-bold flex items-center gap-2">
-                <Laptop className="h-5 w-5 text-primary" /> Enroll Workstation
-              </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                Register a company laptop or desktop and activate endpoint compliance tracking.
-              </DialogDescription>
-            </DialogHeader>
+        <DialogContent className="sm:max-w-[560px] bg-card border-border text-foreground">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <Laptop className="h-5 w-5 text-primary" /> Generate endpoint installer
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Mint a one-time enroll token for an employee, then run the installer on their
+              workstation as Administrator. The device registers on first agent check-in.
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="space-y-3 py-4 text-xs">
-              <div className="space-y-1">
-                <Label>OS Platform</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  <Button
-                    type="button"
-                    variant={enrollOs === "windows" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setEnrollOs("windows")}
-                    className="text-xs"
-                  >
-                    Windows
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={enrollOs === "macos" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setEnrollOs("macos")}
-                    className="text-xs"
-                  >
-                    macOS
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={enrollOs === "linux" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setEnrollOs("linux")}
-                    className="text-xs"
-                  >
-                    Linux
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="hostname">Workstation Hostname *</Label>
-                <Input
-                  id="hostname"
-                  placeholder="e.g. LAPTOP-CIRCUVENT-01"
-                  value={enrollHostname}
-                  onChange={(e) => setEnrollHostname(e.target.value)}
-                  className="text-xs bg-background/50 border-input"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="serial">Serial Number</Label>
-                <Input
-                  id="serial"
-                  placeholder="e.g. CV-SN-9283719"
-                  value={enrollSerial}
-                  onChange={(e) => setEnrollSerial(e.target.value)}
-                  className="text-xs bg-background/50 border-input"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <Label htmlFor="email">Employee Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="name@circuvent.com"
-                    value={enrollEmail}
-                    onChange={(e) => setEnrollEmail(e.target.value)}
-                    className="text-xs bg-background/50 border-input"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="code">Employee Code</Label>
-                  <Input
-                    id="code"
-                    placeholder="e.g. CV-001"
-                    value={enrollCode}
-                    onChange={(e) => setEnrollCode(e.target.value)}
-                    className="text-xs bg-background/50 border-input"
-                  />
-                </div>
-              </div>
+          <div className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label htmlFor="email">Employee work email *</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="name@circuvent.com"
+                value={enrollEmail}
+                onChange={(e) => setEnrollEmail(e.target.value)}
+                className="text-xs bg-background/50 border-input"
+                required
+              />
             </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" size="sm" onClick={() => setEnrollModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" size="sm" disabled={enrolling} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                {enrolling ? "Enrolling..." : "Enroll Workstation"}
-              </Button>
-            </DialogFooter>
-          </form>
+            <DeviceInstallPanel
+              employeeEmail={enrollEmail.trim().toLowerCase() || undefined}
+              employeeLabel={enrollEmail.trim() || undefined}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" size="sm" onClick={() => setEnrollModalOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

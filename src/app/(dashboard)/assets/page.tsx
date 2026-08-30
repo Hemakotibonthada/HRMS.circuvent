@@ -39,6 +39,7 @@ import {
   AppWindow, Lock, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DeviceInstallPanel } from "@/components/device-install-panel";
 import { toast } from "sonner";
 import { useRBAC } from "@/hooks/use-rbac";
 import {
@@ -236,7 +237,7 @@ export default function AssetsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editItem, setEditItem] = useState<AssetRecord | null>(null);
   const [detailItem, setDetailItem] = useState<AssetRecord | null>(null);
-  const [detailTab, setDetailTab] = useState<"specs" | "schedule" | "history" | "software">("specs");
+  const [detailTab, setDetailTab] = useState<"specs" | "schedule" | "history" | "software" | "security">("specs");
   const [scheduleData, setScheduleData] = useState<DepreciationRow[]>([]);
   const [historyData, setHistoryData] = useState<AssetHistoryData | null>(null);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
@@ -1970,7 +1971,7 @@ export default function AssetsPage() {
             <div className="space-y-4">
               {/* Mini Tabs */}
               <Tabs value={detailTab} onValueChange={(v: any) => setDetailTab(v)}>
-                <TabsList className="grid grid-cols-4 w-full">
+                <TabsList className="grid grid-cols-5 w-full">
                   <TabsTrigger value="specs" className="gap-2">
                     <FileText className="h-4 w-4" /> Specs &amp; Valuation
                   </TabsTrigger>
@@ -1982,6 +1983,9 @@ export default function AssetsPage() {
                   </TabsTrigger>
                   <TabsTrigger value="software" className="gap-2">
                     <Layers className="h-4 w-4" /> Software ({assetSoftwareList.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="security" className="gap-2">
+                    <ShieldCheck className="h-4 w-4" /> Endpoint
                   </TabsTrigger>
                 </TabsList>
 
@@ -2176,6 +2180,21 @@ export default function AssetsPage() {
                           ))}
                         </TableBody>
                       </Table>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="security" className="space-y-4 mt-4">
+                  {detailItem.assignedToId ? (
+                    <DeviceInstallPanel
+                      employeeId={detailItem.assignedToId}
+                      employeeLabel={detailItem.assignedToName}
+                      assetTag={detailItem.assetTag}
+                    />
+                  ) : (
+                    <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                      Assign this asset to an employee first, then generate an endpoint installer for
+                      their custody laptop.
                     </div>
                   )}
                 </TabsContent>
