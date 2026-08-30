@@ -14,13 +14,44 @@ Description:
 
 [CmdletBinding()]
 param (
-    [string]$ServerUrl = "https://hrms.circuvent.com",
+    [string]$ServerUrl = "https://devices.circuvent.com",
+    [string]$DeviceApiKey = "",
+    [string]$EnrollToken = "",
     [string]$ApiKey = "",
     [string]$TenantOrgId = "",
     [string]$EmployeeEmail = "",
     [string]$EmployeeCode = "",
     [switch]$RunAsService
 )
+
+$ConfigPath = "$env:ProgramData\Circuvent\Security\agent-config.json"
+if (Test-Path $ConfigPath) {
+    try {
+        $saved = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+        if (-not $ServerUrl -and $saved.ServerUrl) { $ServerUrl = $saved.ServerUrl }
+        if (-not $DeviceApiKey -and $saved.DeviceApiKey) { $DeviceApiKey = $saved.DeviceApiKey }
+        if (-not $EnrollToken -and $saved.EnrollToken) { $EnrollToken = $saved.EnrollToken }
+        if (-not $ApiKey -and $saved.ApiKey) { $ApiKey = $saved.ApiKey }
+        if (-not $TenantOrgId -and $saved.TenantOrgId) { $TenantOrgId = $saved.TenantOrgId }
+        if (-not $EmployeeEmail -and $saved.EmployeeEmail) { $EmployeeEmail = $saved.EmployeeEmail }
+        if (-not $EmployeeCode -and $saved.EmployeeCode) { $EmployeeCode = $saved.EmployeeCode }
+    } catch {}
+}
+
+function Get-CircuventAgentHeaders {
+    $headers = @{
+        "Content-Type" = "application/json"
+        "X-Circuvent-Agent" = "CircuventGuard-2.5.0"
+    }
+    if ($DeviceApiKey) {
+        $headers["X-Device-Agent-Key"] = $DeviceApiKey
+    } elseif ($EnrollToken) {
+        $headers["X-Device-Enroll-Token"] = $EnrollToken
+    } elseif ($ApiKey) {
+        $headers["X-API-Key"] = $ApiKey
+    }
+    return $headers
+}
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -116,13 +147,9 @@ function Send-IncidentTelemetry {
     } | ConvertTo-Json -Depth 6
 
     try {
-        $headers = @{
-            "Content-Type" = "application/json"
-            "X-Circuvent-Agent" = "CircuventGuard-2.5.0"
-        }
-        if ($ApiKey) { $headers["X-API-Key"] = $ApiKey }
+        $headers = Get-CircuventAgentHeaders
 
-        Invoke-RestMethod -Uri "$ServerUrl/api/security/incidents" -Method Post -Body $payload -Headers $headers -TimeoutSec 15 | Out-Null
+        Invoke-RestMethod -Uri "$ServerUrl/api/agent/incidents" -Method Post -Body $payload -Headers $headers -TimeoutSec 15 | Out-Null
         Write-GuardLog "Incident telemetry dispatched to server: $IncidentType" "INFO"
     }
     catch {
@@ -146,10 +173,9 @@ function Complete-Command {
             errorMessage   = $ErrorMessage
         } | ConvertTo-Json
 
-        $headers = @{ "Content-Type" = "application/json" }
-        if ($ApiKey) { $headers["X-API-Key"] = $ApiKey }
+        $headers = Get-CircuventAgentHeaders
 
-        Invoke-RestMethod -Uri "$ServerUrl/api/security/devices/commands/complete" -Method Post -Body $payload -Headers $headers -TimeoutSec 10 | Out-Null
+        Invoke-RestMethod -Uri "$ServerUrl/api/agent/commands/complete" -Method Post -Body $payload -Headers $headers -TimeoutSec 10 | Out-Null
         Write-GuardLog "Command $CommandId marked as $Status." "INFO"
     } catch {
         Write-GuardLog "Failed to report command completion: $_" "WARN"
@@ -187,7 +213,7 @@ function Execute-RemoteCommand {
                     }
                 }
                 $swPayload = @{ deviceHostname = $env:COMPUTERNAME; software = $apps } | ConvertTo-Json -Depth 4
-                Invoke-RestMethod -Uri "$ServerUrl/api/security/devices/software" -Method Post -Body $swPayload -Headers @{ "Content-Type" = "application/json" } -TimeoutSec 15 | Out-Null
+                Invoke-RestMethod -Uri "$ServerUrl/api/agent/software" -Method Post -Body $swPayload -Headers (Get-CircuventAgentHeaders) -TimeoutSec 15 | Out-Null
                 Complete-Command -CommandId $cmdId -Status "completed" -ResultOutput "Triggered scan completed ($($apps.Count) applications reported)."
             }
 
@@ -257,10 +283,9 @@ function Send-Heartbeat {
             timestamp           = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
         } | ConvertTo-Json
 
-        $headers = @{ "Content-Type" = "application/json" }
-        if ($ApiKey) { $headers["X-API-Key"] = $ApiKey }
+        $headers = Get-CircuventAgentHeaders
 
-        $response = Invoke-RestMethod -Uri "$ServerUrl/api/security/devices/heartbeat" -Method Post -Body $payload -Headers $headers -TimeoutSec 15
+        $response = Invoke-RestMethod -Uri "$ServerUrl/api/agent/heartbeat" -Method Post -Body $payload -Headers $headers -TimeoutSec 15
 
         # Check for and execute pending commands
         if ($response.pendingCommands -and $response.pendingCommands.Count -gt 0) {

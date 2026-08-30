@@ -13,3 +13,4 @@ export * from "./ats";
 export * from "./integrations";
 export * from "./job-history";
 export * from "./security-incidents";
+export * from "./device-portal";

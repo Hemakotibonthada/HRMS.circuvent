@@ -128,6 +128,16 @@ const PUBLIC_PREFIXES = [
   "/icons",
   "/apple-icon",
   "/.well-known",
+  // Endpoint agents (devices.circuvent.com) authenticate with enroll tokens or
+  // device API keys — not browser sessions.
+  "/security/windows",
+  "/security/macos",
+  "/security/linux",
+  "/api/security/devices/enroll",
+  "/api/security/devices/heartbeat",
+  "/api/security/devices/software",
+  "/api/security/devices/commands/complete",
+  "/api/security/incidents",
 ];
 
 function isPublic(pathname: string): boolean {

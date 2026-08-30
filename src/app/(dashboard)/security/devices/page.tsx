@@ -406,7 +406,12 @@ export default function SecurityDevicesPage() {
             Multi-OS Endpoint Provisioning &amp; Agent Deployment
           </CardTitle>
           <CardDescription className="text-xs text-muted-foreground">
-            Execute the respective 1-line provisioning command on newly assigned company workstations to enforce USB lockdown, encryption audit, and watchdog monitoring.
+            Sign in at{" "}
+            <a href="https://devices.circuvent.com" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+              devices.circuvent.com
+            </a>{" "}
+            to generate a personal enroll token, then run the command below as Administrator on the workstation.
+            This is not Windows &quot;Connect work or school&quot; (that requires Microsoft Intune).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -428,7 +433,7 @@ export default function SecurityDevicesPage() {
               <div className="flex items-center gap-2 bg-background/90 p-2.5 rounded-lg border border-border font-mono text-xs text-muted-foreground overflow-x-auto">
                 <span className="text-emerald-400 font-bold select-none">PS&gt;</span>
                 <span className="flex-1 text-foreground select-all">
-                  powershell.exe -ExecutionPolicy Bypass -Command &quot;Invoke-RestMethod https://hrms.circuvent.com/security/windows/Install-CircuventPolicy.ps1 | Invoke-Expression&quot;
+                  powershell.exe -ExecutionPolicy Bypass -Command &quot;irm https://devices.circuvent.com/api/install/windows | iex&quot;
                 </span>
                 <Button
                   variant="ghost"
@@ -436,7 +441,7 @@ export default function SecurityDevicesPage() {
                   onClick={() =>
                     copyCommand(
                       "Windows",
-                      `powershell.exe -ExecutionPolicy Bypass -Command "Invoke-RestMethod https://hrms.circuvent.com/security/windows/Install-CircuventPolicy.ps1 | Invoke-Expression"`
+                      `powershell.exe -ExecutionPolicy Bypass -Command "irm https://devices.circuvent.com/api/install/windows | iex"`
                     )
                   }
                   className="h-7 px-2 text-xs hover:bg-muted"
@@ -446,11 +451,11 @@ export default function SecurityDevicesPage() {
               </div>
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground pt-1">
                 <span>Download Assets:</span>
-                <a href="/security/windows/Install-CircuventPolicy.ps1" download className="text-primary hover:underline flex items-center gap-1">
+                <a href="https://devices.circuvent.com/security/windows/Install-CircuventPolicy.ps1" download className="text-primary hover:underline flex items-center gap-1">
                   <FileCode className="h-3.5 w-3.5" /> Install-CircuventPolicy.ps1
                 </a>
                 <span>&bull;</span>
-                <a href="/security/windows/CircuventGuard.ps1" download className="text-primary hover:underline flex items-center gap-1">
+                <a href="https://devices.circuvent.com/security/windows/CircuventGuard.ps1" download className="text-primary hover:underline flex items-center gap-1">
                   <FileCode className="h-3.5 w-3.5" /> CircuventGuard.ps1
                 </a>
               </div>
@@ -461,7 +466,7 @@ export default function SecurityDevicesPage() {
               <div className="flex items-center gap-2 bg-background/90 p-2.5 rounded-lg border border-border font-mono text-xs text-muted-foreground overflow-x-auto">
                 <span className="text-blue-400 font-bold select-none">sh$</span>
                 <span className="flex-1 text-foreground select-all">
-                  curl -sSL https://hrms.circuvent.com/security/macos/Install-CircuventPolicy.sh | sudo bash
+                  curl -sSL https://devices.circuvent.com/security/macos/Install-CircuventPolicy.sh | sudo bash
                 </span>
                 <Button
                   variant="ghost"
@@ -469,7 +474,7 @@ export default function SecurityDevicesPage() {
                   onClick={() =>
                     copyCommand(
                       "macOS",
-                      "curl -sSL https://hrms.circuvent.com/security/macos/Install-CircuventPolicy.sh | sudo bash"
+                      "curl -sSL https://devices.circuvent.com/security/macos/Install-CircuventPolicy.sh | sudo bash"
                     )
                   }
                   className="h-7 px-2 text-xs hover:bg-muted"
@@ -479,11 +484,11 @@ export default function SecurityDevicesPage() {
               </div>
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground pt-1">
                 <span>Download Assets:</span>
-                <a href="/security/macos/Install-CircuventPolicy.sh" download className="text-primary hover:underline flex items-center gap-1">
+                <a href="https://devices.circuvent.com/security/macos/Install-CircuventPolicy.sh" download className="text-primary hover:underline flex items-center gap-1">
                   <FileCode className="h-3.5 w-3.5" /> Install-CircuventPolicy.sh
                 </a>
                 <span>&bull;</span>
-                <a href="/security/macos/CircuventGuard.sh" download className="text-primary hover:underline flex items-center gap-1">
+                <a href="https://devices.circuvent.com/security/macos/CircuventGuard.sh" download className="text-primary hover:underline flex items-center gap-1">
                   <FileCode className="h-3.5 w-3.5" /> CircuventGuard.sh
                 </a>
               </div>
@@ -494,7 +499,7 @@ export default function SecurityDevicesPage() {
               <div className="flex items-center gap-2 bg-background/90 p-2.5 rounded-lg border border-border font-mono text-xs text-muted-foreground overflow-x-auto">
                 <span className="text-amber-400 font-bold select-none">#</span>
                 <span className="flex-1 text-foreground select-all">
-                  curl -sSL https://hrms.circuvent.com/security/linux/Install-CircuventPolicy.sh | sudo bash
+                  curl -sSL https://devices.circuvent.com/security/linux/Install-CircuventPolicy.sh | sudo bash
                 </span>
                 <Button
                   variant="ghost"
@@ -502,7 +507,7 @@ export default function SecurityDevicesPage() {
                   onClick={() =>
                     copyCommand(
                       "Linux",
-                      "curl -sSL https://hrms.circuvent.com/security/linux/Install-CircuventPolicy.sh | sudo bash"
+                      "curl -sSL https://devices.circuvent.com/security/linux/Install-CircuventPolicy.sh | sudo bash"
                     )
                   }
                   className="h-7 px-2 text-xs hover:bg-muted"
@@ -512,11 +517,11 @@ export default function SecurityDevicesPage() {
               </div>
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground pt-1">
                 <span>Download Assets:</span>
-                <a href="/security/linux/Install-CircuventPolicy.sh" download className="text-primary hover:underline flex items-center gap-1">
+                <a href="https://devices.circuvent.com/security/linux/Install-CircuventPolicy.sh" download className="text-primary hover:underline flex items-center gap-1">
                   <FileCode className="h-3.5 w-3.5" /> Install-CircuventPolicy.sh
                 </a>
                 <span>&bull;</span>
-                <a href="/security/linux/99-circuvent-usb-block.rules" download className="text-primary hover:underline flex items-center gap-1">
+                <a href="https://devices.circuvent.com/security/linux/99-circuvent-usb-block.rules" download className="text-primary hover:underline flex items-center gap-1">
                   <FileCode className="h-3.5 w-3.5" /> 99-circuvent-usb-block.rules
                 </a>
               </div>

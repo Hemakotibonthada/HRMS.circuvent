@@ -4,10 +4,58 @@ import { deviceSecurityPolicies } from "@/db/schema/security-incidents";
 import { assets, assetCategories, assetEvents } from "@/db/schema/assets";
 import { employees } from "@/db/schema/hrms";
 import { organizations } from "@/db/schema/identity";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import {
+  consumeEnrollToken,
+  deviceKeyFromRequest,
+  enrollTokenFromRequest,
+  issueDeviceAgentKey,
+  resolveDeviceAgentKey,
+} from "@/lib/device-agent-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+async function authorizeAgent(req: NextRequest, body: Record<string, unknown>) {
+  const enrollRaw =
+    enrollTokenFromRequest(req) ??
+    (typeof body.enrollToken === "string" ? body.enrollToken : null);
+  if (enrollRaw) {
+    const claims = await consumeEnrollToken(enrollRaw);
+    if (!claims) {
+      return {
+        error: NextResponse.json(
+          { error: "Enroll token is invalid or expired" },
+          { status: 401 }
+        ),
+      };
+    }
+    return {
+      orgId: claims.orgId,
+      employeeEmail: claims.employeeEmail,
+      employeeCode: claims.employeeCode,
+      employeeId: claims.employeeId,
+      viaEnrollToken: true as const,
+    };
+  }
+
+  const agentKey = deviceKeyFromRequest(req);
+  if (!agentKey) {
+    return {
+      error: NextResponse.json(
+        { error: "X-Device-Enroll-Token or X-Device-Agent-Key is required" },
+        { status: 401 }
+      ),
+    };
+  }
+  const agent = await resolveDeviceAgentKey(agentKey);
+  if (!agent) {
+    return {
+      error: NextResponse.json({ error: "Device agent key is invalid" }, { status: 401 }),
+    };
+  }
+  return { orgId: agent.orgId, agent, viaEnrollToken: false as const };
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,6 +87,9 @@ export async function POST(req: NextRequest) {
       hardwareSpecs = {},
     } = body;
 
+    const auth = await authorizeAgent(req, body);
+    if ("error" in auth) return auth.error;
+
     if (!deviceHostname) {
       return NextResponse.json(
         { error: "deviceHostname is required" },
@@ -49,8 +100,8 @@ export async function POST(req: NextRequest) {
     const database = db();
     const cleanHostname = deviceHostname.toUpperCase().trim();
 
-    // 1. Resolve Organization ID
-    let resolvedOrgId = orgId;
+    // 1. Resolve Organization ID (from enroll token / agent key — never trust body alone)
+    let resolvedOrgId = auth.orgId ?? orgId;
     if (!resolvedOrgId) {
       const org = await database.query.organizations.findFirst({
         columns: { id: true },
@@ -63,14 +114,22 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Resolve Employee if specified
-    let employeeId: string | null = rawEmployeeId || null;
+    let employeeId: string | null = rawEmployeeId || auth.employeeId || null;
     let employeeRecord: any = null;
-    if (employeeEmail || employeeCode) {
+    const resolvedEmail =
+      auth.employeeEmail ?? (employeeEmail ? employeeEmail.toLowerCase() : null);
+    const resolvedCode =
+      auth.employeeCode ?? (employeeCode ? employeeCode.toUpperCase() : null);
+
+    if (resolvedEmail || resolvedCode) {
       employeeRecord = await database.query.employees.findFirst({
-        where: (e: any, { or, eq }: any) =>
-          or(
-            employeeEmail ? eq(e.workEmail, employeeEmail.toLowerCase()) : undefined,
-            employeeCode ? eq(e.employeeCode, employeeCode.toUpperCase()) : undefined
+        where: (e: any, { or, eq, and }: any) =>
+          and(
+            eq(e.orgId, resolvedOrgId),
+            or(
+              resolvedEmail ? eq(e.workEmail, resolvedEmail) : undefined,
+              resolvedCode ? eq(e.employeeCode, resolvedCode) : undefined
+            )
           ),
       });
       if (employeeRecord) {
@@ -78,9 +137,13 @@ export async function POST(req: NextRequest) {
       }
     } else if (rawEmployeeId) {
       employeeRecord = await database.query.employees.findFirst({
-        where: (e: any, { eq }: any) => eq(e.id, rawEmployeeId),
+        where: (e: any, { eq, and }: any) =>
+          and(eq(e.id, rawEmployeeId), eq(e.orgId, resolvedOrgId)),
       });
     }
+
+    const issuedEmail = resolvedEmail ?? (employeeEmail ? employeeEmail.toLowerCase() : null);
+    const issuedCode = resolvedCode ?? (employeeCode ? employeeCode.toUpperCase() : null);
 
     // 3. Compute Initial Compliance Score
     let complianceScore = 100;
@@ -119,8 +182,8 @@ export async function POST(req: NextRequest) {
         .set({
           deviceSerial: deviceSerial || existingPolicy.deviceSerial,
           employeeId: employeeId || existingPolicy.employeeId,
-          employeeCode: employeeCode ? employeeCode.toUpperCase() : existingPolicy.employeeCode,
-          employeeEmail: employeeEmail ? employeeEmail.toLowerCase() : existingPolicy.employeeEmail,
+          employeeCode: issuedCode ?? existingPolicy.employeeCode,
+          employeeEmail: issuedEmail ?? existingPolicy.employeeEmail,
           policyMode,
           usbBlocked,
           firewallActive,
@@ -149,8 +212,8 @@ export async function POST(req: NextRequest) {
           deviceHostname: cleanHostname,
           deviceSerial: deviceSerial || null,
           employeeId,
-          employeeCode: employeeCode ? employeeCode.toUpperCase() : null,
-          employeeEmail: employeeEmail ? employeeEmail.toLowerCase() : null,
+          employeeCode: issuedCode,
+          employeeEmail: issuedEmail,
           policyMode,
           usbBlocked,
           firewallActive,
@@ -327,8 +390,18 @@ export async function POST(req: NextRequest) {
       console.warn("[POST /api/security/devices/enroll] Asset sync warning:", assetErr.message);
     }
 
+    let deviceApiKey: string | undefined;
+    if (resultDevice && auth.viaEnrollToken) {
+      deviceApiKey = await issueDeviceAgentKey({
+        orgId: resolvedOrgId,
+        deviceId: resultDevice.id,
+        deviceHostname: cleanHostname,
+      });
+    }
+
     return NextResponse.json({
       success: true,
+      deviceApiKey,
       device: resultDevice,
       asset: registeredAsset
         ? {

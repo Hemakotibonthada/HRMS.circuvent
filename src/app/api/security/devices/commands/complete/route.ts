@@ -2,12 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/client";
 import { deviceCommands } from "@/db/schema/security-incidents";
 import { eq } from "drizzle-orm";
+import { deviceKeyFromRequest, resolveDeviceAgentKey } from "@/lib/device-agent-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const agent = await resolveDeviceAgentKey(deviceKeyFromRequest(req));
+    if (!agent) {
+      return NextResponse.json(
+        { error: "X-Device-Agent-Key is required" },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
     const {
       commandId,
@@ -22,6 +31,13 @@ export async function POST(req: NextRequest) {
         { error: "commandId is required" },
         { status: 400 }
       );
+    }
+
+    if (deviceHostname) {
+      const cleanHostname = deviceHostname.toUpperCase().trim();
+      if (cleanHostname !== agent.deviceHostname) {
+        return NextResponse.json({ error: "Hostname does not match agent key" }, { status: 403 });
+      }
     }
 
     const database = db();

@@ -16,13 +16,27 @@ Description:
 
 [CmdletBinding()]
 param (
-    [string]$ServerUrl = "https://hrms.circuvent.com",
+    [string]$ServerUrl = "https://devices.circuvent.com",
+    [string]$EnrollToken = "",
+    [string]$DeviceApiKey = "",
     [string]$ApiKey = "",
     [string]$OrgId = "",
     [string]$EmployeeEmail = "",
     [string]$EmployeeCode = "",
     [switch]$Force
 )
+
+function Get-CircuventAgentHeaders {
+    $headers = @{ "Content-Type" = "application/json" }
+    if ($DeviceApiKey) {
+        $headers["X-Device-Agent-Key"] = $DeviceApiKey
+    } elseif ($EnrollToken) {
+        $headers["X-Device-Enroll-Token"] = $EnrollToken
+    } elseif ($ApiKey) {
+        $headers["X-API-Key"] = $ApiKey
+    }
+    return $headers
+}
 
 # 1. Require Administrative Privileges
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -209,10 +223,9 @@ try {
         software       = $uniqueApps
     } | ConvertTo-Json -Depth 5
 
-    $headers = @{ "Content-Type" = "application/json" }
-    if ($ApiKey) { $headers["X-API-Key"] = $ApiKey }
+    $headers = Get-CircuventAgentHeaders
 
-    $swRes = Invoke-RestMethod -Uri "$ServerUrl/api/security/devices/software" -Method Post -Body $softwarePayload -Headers $headers -TimeoutSec 20
+    $swRes = Invoke-RestMethod -Uri "$ServerUrl/api/agent/software" -Method Post -Body $softwarePayload -Headers $headers -TimeoutSec 20
     Write-Host "  -> Software inventory synchronized with HRMS. ($($swRes.processedCount) apps processed, $($swRes.blacklistedFoundCount) blacklisted)." -ForegroundColor Cyan
 } catch {
     Write-Warning "  -> Could not upload software inventory: $_"
@@ -238,10 +251,13 @@ if (Test-Path $guardScriptSource) {
 
 # Write environment configuration for the service
 $config = @{
-    ServerEndpoint    = "$ServerUrl/api/security/incidents"
-    HeartbeatEndpoint = "$ServerUrl/api/security/devices/heartbeat"
-    CommandsEndpoint  = "$ServerUrl/api/security/devices/commands/complete"
-    SoftwareEndpoint  = "$ServerUrl/api/security/devices/software"
+    ServerUrl         = $ServerUrl
+    ServerEndpoint    = "$ServerUrl/api/agent/incidents"
+    HeartbeatEndpoint = "$ServerUrl/api/agent/heartbeat"
+    CommandsEndpoint  = "$ServerUrl/api/agent/commands/complete"
+    SoftwareEndpoint  = "$ServerUrl/api/agent/software"
+    EnrollToken       = $EnrollToken
+    DeviceApiKey      = $DeviceApiKey
     ApiKey            = $ApiKey
     TenantOrgId       = $OrgId
     EmployeeEmail     = $EmployeeEmail
@@ -254,7 +270,7 @@ $taskName = "CircuventEndpointSecurityGuard"
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
 
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$targetGuardScript`" -ServerUrl `"$ServerUrl`" -ApiKey `"$ApiKey`" -TenantOrgId `"$OrgId`" -EmployeeEmail `"$EmployeeEmail`" -EmployeeCode `"$EmployeeCode`""
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$targetGuardScript`" -ServerUrl `"$ServerUrl`" -DeviceApiKey `"$DeviceApiKey`" -EnrollToken `"$EnrollToken`" -ApiKey `"$ApiKey`" -TenantOrgId `"$OrgId`" -EmployeeEmail `"$EmployeeEmail`" -EmployeeCode `"$EmployeeCode`""
 
 $triggerBoot = New-ScheduledTaskTrigger -AtStartup
 $triggerLogon = New-ScheduledTaskTrigger -AtLogOn
@@ -315,10 +331,18 @@ try {
         firewallActive      = $true
     } | ConvertTo-Json -Depth 6
 
-    $headers = @{ "Content-Type" = "application/json" }
-    if ($ApiKey) { $headers["X-API-Key"] = $ApiKey }
+    $headers = Get-CircuventAgentHeaders
 
-    $enrollRes = Invoke-RestMethod -Uri "$ServerUrl/api/security/devices/enroll" -Method Post -Body $enrollPayload -Headers $headers -TimeoutSec 15
+    $enrollRes = Invoke-RestMethod -Uri "$ServerUrl/api/agent/enroll" -Method Post -Body $enrollPayload -Headers $headers -TimeoutSec 15
+
+    if ($enrollRes.deviceApiKey) {
+        $DeviceApiKey = $enrollRes.deviceApiKey
+        $configObj = Get-Content "$DataDir\agent-config.json" -Raw | ConvertFrom-Json
+        $configObj.DeviceApiKey = $DeviceApiKey
+        $configObj.EnrollToken = ""
+        $configObj | ConvertTo-Json | Set-Content -Path "$DataDir\agent-config.json" -Encoding UTF8
+        Write-Host "  -> Device agent key issued and saved locally." -ForegroundColor Gray
+    }
     
     if ($enrollRes.asset) {
         Write-Host "  -> [ASSET MANAGEMENT] Registered Asset: $($enrollRes.asset.name) (Tag: $($enrollRes.asset.assetTag), Serial: $($enrollRes.asset.serialNumber))" -ForegroundColor Cyan

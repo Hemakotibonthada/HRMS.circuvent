@@ -9,6 +9,7 @@ import { employees } from "@/db/schema/hrms";
 import { organizations } from "@/db/schema/identity";
 import { eq, and, desc, ilike, or, sql } from "drizzle-orm";
 import nodemailer from "nodemailer";
+import { deviceKeyFromRequest, resolveDeviceAgentKey } from "@/lib/device-agent-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,6 +70,14 @@ function analyzeSoftware(name: string, publisher?: string) {
 // ─── POST /api/security/devices/software — Ingest Installed Software ───
 export async function POST(req: NextRequest) {
   try {
+    const agent = await resolveDeviceAgentKey(deviceKeyFromRequest(req));
+    if (!agent) {
+      return NextResponse.json(
+        { error: "X-Device-Agent-Key is required" },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
     const {
       deviceHostname,
@@ -85,15 +94,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const database = db();
     const cleanHostname = deviceHostname.toUpperCase().trim();
+    if (cleanHostname !== agent.deviceHostname) {
+      return NextResponse.json({ error: "Hostname does not match agent key" }, { status: 403 });
+    }
+
+    const database = db();
 
     // 1. Resolve Device Policy Record
     const device = await database.query.deviceSecurityPolicies.findFirst({
       where: eq(deviceSecurityPolicies.deviceHostname, cleanHostname),
     });
 
-    let resolvedOrgId = rawOrgId || device?.orgId;
+    let resolvedOrgId = agent.orgId || rawOrgId || device?.orgId;
     if (!resolvedOrgId) {
       const org = await database.query.organizations.findFirst({
         columns: { id: true },
