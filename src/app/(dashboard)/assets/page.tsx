@@ -36,6 +36,7 @@ import {
   UserCheck, ArrowDownLeft, RotateCcw, AlertOctagon, HelpCircle,
   FileText, History, TrendingDown, Layers, Building2, RefreshCw,
   LayoutGrid, List, Sparkles, Check, ChevronRight, ShieldAlert,
+  AppWindow, Lock, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -137,6 +138,21 @@ export interface ValuationData {
   totalBookValueMinor: string;
 }
 
+export interface InstalledSoftwareRecord {
+  id: string;
+  name: string;
+  version?: string | null;
+  publisher?: string | null;
+  installDate?: string | null;
+  isBlacklisted: boolean;
+  category: string;
+  riskLevel: string;
+  deviceHostname: string;
+  deviceId?: string | null;
+  employeeId?: string | null;
+  updatedAt: string;
+}
+
 const STATE_CONFIG: Record<string, { label: string; badgeClass: string; icon: typeof Package; color: string }> = {
   in_stock: { label: "In Stock", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800", icon: ShieldCheck, color: "text-emerald-500" },
   assigned: { label: "Assigned", badgeClass: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800", icon: UserCheck, color: "text-blue-500" },
@@ -176,6 +192,23 @@ export default function AssetsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Software & SaaS Tab State
+  const [softwareList, setSoftwareList] = useState<InstalledSoftwareRecord[]>([]);
+  const [softwareSummary, setSoftwareSummary] = useState({
+    totalInstallations: 0,
+    uniqueApplications: 0,
+    blacklistedCount: 0,
+    highRiskCount: 0,
+    saasProductivityCount: 0,
+  });
+  const [softwareSearch, setSoftwareSearch] = useState("");
+  const [softwareCategoryFilter, setSoftwareCategoryFilter] = useState("all");
+  const [softwareRiskFilter, setSoftwareRiskFilter] = useState("all");
+  const [softwareBlacklistOnly, setSoftwareBlacklistOnly] = useState(false);
+  const [loadingSoftwareTab, setLoadingSoftwareTab] = useState(false);
+  const [assetSoftwareList, setAssetSoftwareList] = useState<InstalledSoftwareRecord[]>([]);
+  const [loadingAssetSoftware, setLoadingAssetSoftware] = useState(false);
+
   // Filters & Views
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -188,7 +221,7 @@ export default function AssetsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editItem, setEditItem] = useState<AssetRecord | null>(null);
   const [detailItem, setDetailItem] = useState<AssetRecord | null>(null);
-  const [detailTab, setDetailTab] = useState<"specs" | "schedule" | "history">("specs");
+  const [detailTab, setDetailTab] = useState<"specs" | "schedule" | "history" | "software">("specs");
   const [scheduleData, setScheduleData] = useState<DepreciationRow[]>([]);
   const [historyData, setHistoryData] = useState<AssetHistoryData | null>(null);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
@@ -229,15 +262,40 @@ export default function AssetsPage() {
     notes: "",
   });
 
+  // Load Software Data
+  const loadSoftwareData = useCallback(async () => {
+    try {
+      setLoadingSoftwareTab(true);
+      const params = new URLSearchParams();
+      if (softwareSearch) params.set("search", softwareSearch);
+      if (softwareCategoryFilter !== "all") params.set("category", softwareCategoryFilter);
+      if (softwareRiskFilter !== "all") params.set("riskLevel", softwareRiskFilter);
+      if (softwareBlacklistOnly) params.set("isBlacklisted", "true");
+      params.set("limit", "200");
+
+      const res = await fetch(`/api/security/devices/software?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSoftwareList(data.software || []);
+        if (data.summary) setSoftwareSummary(data.summary);
+      }
+    } catch (err) {
+      console.error("Failed to load software inventory:", err);
+    } finally {
+      setLoadingSoftwareTab(false);
+    }
+  }, [softwareSearch, softwareCategoryFilter, softwareRiskFilter, softwareBlacklistOnly]);
+
   // Load Data
   const loadAllData = useCallback(async () => {
     try {
       setRefreshing(true);
-      const [assetsRes, catsRes, empsRes, valRes] = await Promise.all([
+      const [assetsRes, catsRes, empsRes, valRes, swRes] = await Promise.all([
         fetch("/api/assets", { credentials: "include" }),
         fetch("/api/assets/categories", { credentials: "include" }),
         fetch("/api/employees?limit=200", { credentials: "include" }),
         fetch("/api/assets/valuation", { credentials: "include" }),
+        fetch("/api/security/devices/software?limit=200"),
       ]);
 
       if (assetsRes.ok) {
@@ -264,6 +322,11 @@ export default function AssetsPage() {
         const data = await valRes.json();
         setValuation(data);
       }
+      if (swRes.ok) {
+        const data = await swRes.json();
+        setSoftwareList(data.software || []);
+        if (data.summary) setSoftwareSummary(data.summary);
+      }
     } catch (err) {
       console.error("Failed to load asset data:", err);
       toast.error("Could not load asset data");
@@ -276,6 +339,12 @@ export default function AssetsPage() {
   useEffect(() => {
     loadAllData();
   }, [loadAllData]);
+
+  useEffect(() => {
+    if (activeTab === "software") {
+      loadSoftwareData();
+    }
+  }, [activeTab, loadSoftwareData]);
 
   // Load Schedule when Detail Modal opens
   useEffect(() => {
@@ -298,6 +367,19 @@ export default function AssetsPage() {
         .then((data) => setHistoryData(data))
         .catch(() => toast.error("Could not load asset history"))
         .finally(() => setLoadingHistory(false));
+    }
+  }, [detailItem, detailTab]);
+
+  // Load Software for specific asset
+  useEffect(() => {
+    if (detailItem && detailTab === "software") {
+      setLoadingAssetSoftware(true);
+      const tagClean = detailItem.assetTag?.replace("CIR-AST-", "") || "";
+      fetch(`/api/security/devices/software?deviceHostname=${encodeURIComponent(tagClean)}&limit=100`)
+        .then((res) => res.json())
+        .then((data) => setAssetSoftwareList(data.software || []))
+        .catch(() => toast.error("Could not load asset software list"))
+        .finally(() => setLoadingAssetSoftware(false));
     }
   }, [detailItem, detailTab]);
 
@@ -809,6 +891,9 @@ export default function AssetsPage() {
             </TabsTrigger>
             <TabsTrigger value="maintenance" className="gap-2">
               <Wrench className="h-4 w-4" /> Maintenance &amp; Warranty ({warrantyAlerts.length})
+            </TabsTrigger>
+            <TabsTrigger value="software" className="gap-2">
+              <Layers className="h-4 w-4" /> Software &amp; SaaS ({softwareSummary.uniqueApplications || softwareList.length})
             </TabsTrigger>
           </TabsList>
 
@@ -1331,6 +1416,215 @@ export default function AssetsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Tab 4: Software & SaaS Applications */}
+        <TabsContent value="software" className="space-y-6 mt-4">
+          {/* Summary KPIs */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="border shadow-sm bg-card/60">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Software Apps</p>
+                  <p className="text-2xl font-bold mt-1 text-foreground">{softwareSummary.uniqueApplications || softwareList.length}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{softwareSummary.totalInstallations} installations across fleet</p>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-500">
+                  <Layers className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border shadow-sm bg-card/60">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Blacklisted Apps</p>
+                  <p className={cn("text-2xl font-bold mt-1", softwareSummary.blacklistedCount > 0 ? "text-rose-500" : "text-emerald-500")}>
+                    {softwareSummary.blacklistedCount}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Torrents / unauthorized remote access</p>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-500">
+                  <ShieldAlert className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border shadow-sm bg-card/60">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">High Risk Tools</p>
+                  <p className="text-2xl font-bold mt-1 text-amber-500">{softwareSummary.highRiskCount}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Packet capture &amp; diagnostic utilities</p>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border shadow-sm bg-card/60">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Productivity &amp; SaaS</p>
+                  <p className="text-2xl font-bold mt-1 text-blue-500">{softwareSummary.saasProductivityCount}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">IDEs, Office, Figma, Slack</p>
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                  <AppWindow className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Software Filters */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by application name, publisher, hostname..."
+                value={softwareSearch}
+                onChange={(e) => setSoftwareSearch(e.target.value)}
+                className="pl-9 bg-card text-xs"
+              />
+            </div>
+
+            <select
+              value={softwareCategoryFilter}
+              onChange={(e) => setSoftwareCategoryFilter(e.target.value)}
+              className="h-9 text-xs bg-background border border-input rounded-md px-2 text-foreground"
+            >
+              <option value="all">All Categories</option>
+              <option value="productivity">Productivity &amp; SaaS</option>
+              <option value="development">Development</option>
+              <option value="remote_access">Remote Access</option>
+              <option value="p2p_sharing">P2P &amp; Torrent</option>
+              <option value="security">Security / Auditing</option>
+              <option value="communication">Communication</option>
+              <option value="utility">Utility</option>
+            </select>
+
+            <select
+              value={softwareRiskFilter}
+              onChange={(e) => setSoftwareRiskFilter(e.target.value)}
+              className="h-9 text-xs bg-background border border-input rounded-md px-2 text-foreground"
+            >
+              <option value="all">All Risk Levels</option>
+              <option value="critical">Critical Risk</option>
+              <option value="high">High Risk</option>
+              <option value="medium">Medium Risk</option>
+              <option value="low">Low Risk</option>
+              <option value="safe">Safe / Approved</option>
+            </select>
+
+            <Button
+              variant={softwareBlacklistOnly ? "destructive" : "outline"}
+              size="sm"
+              onClick={() => setSoftwareBlacklistOnly(!softwareBlacklistOnly)}
+              className="text-xs gap-1.5"
+            >
+              <ShieldAlert className="h-3.5 w-3.5" /> Blacklisted Only
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadSoftwareData}
+              disabled={loadingSoftwareTab}
+              className="text-xs gap-1.5"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", loadingSoftwareTab && "animate-spin")} /> Refresh
+            </Button>
+          </div>
+
+          {/* Software Inventory Table */}
+          <Card className="border shadow-sm overflow-hidden">
+            <Table>
+              <TableHeader className="bg-muted/40 text-xs">
+                <TableRow>
+                  <TableHead>Application Name</TableHead>
+                  <TableHead>Publisher / Vendor</TableHead>
+                  <TableHead>Version</TableHead>
+                  <TableHead>Installed On Host</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Risk Classification</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loadingSoftwareTab ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground text-xs">
+                      <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" /> Loading fleet software catalog...
+                    </TableCell>
+                  </TableRow>
+                ) : softwareList.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground text-xs">
+                      No software applications found matching current criteria.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  softwareList.map((app) => (
+                    <TableRow key={app.id} className="hover:bg-muted/30 text-xs">
+                      <TableCell className="font-bold text-foreground">
+                        <div className="flex items-center gap-1.5">
+                          {app.isBlacklisted ? (
+                            <ShieldAlert className="h-4 w-4 text-rose-500 shrink-0" />
+                          ) : (
+                            <AppWindow className="h-4 w-4 text-muted-foreground shrink-0" />
+                          )}
+                          <span>{app.name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{app.publisher || "Third Party"}</TableCell>
+                      <TableCell className="font-mono text-muted-foreground">{app.version || "1.0.0"}</TableCell>
+                      <TableCell className="font-mono font-semibold text-primary">{app.deviceHostname}</TableCell>
+                      <TableCell className="capitalize text-muted-foreground">{app.category.replace(/_/g, " ")}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px] uppercase font-bold",
+                            app.riskLevel === "critical"
+                              ? "bg-rose-500/10 text-rose-500 border-rose-500/20"
+                              : app.riskLevel === "high"
+                              ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                              : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                          )}
+                        >
+                          {app.isBlacklisted ? "BLACKLISTED" : app.riskLevel}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {app.isBlacklisted && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-6 px-2 text-[10px] gap-1"
+                            onClick={async () => {
+                              toast.info(`Dispatched remote kill command for ${app.name} on ${app.deviceHostname}`);
+                              await fetch("/api/security/devices/commands", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  deviceHostname: app.deviceHostname,
+                                  commandType: "kill_process",
+                                  payload: { processName: app.name },
+                                }),
+                              });
+                            }}
+                          >
+                            <Zap className="h-3 w-3" /> Terminate
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* ═══════════════════════════════════════════════════════════════ */}
@@ -1665,15 +1959,18 @@ export default function AssetsPage() {
             <div className="space-y-4">
               {/* Mini Tabs */}
               <Tabs value={detailTab} onValueChange={(v: any) => setDetailTab(v)}>
-                <TabsList className="grid grid-cols-3 w-full">
+                <TabsList className="grid grid-cols-4 w-full">
                   <TabsTrigger value="specs" className="gap-2">
                     <FileText className="h-4 w-4" /> Specs &amp; Valuation
                   </TabsTrigger>
                   <TabsTrigger value="schedule" className="gap-2">
-                    <TrendingDown className="h-4 w-4" /> Depreciation Schedule
+                    <TrendingDown className="h-4 w-4" /> Depreciation
                   </TabsTrigger>
                   <TabsTrigger value="history" className="gap-2">
                     <History className="h-4 w-4" /> Custody Chain
+                  </TabsTrigger>
+                  <TabsTrigger value="software" className="gap-2">
+                    <Layers className="h-4 w-4" /> Software ({assetSoftwareList.length})
                   </TabsTrigger>
                 </TabsList>
 
@@ -1718,53 +2015,41 @@ export default function AssetsPage() {
                       <UserCheck className="h-4 w-4 text-blue-500" /> Current Custody Holder
                     </h4>
                     {detailItem.assignedToName ? (
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between text-xs">
                         <div>
-                          <p className="font-medium">{detailItem.assignedToName}</p>
-                          <p className="text-xs text-muted-foreground">Assigned to employee</p>
+                          <p className="font-semibold text-sm">{detailItem.assignedToName}</p>
+                          <p className="text-muted-foreground">Active corporate custodian</p>
                         </div>
-                        <Badge className="bg-blue-100 text-blue-800 border-blue-300">Active Custody</Badge>
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">In stock in central hardware pool.</p>
+                      <p className="text-xs text-muted-foreground italic">Asset is currently in inventory stock.</p>
                     )}
                   </div>
-
-                  {detailItem.notes && (
-                    <div className="p-4 rounded-xl border bg-muted/30">
-                      <span className="text-xs text-muted-foreground">Notes &amp; Remarks</span>
-                      <p className="text-sm mt-1">{detailItem.notes}</p>
-                    </div>
-                  )}
                 </TabsContent>
 
                 {/* Subtab 2: Depreciation Schedule */}
                 <TabsContent value="schedule" className="space-y-4 mt-4">
                   {loadingSchedule ? (
-                    <div className="py-12 text-center text-muted-foreground">Calculating schedule...</div>
+                    <div className="py-12 text-center text-muted-foreground">Calculating depreciation matrix...</div>
                   ) : scheduleData.length === 0 ? (
-                    <div className="py-12 text-center text-muted-foreground">
-                      No purchase cost or schedule available for this asset.
-                    </div>
+                    <div className="py-12 text-center text-muted-foreground">No depreciation schedule calculated.</div>
                   ) : (
-                    <div className="border rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+                    <div className="border rounded-xl overflow-hidden max-h-72 overflow-y-auto">
                       <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/50">
-                            <TableHead>Month #</TableHead>
-                            <TableHead>Date</TableHead>
+                        <TableHeader className="bg-muted/40 text-xs">
+                          <TableRow>
+                            <TableHead>Period</TableHead>
                             <TableHead>Monthly Charge</TableHead>
-                            <TableHead>Accumulated Dep.</TableHead>
-                            <TableHead>Book Value</TableHead>
+                            <TableHead>Accumulated</TableHead>
+                            <TableHead>Ending Book Value</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {scheduleData.map((row) => (
-                            <TableRow key={row.month}>
-                              <TableCell className="font-mono text-xs">M{row.month}</TableCell>
-                              <TableCell className="text-xs">{row.date}</TableCell>
-                              <TableCell className="text-xs text-rose-600 font-medium">{formatRupees(row.chargeMinor)}</TableCell>
-                              <TableCell className="text-xs text-muted-foreground">{formatRupees(row.accumulatedMinor)}</TableCell>
+                            <TableRow key={row.month} className="text-xs">
+                              <TableCell className="font-mono">Month {row.month} ({row.date})</TableCell>
+                              <TableCell className="text-xs">{formatRupees(row.chargeMinor)}</TableCell>
+                              <TableCell className="text-xs text-rose-600">{formatRupees(row.accumulatedMinor)}</TableCell>
                               <TableCell className="text-xs font-bold text-indigo-600">{formatRupees(row.bookValueMinor)}</TableCell>
                             </TableRow>
                           ))}
@@ -1827,6 +2112,59 @@ export default function AssetsPage() {
                           </div>
                         </div>
                       )}
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Subtab 4: Installed Software on Asset */}
+                <TabsContent value="software" className="space-y-4 mt-4">
+                  {loadingAssetSoftware ? (
+                    <div className="py-12 text-center text-xs text-muted-foreground">
+                      <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" /> Loading installed applications on {detailItem.name}...
+                    </div>
+                  ) : assetSoftwareList.length === 0 ? (
+                    <div className="py-12 text-center text-xs text-muted-foreground">
+                      No software inventory reported yet for this asset tag ({detailItem.assetTag}).
+                    </div>
+                  ) : (
+                    <div className="border rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                      <Table>
+                        <TableHeader className="bg-muted/40 text-xs">
+                          <TableRow>
+                            <TableHead>Application Name</TableHead>
+                            <TableHead>Version</TableHead>
+                            <TableHead>Category</TableHead>
+                            <TableHead>Risk Level</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {assetSoftwareList.map((app) => (
+                            <TableRow key={app.id} className="text-xs">
+                              <TableCell className="font-semibold text-foreground flex items-center gap-1.5">
+                                {app.isBlacklisted ? <ShieldAlert className="h-3.5 w-3.5 text-rose-500 shrink-0" /> : <AppWindow className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                                {app.name}
+                              </TableCell>
+                              <TableCell className="font-mono text-muted-foreground">{app.version || "1.0.0"}</TableCell>
+                              <TableCell className="capitalize text-muted-foreground">{app.category.replace(/_/g, " ")}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[10px] uppercase font-bold",
+                                    app.riskLevel === "critical"
+                                      ? "bg-rose-500/10 text-rose-500 border-rose-500/20"
+                                      : app.riskLevel === "high"
+                                      ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                      : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                  )}
+                                >
+                                  {app.isBlacklisted ? "BLACKLISTED" : app.riskLevel}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
                     </div>
                   )}
                 </TabsContent>

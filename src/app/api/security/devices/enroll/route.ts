@@ -4,7 +4,7 @@ import { deviceSecurityPolicies } from "@/db/schema/security-incidents";
 import { assets, assetCategories, assetEvents } from "@/db/schema/assets";
 import { employees } from "@/db/schema/hrms";
 import { organizations } from "@/db/schema/identity";
-import { eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,8 +28,15 @@ export async function POST(req: NextRequest) {
       policyMode = "strict_block",
       usbBlocked = true,
       firewallActive = true,
-      agentVersion = "2.4.0",
+      agentVersion = "2.5.0",
       osVersion = "Windows 11 Enterprise",
+      osFamily = "windows", // "windows" | "macos" | "linux"
+      osBuild,
+      encryptionStatus = "unknown", // "encrypted" | "unencrypted" | "encrypting" | "unknown"
+      encryptionType = "none", // "bitlocker" | "filevault" | "luks" | "none"
+      missingPatchesCount = 0,
+      pendingUpdates = [],
+      hardwareSpecs = {},
     } = body;
 
     if (!deviceHostname) {
@@ -40,6 +47,7 @@ export async function POST(req: NextRequest) {
     }
 
     const database = db();
+    const cleanHostname = deviceHostname.toUpperCase().trim();
 
     // 1. Resolve Organization ID
     let resolvedOrgId = orgId;
@@ -74,9 +82,34 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 3. Upsert device security policy record
+    // 3. Compute Initial Compliance Score
+    let complianceScore = 100;
+    if (encryptionStatus === "unencrypted") complianceScore -= 40;
+    if (missingPatchesCount > 0) complianceScore -= Math.min(40, missingPatchesCount * 10);
+    if (!usbBlocked) complianceScore -= 25;
+    if (!firewallActive) complianceScore -= 20;
+    complianceScore = Math.max(0, Math.min(100, complianceScore));
+
+    let complianceStatus = "compliant";
+    if (complianceScore < 60 || encryptionStatus === "unencrypted") {
+      complianceStatus = "critical_risk";
+    } else if (complianceScore < 90 || missingPatchesCount > 0) {
+      complianceStatus = "warning";
+    }
+
+    const mergedHardwareSpecs = {
+      processor: processor || hardwareSpecs?.processor,
+      ramGb: ramGb || hardwareSpecs?.ramGb,
+      diskGb: diskGb || hardwareSpecs?.diskGb,
+      macAddress: macAddress || hardwareSpecs?.macAddress,
+      manufacturer: manufacturer || hardwareSpecs?.manufacturer,
+      model: model || hardwareSpecs?.model,
+      ...hardwareSpecs,
+    };
+
+    // 4. Upsert device security policy record
     const existingPolicy = await database.query.deviceSecurityPolicies.findFirst({
-      where: eq(deviceSecurityPolicies.deviceHostname, deviceHostname.toUpperCase()),
+      where: eq(deviceSecurityPolicies.deviceHostname, cleanHostname),
     });
 
     let resultDevice;
@@ -93,6 +126,15 @@ export async function POST(req: NextRequest) {
           firewallActive,
           agentVersion,
           osVersion,
+          osFamily: osFamily || existingPolicy.osFamily,
+          osBuild: osBuild || existingPolicy.osBuild,
+          encryptionStatus: encryptionStatus !== "unknown" ? encryptionStatus : existingPolicy.encryptionStatus,
+          encryptionType: encryptionType !== "none" ? encryptionType : existingPolicy.encryptionType,
+          missingPatchesCount: missingPatchesCount !== undefined ? missingPatchesCount : existingPolicy.missingPatchesCount,
+          pendingUpdates: pendingUpdates.length > 0 ? pendingUpdates : existingPolicy.pendingUpdates,
+          hardwareSpecs: mergedHardwareSpecs,
+          complianceScore,
+          complianceStatus,
           lastHeartbeatAt: new Date(),
           updatedAt: new Date(),
         })
@@ -104,7 +146,7 @@ export async function POST(req: NextRequest) {
         .insert(deviceSecurityPolicies)
         .values({
           orgId: resolvedOrgId,
-          deviceHostname: deviceHostname.toUpperCase(),
+          deviceHostname: cleanHostname,
           deviceSerial: deviceSerial || null,
           employeeId,
           employeeCode: employeeCode ? employeeCode.toUpperCase() : null,
@@ -114,16 +156,24 @@ export async function POST(req: NextRequest) {
           firewallActive,
           agentVersion,
           osVersion,
+          osFamily,
+          osBuild: osBuild || null,
+          encryptionStatus,
+          encryptionType,
+          missingPatchesCount,
+          pendingUpdates,
+          hardwareSpecs: mergedHardwareSpecs,
+          complianceScore,
+          complianceStatus,
           lastHeartbeatAt: new Date(),
         })
         .returning();
       resultDevice = inserted;
     }
 
-    // 4. Auto-register / Sync into HRMS Asset Management (`assets` table)
+    // 5. Auto-register / Sync into HRMS Asset Management (`assets` table)
     let registeredAsset: any = null;
     try {
-      // Find or create "Laptops & Notebooks" category
       let laptopCategory = await database.query.assetCategories.findFirst({
         where: (cat: any, { eq, and }: any) =>
           and(eq(cat.orgId, resolvedOrgId), eq(cat.code, "laptop")),
@@ -134,7 +184,7 @@ export async function POST(req: NextRequest) {
           .insert(assetCategories)
           .values({
             orgId: resolvedOrgId,
-            name: "Laptops & Notebooks",
+            name: "Laptops & Workstations",
             code: "laptop",
             defaultUsefulLifeMonths: 36,
             defaultMethod: "straight_line",
@@ -148,7 +198,6 @@ export async function POST(req: NextRequest) {
         laptopCategory = newCat;
       }
 
-      // Check if asset already exists by serial number or asset tag matching hostname
       const cleanSerial = deviceSerial?.trim() || null;
       let existingAsset = cleanSerial
         ? await database.query.assets.findFirst({
@@ -162,22 +211,24 @@ export async function POST(req: NextRequest) {
           where: (a: any, { and, eq }: any) =>
             and(
               eq(a.orgId, resolvedOrgId),
-              eq(a.assetTag, `CIR-AST-${deviceHostname.toUpperCase()}`)
+              eq(a.assetTag, `CIR-AST-${cleanHostname}`)
             ),
         });
       }
 
+      const osFamilyTitle = osFamily === "macos" ? "MacBook / Mac" : osFamily === "linux" ? "Linux Workstation" : "Windows Laptop";
       const assetName = manufacturer && model
         ? `${manufacturer} ${model}`
-        : `${manufacturer || "Enterprise"} Laptop (${deviceHostname})`;
+        : `${manufacturer || "Enterprise"} ${osFamilyTitle} (${cleanHostname})`;
 
       const assetNotes = [
-        `Auto-registered via Circuvent Endpoint Security Guard on ${deviceHostname}.`,
+        `Auto-enrolled via Circuvent Endpoint Security Guard (${osFamily.toUpperCase()}).`,
         osVersion ? `OS: ${osVersion}` : null,
         processor ? `CPU: ${processor}` : null,
         ramGb ? `RAM: ${ramGb} GB` : null,
         diskGb ? `Storage: ${diskGb} GB` : null,
         macAddress ? `MAC: ${macAddress}` : null,
+        `Encryption: ${encryptionStatus.toUpperCase()} (${encryptionType.toUpperCase()})`,
       ]
         .filter(Boolean)
         .join(" | ");
@@ -202,7 +253,6 @@ export async function POST(req: NextRequest) {
 
         registeredAsset = updatedAsset;
 
-        // Log audit event
         await database.insert(assetEvents).values({
           orgId: resolvedOrgId,
           assetId: existingAsset.id,
@@ -210,11 +260,15 @@ export async function POST(req: NextRequest) {
           fromState: existingAsset.state,
           toState: employeeId ? "assigned" : existingAsset.state,
           employeeId: employeeId || null,
-          detail: `Endpoint policy sync from ${deviceHostname}. Serial: ${cleanSerial || "N/A"}`,
+          detail: `Multi-OS endpoint sync from ${cleanHostname} (${osFamily.toUpperCase()}). Serial: ${cleanSerial || "N/A"}`,
           metadata: {
-            deviceHostname,
+            deviceHostname: cleanHostname,
+            osFamily,
             osVersion,
             agentVersion,
+            encryptionStatus,
+            encryptionType,
+            missingPatchesCount,
             processor,
             ramGb,
           },
@@ -222,7 +276,7 @@ export async function POST(req: NextRequest) {
       } else {
         const tagSuffix = cleanSerial
           ? cleanSerial.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 10)
-          : deviceHostname.toUpperCase();
+          : cleanHostname;
         const generatedTag = `CIR-AST-${tagSuffix}`;
 
         const [newAsset] = await database
@@ -231,11 +285,11 @@ export async function POST(req: NextRequest) {
             orgId: resolvedOrgId,
             assetTag: generatedTag,
             name: assetName,
-            category: "Laptops & Notebooks",
+            category: "Laptops & Workstations",
             categoryId: laptopCategory?.id || null,
             serialNumber: cleanSerial,
-            manufacturer: manufacturer || "Circuvent Managed",
-            model: model || "Corporate Laptop",
+            manufacturer: manufacturer || (osFamily === "macos" ? "Apple" : "Circuvent Managed"),
+            model: model || (osFamily === "macos" ? "MacBook Pro" : "Corporate Laptop"),
             condition: "good",
             state: employeeId ? "assigned" : "in_stock",
             status: employeeId ? "assigned" : "available",
@@ -247,7 +301,6 @@ export async function POST(req: NextRequest) {
 
         registeredAsset = newAsset;
 
-        // Log creation event
         await database.insert(assetEvents).values({
           orgId: resolvedOrgId,
           assetId: newAsset.id,
@@ -255,20 +308,23 @@ export async function POST(req: NextRequest) {
           fromState: "in_stock",
           toState: employeeId ? "assigned" : "in_stock",
           employeeId: employeeId || null,
-          detail: `Auto-enrolled from Windows endpoint ${deviceHostname} via Circuvent Endpoint Security Guard.`,
+          detail: `Auto-enrolled from ${osFamily.toUpperCase()} endpoint ${cleanHostname} via Circuvent Endpoint Security Guard.`,
           metadata: {
-            deviceHostname,
+            deviceHostname: cleanHostname,
             deviceSerial: cleanSerial,
             manufacturer,
             model,
+            osFamily,
             osVersion,
             ramGb,
             processor,
+            encryptionStatus,
+            encryptionType,
           },
         });
       }
     } catch (assetErr: any) {
-      console.warn("[POST /api/security/devices/enroll] Non-fatal asset sync warning:", assetErr.message);
+      console.warn("[POST /api/security/devices/enroll] Asset sync warning:", assetErr.message);
     }
 
     return NextResponse.json({
@@ -288,6 +344,8 @@ export async function POST(req: NextRequest) {
         usbBlocked: resultDevice.usbBlocked,
         firewallActive: resultDevice.firewallActive,
         policyMode: resultDevice.policyMode,
+        complianceScore: resultDevice.complianceScore,
+        complianceStatus: resultDevice.complianceStatus,
       },
     });
   } catch (error: any) {

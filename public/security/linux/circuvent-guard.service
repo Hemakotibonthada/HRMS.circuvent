@@ -1,0 +1,13 @@
+[Unit]
+Description=Circuvent Technologies Endpoint Security Watchdog
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /opt/circuvent/security/CircuventGuard.sh
+Restart=always
+RestartSec=10
+Environment="SERVER_URL=https://hrms.circuvent.com"
+
+[Install]
+WantedBy=multi-user.target
