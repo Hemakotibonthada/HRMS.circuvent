@@ -53,6 +53,9 @@ export async function POST(request: NextRequest) {
   }
 
   if (!result.ok) {
+    if (result.reason === "raced") {
+      return NextResponse.json({ error: "Already renewed" }, { status: 401 });
+    }
     // "reused" means the token had already been rotated — stolen or replayed.
     // refreshSession has already revoked the whole family; the user must sign
     // in again.

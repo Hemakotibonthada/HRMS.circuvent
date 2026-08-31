@@ -3,17 +3,14 @@
 // ═══════════════════════════════════════════════════════════════
 // AUTH — suite session
 // ═══════════════════════════════════════════════════════════════
-// Identity comes from /api/auth/me, which reads the signed suite JWT set by
-// /api/auth/login. Firebase Auth is gone: the session token already carries the
-// user id, organisation and role, so there was nothing left for a second
-// identity provider to tell us, and keeping one meant every deployment needed
-// Firebase credentials before it could authenticate anybody.
-//
-// The organisation arrives with the session rather than being fetched
-// separately, so there is no window in which a scoped query can run without a
-// tenant — the problem the old `tenantReady` flag existed to paper over.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { refreshSession } from "@/lib/refresh-session";
+
+/** Access token lifetime — matches auth.circuvent.com. */
+const ACCESS_TTL_MS = 24 * 60 * 60 * 1000;
+const REFRESH_INTERVAL_MS = ACCESS_TTL_MS - 5 * 60 * 1000;
 
 export interface AuthUser {
   uid: string;
@@ -57,13 +54,8 @@ export async function fetchSession(): Promise<AuthUser | null> {
   const res = await fetch("/api/auth/me", { credentials: "include" });
 
   if (res.status === 401) {
-    // An expired access token alongside a live refresh cookie is the normal
-    // state every 15 minutes, not a sign-out. Renew once before giving up.
-    const refreshed = await fetch("/api/auth/refresh", {
-      method: "POST",
-      credentials: "include",
-    });
-    if (!refreshed.ok) return null;
+    const refreshed = await refreshSession();
+    if (!refreshed) return null;
     const retry = await fetch("/api/auth/me", { credentials: "include" });
     if (!retry.ok) return null;
     return toUser((await retry.json()) as MeResponse);
@@ -76,6 +68,7 @@ export async function fetchSession(): Promise<AuthUser | null> {
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastRefreshRef = useRef(0);
 
   const reload = useCallback(async () => {
     try {
@@ -90,8 +83,6 @@ export function useAuth() {
   useEffect(() => {
     void reload();
 
-    // Keeps tabs in step: signing out in one should not leave another showing a
-    // populated dashboard.
     const handler = () => void reload();
     window.addEventListener("focus", handler);
     window.addEventListener("circuvent-auth-change", handler);
@@ -101,11 +92,31 @@ export function useAuth() {
     };
   }, [reload]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    const renew = () => {
+      if (Date.now() - lastRefreshRef.current < REFRESH_INTERVAL_MS) return;
+      void refreshSession().then((ok) => {
+        if (ok) lastRefreshRef.current = Date.now();
+      });
+    };
+
+    const timer = setInterval(renew, REFRESH_INTERVAL_MS);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      renew();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [user]);
+
   return {
     user,
     loading,
-    // The organisation is part of the session, so it is ready whenever the user
-    // is. Kept in the shape callers already use so they need no changes.
     tenantReady: !loading,
     reload,
   };
@@ -113,9 +124,19 @@ export function useAuth() {
 
 /** Signs out and notifies every hook instance. */
 export async function signOutSession(): Promise<void> {
+  let federatedLogoutUrl: string | null = null;
   try {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    if (res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { federatedLogoutUrl?: string };
+      if (typeof body.federatedLogoutUrl === "string") {
+        federatedLogoutUrl = body.federatedLogoutUrl;
+      }
+    }
   } finally {
     window.dispatchEvent(new Event("circuvent-auth-change"));
+    if (federatedLogoutUrl) {
+      window.location.assign(federatedLogoutUrl);
+    }
   }
 }

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest, after } from "next/server";
 import { cookies } from "next/headers";
-import { exchangeCode, requestedApp, safeReturnTo, ssoEnabled, verifyToken } from "@/lib/circuvent-sso";
+import { exchangeCode, idpAssertedMfa, requestedApp, safeReturnTo, ssoEnabled, verifyToken } from "@/lib/circuvent-sso";
 import { signInWithSso, recordSignInWorkLog, type SignInFailure } from "@/lib/auth/session";
 import {
   ACCESS_COOKIE,
@@ -98,6 +98,7 @@ export async function GET(req: NextRequest) {
       // From the verified id_token, so a group's grant in the identity service
       // reaches this app — and ATS, which signs in through here.
       ssoRole: typeof claims.role === "string" ? claims.role : null,
+      idpMfaVerified: idpAssertedMfa(claims),
       ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
       userAgent: req.headers.get("user-agent") ?? undefined,
     });

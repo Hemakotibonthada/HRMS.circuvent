@@ -414,11 +414,10 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
  * locally suspended account is refused even with a perfectly valid token,
  * because that is HRMS's decision to make.
  *
- * It refuses accounts that have enabled multi-factor authentication. The
- * identity provider does not yet assert a second factor, so accepting the
- * handshake for those accounts would turn the SSO button into a way around the
- * very control the person opted into. Once the provider asserts `amr`, this
- * check becomes a comparison rather than a refusal.
+ * It refuses accounts that have enabled multi-factor authentication unless the
+ * identity provider asserts a second factor in the token (`amr` / `acr`). Without
+ * that assertion, accepting the handshake would turn the SSO button into a way
+ * around the control the person opted into.
  */
 export async function signInWithSso(request: {
   email: string;
@@ -439,6 +438,8 @@ export async function signInWithSso(request: {
    * read from anywhere a caller controls would be a way to choose your own.
    */
   ssoRole?: string | null;
+  /** True when the identity provider's token asserts a second factor (`amr`). */
+  idpMfaVerified?: boolean;
 }): Promise<SignInResult> {
   const app: AppId = request.app ?? "hrms";
   let row = await findLoginRow(request.email);
@@ -453,6 +454,14 @@ export async function signInWithSso(request: {
     row = provisioned;
   } else {
     await refreshDirectoryFacts(row, request.displayName ?? null);
+    if (request.subject) {
+      await withTenant({ orgId: row.org_id, superuser: true }, async (tx) => {
+        await tx
+          .update(users)
+          .set({ externalId: request.subject, updatedAt: new Date() })
+          .where(eq(users.id, row.id));
+      });
+    }
   }
 
   if (row.status !== "active") return { ok: false, reason: "account_inactive" };
@@ -461,7 +470,9 @@ export async function signInWithSso(request: {
   // SSO — otherwise abandoning enrolment halfway locks the account out of the
   // one sign-in path that never needed a code.
   if (mfaRequiredAtSignIn(row.mfa_secret, row.mfa_enabled_at)) {
-    return { ok: false, reason: "mfa_required" };
+    if (!request.idpMfaVerified) {
+      return { ok: false, reason: "mfa_required" };
+    }
   }
 
   if (row.locked_until && row.locked_until.getTime() > Date.now()) {
@@ -493,7 +504,7 @@ export async function signInWithSso(request: {
     name: row.display_name,
     role,
     app,
-    mfaVerified: false,
+    mfaVerified: request.idpMfaVerified ?? false,
     ipAddress: request.ipAddress,
     userAgent: request.userAgent,
     deviceName: request.deviceName,
@@ -590,7 +601,10 @@ async function issueSession(
 
 export type RefreshResult =
   | { ok: true; accessToken: string; refreshToken: string }
-  | { ok: false; reason: "invalid" | "expired" | "revoked" | "reused" };
+  | { ok: false; reason: "invalid" | "expired" | "revoked" | "reused" | "raced" };
+
+/** How long a spent refresh token is still treated as a lost race, not a theft. */
+const ROTATION_GRACE_MS = 60_000;
 
 /**
  * Exchanges a refresh token for a new pair, rotating the old one.
@@ -617,6 +631,10 @@ export async function refreshSession(refreshToken: string): Promise<RefreshResul
   if (!found) return { ok: false, reason: "invalid" };
 
   if (found.rotatedToId) {
+    const revokedAt = found.revokedAt?.getTime() ?? 0;
+    if (revokedAt > 0 && Date.now() - revokedAt < ROTATION_GRACE_MS) {
+      return { ok: false, reason: "raced" };
+    }
     await revokeUserSessions(found.userId, found.orgId);
     return { ok: false, reason: "reused" };
   }
@@ -683,4 +701,18 @@ export async function revokeUserSessions(userId: string, orgId: string): Promise
       .set({ revokedAt: new Date() })
       .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
   });
+}
+
+/** Ends every session for the person named by the identity provider's `sub`. */
+export async function revokeSessionsForIdpLogout(input: { sub: string }): Promise<void> {
+  const row = await withTenant({ orgId: "", superuser: true }, async (tx) => {
+    const rows = await tx
+      .select({ id: users.id, orgId: users.orgId })
+      .from(users)
+      .where(eq(users.externalId, input.sub))
+      .limit(1);
+    return rows[0] ?? null;
+  });
+  if (!row) return;
+  await revokeUserSessions(row.id, row.orgId);
 }

@@ -14,6 +14,7 @@ import {
   accessCookieOptions,
   refreshCookieOptions,
 } from "@/lib/auth/tokens";
+import { logoutUrl, ssoEnabled } from "@/lib/circuvent-sso";
 
 export async function POST(request: NextRequest) {
   // Native clients hold the refresh token themselves. Without accepting it
@@ -43,7 +44,18 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const response = NextResponse.json({ ok: true });
+  const response = NextResponse.json({
+    ok: true,
+    ...(ssoEnabled()
+      ? {
+          federatedLogoutUrl: logoutUrl(
+            process.env.NEXT_PUBLIC_HRMS_URL ??
+              process.env.NEXT_PUBLIC_APP_URL ??
+              new URL(request.url).origin + "/login"
+          ),
+        }
+      : {}),
+  });
   response.cookies.set(ACCESS_COOKIE, "", { ...accessCookieOptions(), maxAge: 0 });
   response.cookies.set(REFRESH_COOKIE, "", { ...refreshCookieOptions(), maxAge: 0 });
   return response;

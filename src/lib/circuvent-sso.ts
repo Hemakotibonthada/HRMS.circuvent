@@ -38,6 +38,8 @@ export interface CircuventClaims extends JWTPayload {
   /** Every app the person may open, for drawing a launcher. */
   apps?: { id: string; name: string; url: string | null }[];
   sid?: string;
+  amr?: string[];
+  acr?: string;
 }
 
 export interface SsoConfig {
@@ -227,11 +229,37 @@ export function requestedApp(raw: string | null | undefined): AppId {
     : "hrms";
 }
 
-export function logoutUrl(postLogoutRedirectUri: string): string {  const { clientId } = ssoConfig();
+export function logoutUrl(postLogoutRedirectUri: string): string {
+  const { clientId } = ssoConfig();
   const url = new URL(`${ISSUER}/logout`);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("post_logout_redirect_uri", postLogoutRedirectUri);
   return url.toString();
+}
+
+export function idpAssertedMfa(claims: Pick<CircuventClaims, "amr" | "acr">): boolean {
+  if (claims.acr === "mfa") return true;
+  const amr = claims.amr;
+  return Array.isArray(amr) && amr.includes("mfa");
+}
+
+export async function verifyLogoutToken(
+  logoutToken: string
+): Promise<{ sub: string; sid?: string }> {
+  const { clientId } = ssoConfig();
+  const { payload } = await jwtVerify(logoutToken, jwks, {
+    issuer: ISSUER,
+    audience: clientId,
+  });
+  if (payload.nonce) throw new Error("Logout token must not carry a nonce");
+  const events = payload.events as Record<string, unknown> | undefined;
+  if (!events || !("http://schemas.openid.net/event/backchannel-logout" in events)) {
+    throw new Error("Not a back-channel logout token");
+  }
+  const sub = payload.sub;
+  if (!sub || typeof sub !== "string") throw new Error("Logout token missing sub");
+  const sid = typeof payload.sid === "string" ? payload.sid : undefined;
+  return { sub, sid };
 }
 
 export const issuerUrl = ISSUER;
