@@ -455,11 +455,14 @@ export async function signInWithSso(request: {
   } else {
     await refreshDirectoryFacts(row, request.displayName ?? null);
     if (request.subject) {
-      await withTenant({ orgId: row.org_id, superuser: true }, async (tx) => {
+      const userId = row.id;
+      const orgId = row.org_id;
+      const subject = request.subject;
+      await withTenant({ orgId, superuser: true }, async (tx) => {
         await tx
           .update(users)
-          .set({ externalId: request.subject, updatedAt: new Date() })
-          .where(eq(users.id, row.id));
+          .set({ externalId: subject, updatedAt: new Date() })
+          .where(eq(users.id, userId));
       });
     }
   }
