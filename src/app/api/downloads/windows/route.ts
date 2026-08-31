@@ -21,13 +21,14 @@ import {
   getObjectStream,
   storageConfigured,
 } from "@/lib/storage/object-store";
+import { PLATFORM_CIRCUVENT_ROOT } from "@/lib/storage-layout";
 
 export const runtime = "nodejs";
 // Never cached at the edge: the manifest decides which build is current, and a
 // cached response would keep serving the previous one after a release.
 export const dynamic = "force-dynamic";
 
-const MANIFEST_KEY = "downloads/windows/latest.json";
+const MANIFEST_KEY = `${PLATFORM_CIRCUVENT_ROOT}/downloads/windows/latest.json`;
 
 export interface DesktopManifest {
   product: string;

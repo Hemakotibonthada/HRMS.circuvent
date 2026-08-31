@@ -66,12 +66,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       bucketName: result.bucketName,
+      storagePrefix: result.storagePrefix,
       s3Endpoint: result.s3Endpoint,
       created: result.created,
       alreadyExisted: result.alreadyExisted,
       message: result.alreadyExisted
-        ? `Storage bucket "${result.bucketName}" already exists for ${org.name}.`
-        : `Storage bucket "${result.bucketName}" successfully created for ${org.name}.`,
+        ? `Storage folder "${result.storagePrefix}" already exists for ${org.name}.`
+        : `Storage folder "${result.storagePrefix}" provisioned for ${org.name}.`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

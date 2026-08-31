@@ -123,8 +123,8 @@ describe("where the image is stored", () => {
       sha256Hex: "abc123",
       extension: "jpg",
     });
-    expect(key).toBe("orgs/org-1/attendance-selfies/cap-9/in-abc123.jpg");
-    expect(key.startsWith("orgs/org-1/")).toBe(true);
+    expect(key).toBe("clients/org-1/hrms/attendance-selfies/cap-9/in-abc123.jpg");
+    expect(key.startsWith("clients/org-1/")).toBe(true);
   });
 
   it("separates the two punches of one day", () => {

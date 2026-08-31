@@ -44,7 +44,7 @@ for (const file of [".env.local", ".env"]) {
   }
 }
 
-const KEY_PREFIX = "downloads/windows";
+const KEY_PREFIX = "platform/circuvent/downloads/windows";
 
 /**
  * Which installer to publish.

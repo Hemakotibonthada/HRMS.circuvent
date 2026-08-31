@@ -12,6 +12,8 @@
  * a migration running or a default changing.
  */
 
+import { clientAppKey } from "@/lib/storage-layout";
+
 /** What an organisation has decided. Absent means it has decided nothing. */
 export interface AttendancePolicy {
   requireSelfieOnPunch: boolean;
@@ -132,7 +134,13 @@ export function selfieObjectKey(params: {
   extension: string;
 }): string {
   const { orgId, captureId, direction, sha256Hex, extension } = params;
-  return `orgs/${orgId}/attendance-selfies/${captureId}/${direction}-${sha256Hex}.${extension}`;
+  return clientAppKey(
+    orgId,
+    "hrms",
+    "attendance-selfies",
+    captureId,
+    `${direction}-${sha256Hex}.${extension}`
+  );
 }
 
 /**

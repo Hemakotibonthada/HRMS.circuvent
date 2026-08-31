@@ -22,6 +22,7 @@ import {
   S3Client,
   type GetObjectCommandOutput,
 } from "@aws-sdk/client-s3";
+import { clientAppKey, storageBucketName } from "@/lib/storage-layout";
 
 /**
  * Thrown when R2 credentials are missing, instead of quietly no-op'ing.
@@ -66,14 +67,12 @@ interface StorageConfig {
  */
 function readConfig(): StorageConfig | null {
   const endpoint = process.env.S3_ENDPOINT?.trim();
-  const bucket = process.env.S3_BUCKET?.trim();
+  const bucket = storageBucketName();
   const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim();
   const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim();
-  // R2 has no notion of AWS regions; "auto" is Cloudflare's documented value
-  // and what the SDK needs to see to sign requests without complaint.
   const region = process.env.S3_REGION?.trim() || "auto";
 
-  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) return null;
+  if (!endpoint || !accessKeyId || !secretAccessKey) return null;
   return { endpoint, region, bucket, accessKeyId, secretAccessKey };
 }
 
@@ -245,7 +244,13 @@ export function documentPdfKey(params: { orgId: string; documentId: string; sha2
   if (!SHA256_HEX_PATTERN.test(params.sha256Hex)) {
     throw new Error(`documentPdfKey requires a 64-character lowercase hex SHA-256; got "${params.sha256Hex}".`);
   }
-  return `documents/${params.orgId}/${params.documentId}/${params.sha256Hex}.pdf`;
+  return clientAppKey(
+    params.orgId,
+    "hrms",
+    "documents",
+    params.documentId,
+    `${params.sha256Hex}.pdf`
+  );
 }
 
 /** SHA-256 of arbitrary bytes, hex-encoded the same way `document-rules.ts` hashes document content. */

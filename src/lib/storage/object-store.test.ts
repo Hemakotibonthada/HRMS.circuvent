@@ -156,7 +156,7 @@ describe("documentPdfKey", () => {
 
   it("builds a deterministic path from orgId, documentId and the content hash", () => {
     expect(documentPdfKey({ orgId: "org1", documentId: "doc1", sha256Hex: hash })).toBe(
-      `documents/org1/doc1/${hash}.pdf`
+      `clients/org1/hrms/documents/doc1/${hash}.pdf`
     );
   });
 
