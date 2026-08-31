@@ -98,10 +98,7 @@ struct TodayScreen: View {
                 if !announcements.isEmpty {
                     Section("Announcements") {
                         ForEach(announcements, id: \.id) { item in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.title).font(.headline)
-                                if let body = item.body_ { Text(body).font(.subheadline) }
-                            }
+                            AnnouncementRow(item: item)
                         }
                     }
                 }
@@ -135,14 +132,14 @@ struct TodayScreen: View {
         let attendance: ApiOutcome<Page<AttendanceRecord>> =
             outcome(try! await session.api.attendance())
         switch attendance {
-        case .ok(let page): records = page.items; loadError = nil
+        case .ok(let page): records = kotlinList(page.items); loadError = nil
         case .offline(let message): loadError = message
         case .failed(_, let message): loadError = message
         case .unauthorised: await session.signOut()
         }
 
         let news: ApiOutcome<[Announcement]> = outcome(try! await session.api.announcements())
-        if case .ok(let list) = news { announcements = list }
+        if case .ok(let list) = news { announcements = kotlinList(list) }
     }
 }
 
@@ -185,9 +182,9 @@ struct PunchCard: View {
                 at: Kotlinx_datetimeInstant.companion.fromEpochMilliseconds(
                     epochMilliseconds: Int64(Date().timeIntervalSince1970 * 1000)
                 ),
-                latitude: reading?.latitude as NSNumber?,
-                longitude: reading?.longitude as NSNumber?,
-                accuracyMetres: reading?.accuracy as NSNumber?
+                latitude: kotlinDouble(reading?.latitude),
+                longitude: kotlinDouble(reading?.longitude),
+                accuracyMetres: kotlinDouble(reading?.accuracy)
             ),
             fences: [],
             requireLocation: false
@@ -201,9 +198,9 @@ struct PunchCard: View {
         let result: ApiOutcome<AttendanceRecord> = outcome(
             try! await session.api.punch(
                 kind: kind,
-                latitude: reading?.latitude as NSNumber?,
-                longitude: reading?.longitude as NSNumber?,
-                accuracy: reading?.accuracy as NSNumber?
+                latitude: kotlinDouble(reading?.latitude),
+                longitude: kotlinDouble(reading?.longitude),
+                accuracy: kotlinDouble(reading?.accuracy)
             )
         )
 
@@ -281,10 +278,10 @@ struct LeaveScreen: View {
 
     private func load() async {
         let balanceResult: ApiOutcome<[LeaveBalance]> = outcome(try! await session.api.leaveBalances())
-        if case .ok(let list) = balanceResult { balances = list }
+        if case .ok(let list) = balanceResult { balances = kotlinList(list) }
 
         let requestResult: ApiOutcome<Page<LeaveRequest>> = outcome(try! await session.api.leaveRequests())
-        if case .ok(let page) = requestResult { requests = page.items }
+        if case .ok(let page) = requestResult { requests = kotlinList(page.items) }
     }
 }
 
@@ -430,7 +427,7 @@ struct PayslipsScreen: View {
                             HStack {
                                 Text(slip.period)
                                 Spacer()
-                                if let net = slip.netPay {
+                                if let net = swiftDouble(slip.netPay) {
                                     Text(net, format: .currency(code: "INR"))
                                         .foregroundStyle(.secondary)
                                 }
@@ -447,7 +444,7 @@ struct PayslipsScreen: View {
 
     private func load() async {
         let result: ApiOutcome<Page<Payslip>> = outcome(try! await session.api.payslips())
-        if case .ok(let page) = result { payslips = page.items }
+        if case .ok(let page) = result { payslips = kotlinList(page.items) }
     }
 }
 
@@ -457,13 +454,13 @@ struct PayslipDetail: View {
     var body: some View {
         List {
             LabeledContent("Period", value: payslip.period)
-            if let gross = payslip.grossPay {
+            if let gross = swiftDouble(payslip.grossPay) {
                 LabeledContent("Gross") { Text(gross, format: .currency(code: "INR")) }
             }
-            if let deductions = payslip.totalDeductions {
+            if let deductions = swiftDouble(payslip.totalDeductions) {
                 LabeledContent("Deductions") { Text(deductions, format: .currency(code: "INR")) }
             }
-            if let net = payslip.netPay {
+            if let net = swiftDouble(payslip.netPay) {
                 LabeledContent("Net pay") { Text(net, format: .currency(code: "INR")).bold() }
             }
         }
@@ -508,7 +505,7 @@ struct DirectoryScreen: View {
         let result: ApiOutcome<Page<Employee>> = outcome(
             try! await session.api.directory(query: query.isEmpty ? nil : query)
         )
-        if case .ok(let page) = result { people = page.items }
+        if case .ok(let page) = result { people = kotlinList(page.items) }
     }
 }
 
@@ -582,7 +579,7 @@ struct HelpdeskScreen: View {
         .navigationTitle("Helpdesk")
         .task {
             let result: ApiOutcome<Page<HelpdeskTicket>> = outcome(try! await session.api.tickets())
-            if case .ok(let page) = result { tickets = page.items }
+            if case .ok(let page) = result { tickets = kotlinList(page.items) }
         }
     }
 }
@@ -596,8 +593,8 @@ struct ExpensesScreen: View {
             HStack {
                 Text(claim.title ?? claim.claimNumber ?? "Claim")
                 Spacer()
-                if let amount = claim.totalAmount {
-                    Text(amount, format: .currency(code: claim.currency))
+                if let amount = swiftDouble(claim.totalAmount) {
+                    Text(amount, format: .currency(code: claim.currency ?? "INR"))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -606,7 +603,7 @@ struct ExpensesScreen: View {
         .navigationTitle("Expenses")
         .task {
             let result: ApiOutcome<Page<ExpenseClaim>> = outcome(try! await session.api.expenses())
-            if case .ok(let page) = result { claims = page.items }
+            if case .ok(let page) = result { claims = kotlinList(page.items) }
         }
     }
 }
@@ -627,7 +624,7 @@ struct HolidaysScreen: View {
         .navigationTitle("Holidays")
         .task {
             let result: ApiOutcome<[Holiday]> = outcome(try! await session.api.holidays())
-            if case .ok(let list) = result { holidays = list }
+            if case .ok(let list) = result { holidays = kotlinList(list) }
         }
     }
 }
@@ -647,7 +644,19 @@ struct DocumentsScreen: View {
         .navigationTitle("Documents")
         .task {
             let result: ApiOutcome<[DocumentSummary]> = outcome(try! await session.api.documents())
-            if case .ok(let list) = result { documents = list }
+            if case .ok(let list) = result { documents = kotlinList(list) }
+        }
+    }
+}
+
+/// Separate struct so `Announcement.body` does not collide with `View.body`.
+private struct AnnouncementRow: View {
+    let item: Announcement
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(item.title).font(.headline)
+            if let copy = item.body { Text(copy).font(.subheadline) }
         }
     }
 }

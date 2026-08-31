@@ -33,6 +33,28 @@ extension Date {
     }
 }
 
+// MARK: - Kotlin collections and numbers
+
+func kotlinList<T>(_ value: Any?) -> [T] {
+    guard let value else { return [] }
+    if let typed = value as? [T] { return typed }
+    if let array = value as? NSArray {
+        return array.compactMap { $0 as? T }
+    }
+    return []
+}
+
+func kotlinDouble(_ value: Double?) -> KotlinDouble? {
+    guard let value else { return nil }
+    return KotlinDouble(double: value)
+}
+
+func swiftDouble(_ value: KotlinDouble?) -> Double? {
+    value?.doubleValue
+}
+
+// MARK: - Location
+
 /// One location reading, or nothing.
 struct LocationReading {
     let latitude: Double

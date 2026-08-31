@@ -4,16 +4,6 @@ import Shared
 // ═══════════════════════════════════════════════════════════════
 // INBOX — everything waiting on a decision, in one list
 // ═══════════════════════════════════════════════════════════════
-//
-// Approvals were split across separate screens by the kind of thing being
-// approved, which is a distinction the person approving does not have. A
-// manager holding a phone has "four things to decide", not "a leave queue, a
-// work-from-home queue and an attendance-correction queue", and had to already
-// know which screen a request lived on to find it.
-//
-// The word for approving differs by endpoint — leave takes "approve", the
-// others take "approved" — and that difference is absorbed in the shared API
-// rather than repeated here. See `HrmsApi.decideWorkArrangement`.
 
 struct InboxScreen: View {
     @EnvironmentObject private var session: SessionStore
@@ -64,22 +54,24 @@ struct InboxScreen: View {
         error = nil
         var collected: [InboxItem] = []
 
-        // Fetched together rather than one after another: three round trips in
-        // series on a phone is three chances to show half a list.
         async let leave = session.api.leaveRequests()
         async let away = session.api.workArrangements()
         async let corrections = session.api.regularisations()
 
         if case .ok(let page) = outcome(try? await leave) as ApiOutcome<Page<LeaveRequest>> {
-            collected += page.items
+            collected += kotlinList(page.items)
                 .filter { $0.status == "pending" }
                 .map(InboxItem.init(leave:))
         }
         if case .ok(let rows) = outcome(try? await away) as ApiOutcome<[WorkArrangementRequest]> {
-            collected += rows.filter { $0.status == "pending" }.map(InboxItem.init(away:))
+            collected += kotlinList(rows)
+                .filter { $0.status == "pending" }
+                .map(InboxItem.init(away:))
         }
         if case .ok(let rows) = outcome(try? await corrections) as ApiOutcome<[RegularisationRequest]> {
-            collected += rows.filter { $0.status == "pending" }.map(InboxItem.init(correction:))
+            collected += kotlinList(rows)
+                .filter { $0.status == "pending" }
+                .map(InboxItem.init(correction:))
         }
 
         items = collected
@@ -101,16 +93,12 @@ struct InboxScreen: View {
         }
 
         if case .ok = outcome(result) as ApiOutcome<KotlinUnit> {
-            // Removed rather than refetched: the list is already correct, and a
-            // reload here makes the row somebody just tapped flicker back.
             items.removeAll { $0.id == item.id }
         } else {
             await load()
         }
     }
 }
-
-// ─── One row, whatever it is ─────────────────────────────────
 
 private struct InboxRow: View {
     let item: InboxItem
@@ -138,11 +126,6 @@ private struct InboxRow: View {
             }
 
             if item.isOwn(currentEmployeeId) {
-                // The server refuses this outright. Saying so before the tap
-                // beats a button that exists only to produce a refusal — and
-                // the check is on the employment record, not the login, because
-                // those are different ids and comparing the wrong pair means
-                // the guard silently allows everything.
                 Label(
                     "This is your own request. Someone else has to decide it.",
                     systemImage: "person.crop.circle.badge.exclamationmark"
@@ -165,8 +148,6 @@ private struct InboxRow: View {
     }
 }
 
-// ─── The four queues, as one thing ───────────────────────────
-
 struct InboxItem: Identifiable {
     enum Kind { case leave, away, correction }
 
@@ -178,15 +159,6 @@ struct InboxItem: Identifiable {
     let reason: String?
     let requesterId: String?
 
-    /**
-     * Whether this is the caller's own request.
-     *
-     * Compared against the **employment record**, not the login. They are
-     * different uuids, and comparing a request's `employeeId` against an
-     * account id is false for everybody — which does not fail loudly, it
-     * simply stops the guard refusing anything. Null never matches, so an
-     * account with no employment record is not treated as owning anything.
-     */
     func isOwn(_ employeeId: String?) -> Bool {
         guard let employeeId, let requesterId else { return false }
         return employeeId == requesterId
@@ -213,7 +185,7 @@ struct InboxItem: Identifiable {
         self.sourceId = leave.id
         self.kind = .leave
         self.title = leave.employeeName ?? "A colleague"
-        self.detail = "\(leave.leaveType?.capitalized ?? "Leave") · \(leave.startDate) to \(leave.endDate)"
+        self.detail = "\(leave.leaveType.capitalized) · \(leave.startDate) to \(leave.endDate)"
         self.reason = leave.reason
         self.requesterId = leave.employeeId
     }

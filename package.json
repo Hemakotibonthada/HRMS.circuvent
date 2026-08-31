@@ -23,6 +23,7 @@
     "db:seed:templates": "tsx scripts/seed-document-templates.ts",
     "db:seed:letters": "node scripts/seed-letter-templates.mjs",
     "assets:store": "node scripts/generate-store-assets.mjs",
+    "db:check:role": "tsx scripts/verify-rls-role.ts",
     "verify": "npm run typecheck && npm run typecheck:mobile && npm run lint:strict && npm run lint:a11y && npm run db:verify && npm run db:verify:encryption && npm run db:verify:modules && npm run db:verify:plans && npm run audit:data-paths && npm run audit:fabricated && npm run audit:unwired && npm run test",
     "tokens:contrast": "node scripts/check-token-contrast.mjs",
     "db:encrypt-fields": "tsx scripts/encrypt-fields.ts",

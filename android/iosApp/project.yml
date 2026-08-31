@@ -18,13 +18,14 @@ name: HRMS
 options:
   bundleIdPrefix: com.circuvent
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "17.0"
   createIntermediateGroups: true
 
 settings:
   base:
     SWIFT_VERSION: "5.9"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
+    DEVELOPMENT_TEAM: "Z6RVDK7K4K"
     # The framework Gradle writes, and where Swift looks for it.
     FRAMEWORK_SEARCH_PATHS:
       - "$(inherited)"
@@ -55,15 +56,17 @@ targets:
         HRMS_BASE_URL: "$(HRMS_BASE_URL)"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.circuvent.hrms
+        PRODUCT_BUNDLE_IDENTIFIER: com.vema.dev.cv365
         TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "Z6RVDK7K4K"
         OTHER_LDFLAGS:
           - "$(inherited)"
           - "-framework"
           - "Shared"
       configs:
         debug:
-          HRMS_BASE_URL: http://localhost:3000
+          HRMS_BASE_URL: https://hrms.circuvent.com
         release:
           HRMS_BASE_URL: https://hrms.circuvent.com
     preBuildScripts:
@@ -72,6 +75,8 @@ targets:
         # framework into the app bundle. Calling `assemble` instead produces a
         # framework Swift can compile against and the device cannot load.
         script: |
+          export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+          export PATH="$JAVA_HOME/bin:$PATH"
           cd "$SRCROOT/.."
-          ./gradlew :shared:embedAndSignAppleFrameworkForXcode
+          ./gradlew :shared:embedAndSignAppleFrameworkForXcode --no-configuration-cache
         basedOnDependencyAnalysis: false

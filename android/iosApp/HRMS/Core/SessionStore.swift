@@ -34,23 +34,26 @@ final class SessionStore: ObservableObject {
     }
 
     let api: HrmsApi
+    private let tokens: TokenStore
 
     init(baseUrl: String = AppConfig.baseUrl) {
-        self.api = HrmsApi(baseUrl: baseUrl, tokens: TokenStore(), engineClient: nil)
+        let store = TokenStore()
+        self.tokens = store
+        self.api = HrmsApi(baseUrl: baseUrl, tokens: store, engineClient: nil)
     }
 
     /// Restores a session from the Keychain, if there is one.
     func restore() async {
-        guard api.tokens.accessToken() != nil else {
+        guard tokens.accessToken() != nil else {
             state = .signedOut
             return
         }
 
         do {
             let result = try await api.me()
-            switch onEnum(of: result) {
-            case .ok(let ok):
-                state = .signedIn(ok.value as! Session)
+            switch outcome(result) as ApiOutcome<Session> {
+            case .ok(let session):
+                state = .signedIn(session)
             default:
                 // A stored token that no longer works is not an error worth
                 // showing; it just means signing in again.
@@ -68,18 +71,18 @@ final class SessionStore: ObservableObject {
 
         do {
             let result = try await api.signIn(email: email, password: password)
-            switch onEnum(of: result) {
-            case .ok(let ok):
-                state = .signedIn(ok.value as! Session)
+            switch outcome(result) as ApiOutcome<Session> {
+            case .ok(let session):
+                state = .signedIn(session)
             case .unauthorised:
                 error = "Incorrect email or password"
-            case .offline(let offline):
-                error = offline.message
-            case .failed(let failed):
-                error = failed.message
+            case .offline(let message):
+                error = message
+            case .failed(_, let message):
+                error = message
             }
         } catch {
-            error = "Could not sign in"
+            self.error = "Could not sign in"
         }
     }
 
@@ -113,10 +116,8 @@ enum ApiOutcome<T> {
     case failed(Int, String)
 }
 
-func outcome<T>(_ result: HrmsApiResult) -> ApiOutcome<T> {
-    if let ok = result as? HrmsApiResultOk {
-        return .ok(ok.value as! T)
-    }
+func outcome<T>(_ result: HrmsApiResult?) -> ApiOutcome<T> {
+    guard let result else { return .failed(0, "No response") }
     if result is HrmsApiResultUnauthorised {
         return .unauthorised
     }
@@ -125,6 +126,9 @@ func outcome<T>(_ result: HrmsApiResult) -> ApiOutcome<T> {
     }
     if let failed = result as? HrmsApiResultFailed {
         return .failed(Int(failed.status), failed.message)
+    }
+    if let value = Mirror(reflecting: result).children.first(where: { $0.label == "value" })?.value {
+        return .ok(value as! T)
     }
     return .failed(0, "Unexpected response")
 }

@@ -1,6 +1,7 @@
 package com.circuvent.hrms.shared.api
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import platform.CoreFoundation.kCFBooleanTrue
 import platform.Foundation.NSData
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
