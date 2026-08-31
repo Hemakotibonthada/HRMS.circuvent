@@ -98,6 +98,9 @@ export async function GET(req: NextRequest) {
       // From the verified id_token, so a group's grant in the identity service
       // reaches this app — and ATS, which signs in through here.
       ssoRole: typeof claims.role === "string" ? claims.role : null,
+      ssoPermissions: Array.isArray(claims.permissions)
+        ? claims.permissions.filter((p): p is string => typeof p === "string")
+        : null,
       idpMfaVerified: idpAssertedMfa(claims),
       ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
       userAgent: req.headers.get("user-agent") ?? undefined,

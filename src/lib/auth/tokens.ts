@@ -53,6 +53,8 @@ export interface AccessClaims extends JWTPayload {
   sid: string;
   /** True once TOTP has been satisfied for this session. */
   mfa?: boolean;
+  /** Directory permissions for this app role, when known. */
+  permissions?: string[];
 }
 
 function secret(): Uint8Array {

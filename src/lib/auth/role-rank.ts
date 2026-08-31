@@ -60,8 +60,15 @@ export function effectiveRole(
   return sso ?? local;
 }
 
+/** Suite apps that speak `member` where HRMS speaks `employee`. */
+const AUTH_ROLE_ALIASES: Record<string, string> = {
+  member: "employee",
+};
+
 function normalise(role: string | null | undefined): string | null {
   if (typeof role !== "string") return null;
   const r = role.trim().toLowerCase();
-  return r && Object.prototype.hasOwnProperty.call(ROLE_RANK, r) ? r : null;
+  if (!r) return null;
+  const mapped = AUTH_ROLE_ALIASES[r] ?? r;
+  return Object.prototype.hasOwnProperty.call(ROLE_RANK, mapped) ? mapped : null;
 }

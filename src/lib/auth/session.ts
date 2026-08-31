@@ -36,6 +36,7 @@ import {
   type AppId,
 } from "./tokens";
 import { effectiveRole } from "./role-rank";
+import { directoryPermissionsFor, directoryRoleFor } from "./directory-role";
 import { startWorkLogOnSignIn } from "@/lib/attendance/work-log";
 
 /** Failed attempts before the account is temporarily locked. */
@@ -288,15 +289,45 @@ async function clearFailures(userId: string, orgId: string, rehash?: string): Pr
   });
 }
 
-async function roleFor(userId: string, orgId: string, app: AppId): Promise<string> {
+async function localRoleFor(
+  userId: string,
+  orgId: string,
+  app: AppId
+): Promise<string | null> {
   return withTenant({ orgId }, async (tx) => {
     const rows = await tx.execute(
       sql`SELECT role FROM identity.user_roles
           WHERE user_id = ${userId} AND app = ${app}::identity.app
           LIMIT 1`
     );
-    // No explicit grant means the lowest privilege, never the highest.
-    return ((rows.rows[0] as { role?: string } | undefined)?.role) ?? "employee";
+    return ((rows.rows[0] as { role?: string } | undefined)?.role) ?? null;
+  });
+}
+
+async function resolveRole(
+  userId: string,
+  orgId: string,
+  app: AppId,
+  assertedRole?: string | null
+): Promise<string> {
+  const local = await localRoleFor(userId, orgId, app);
+  const directory = assertedRole ?? (await directoryRoleFor(userId, orgId, app));
+  return effectiveRole(local, directory);
+}
+
+async function syncLocalRole(
+  userId: string,
+  orgId: string,
+  app: AppId,
+  role: string
+): Promise<void> {
+  await withTenant({ orgId, superuser: true }, async (tx) => {
+    await tx.execute(
+      sql`INSERT INTO identity.user_roles (user_id, org_id, app, role)
+           VALUES (${userId}, ${orgId}, ${app}::identity.app, ${role}::identity.role)
+           ON CONFLICT (user_id, app)
+           DO UPDATE SET role = EXCLUDED.role`
+    );
   });
 }
 
@@ -362,19 +393,22 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
     : undefined;
   await clearFailures(row.id, row.org_id, rehash);
 
-  const role = await roleFor(row.id, row.org_id, app);
+  const role = await resolveRole(row.id, row.org_id, app);
+  const permissions = await directoryPermissionsFor(row.id, row.org_id, app, role);
   const { accessToken, refreshToken } = await issueSession({
     userId: row.id,
     orgId: row.org_id,
     email: row.email,
     name: row.display_name,
     role,
+    permissions: permissions ?? undefined,
     app,
     mfaVerified: mfaActive,
     ipAddress: request.ipAddress,
     userAgent: request.userAgent,
     deviceName: request.deviceName,
   });
+  await syncLocalRole(row.id, row.org_id, app, role);
 
   return {
     ok: true,
@@ -438,6 +472,8 @@ export async function signInWithSso(request: {
    * read from anywhere a caller controls would be a way to choose your own.
    */
   ssoRole?: string | null;
+  /** Permissions asserted by the identity provider for this app. */
+  ssoPermissions?: string[] | null;
   /** True when the identity provider's token asserts a second factor (`amr`). */
   idpMfaVerified?: boolean;
 }): Promise<SignInResult> {
@@ -499,19 +535,25 @@ export async function signInWithSso(request: {
    * grant still applies when the token asserts no role at all, which is the
    * password sign-in path.
    */
-  const role = effectiveRole(await roleFor(row.id, row.org_id, app), request.ssoRole);
+  const role = await resolveRole(row.id, row.org_id, app, request.ssoRole);
+  const permissions =
+    request.ssoPermissions ??
+    (await directoryPermissionsFor(row.id, row.org_id, app, role)) ??
+    undefined;
   const { accessToken, refreshToken } = await issueSession({
     userId: row.id,
     orgId: row.org_id,
     email: row.email,
     name: row.display_name,
     role,
+    permissions,
     app,
     mfaVerified: request.idpMfaVerified ?? false,
     ipAddress: request.ipAddress,
     userAgent: request.userAgent,
     deviceName: request.deviceName,
   });
+  await syncLocalRole(row.id, row.org_id, app, role);
 
   return {
     ok: true,
@@ -559,6 +601,7 @@ interface IssueParams {
   /** Display name, carried into the token so /me can name the person. */
   name?: string | null;
   role: string;
+  permissions?: string[];
   app: AppId;
   mfaVerified: boolean;
   ipAddress?: string;
@@ -597,6 +640,7 @@ async function issueSession(
     name: params.name?.trim() || undefined,
     sid: sessionId,
     mfa: params.mfaVerified,
+    ...(params.permissions?.length ? { permissions: params.permissions } : {}),
   });
 
   return { accessToken, refreshToken, sessionId };
@@ -661,7 +705,8 @@ export async function refreshSession(refreshToken: string): Promise<RefreshResul
   }
 
   const app = (found.app ?? "hrms") as AppId;
-  const role = await roleFor(found.userId, found.orgId, app);
+  const role = await resolveRole(found.userId, found.orgId, app);
+  const permissions = await directoryPermissionsFor(found.userId, found.orgId, app, role);
 
   const issued = await issueSession({
     userId: found.userId,
@@ -669,12 +714,14 @@ export async function refreshSession(refreshToken: string): Promise<RefreshResul
     email: profile.email,
     name: profile.displayName,
     role,
+    permissions: permissions ?? undefined,
     app,
     mfaVerified: !!found.mfaVerifiedAt,
     ipAddress: found.ipAddress ?? undefined,
     userAgent: found.userAgent ?? undefined,
     deviceName: found.deviceName ?? undefined,
   });
+  await syncLocalRole(found.userId, found.orgId, app, role);
 
   await withTenant({ orgId: found.orgId, superuser: true }, async (tx) => {
     await tx

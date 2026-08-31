@@ -70,6 +70,11 @@ describe("effectiveRole", () => {
     expect(effectiveRole("owner", "  EMPLOYEE  ")).toBe("employee");
   });
 
+  it("maps suite member to HRMS employee", () => {
+    expect(effectiveRole("employee", "member")).toBe("employee");
+    expect(effectiveRole("manager", "member")).toBe("employee");
+  });
+
   it("still ranks HRMS's own vocabulary, owner highest", () => {
     // The ranking is no longer used to pick between the two, but `owner`
     // remains HRMS-only vocabulary and other code orders by it.
