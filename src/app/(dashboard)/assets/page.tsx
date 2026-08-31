@@ -898,20 +898,22 @@ export default function AssetsPage() {
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-2">
-          <TabsList className="bg-muted/60 p-1">
-            <TabsTrigger value="inventory" className="gap-2">
-              <Package className="h-4 w-4" /> Asset Inventory ({assets.length})
-            </TabsTrigger>
-            <TabsTrigger value="valuation" className="gap-2">
-              <TrendingDown className="h-4 w-4" /> Financial Valuation
-            </TabsTrigger>
-            <TabsTrigger value="maintenance" className="gap-2">
-              <Wrench className="h-4 w-4" /> Maintenance &amp; Warranty ({warrantyAlerts.length})
-            </TabsTrigger>
-            <TabsTrigger value="software" className="gap-2">
-              <Layers className="h-4 w-4" /> Software &amp; SaaS ({softwareSummary.uniqueApplications || softwareList.length})
-            </TabsTrigger>
-          </TabsList>
+          <div className="min-w-0 overflow-x-auto">
+            <TabsList className="inline-flex h-auto w-max min-w-full flex-nowrap gap-1 bg-muted/60 p-1">
+              <TabsTrigger value="inventory" className="gap-1.5 px-3 text-xs sm:text-sm">
+                <Package className="h-4 w-4 shrink-0" /> Inventory ({assets.length})
+              </TabsTrigger>
+              <TabsTrigger value="valuation" className="gap-1.5 px-3 text-xs sm:text-sm">
+                <TrendingDown className="h-4 w-4 shrink-0" /> Valuation
+              </TabsTrigger>
+              <TabsTrigger value="maintenance" className="gap-1.5 px-3 text-xs sm:text-sm">
+                <Wrench className="h-4 w-4 shrink-0" /> Maintenance ({warrantyAlerts.length})
+              </TabsTrigger>
+              <TabsTrigger value="software" className="gap-1.5 px-3 text-xs sm:text-sm">
+                <Layers className="h-4 w-4 shrink-0" /> Software ({softwareSummary.uniqueApplications || softwareList.length})
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {activeTab === "inventory" && (
             <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-lg">
@@ -1043,7 +1045,20 @@ export default function AssetsPage() {
                   return (
                     <Card
                       key={asset.id}
-                      className="group border hover:border-violet-400/50 hover:shadow-md transition-all duration-200 bg-card/80 backdrop-blur-sm relative overflow-hidden"
+                      role="button"
+                      tabIndex={0}
+                      className="group border hover:border-violet-400/50 hover:shadow-md transition-all duration-200 bg-card/80 backdrop-blur-sm relative overflow-hidden cursor-pointer"
+                      onClick={() => {
+                        setDetailItem(asset);
+                        setDetailTab("specs");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setDetailItem(asset);
+                          setDetailTab("specs");
+                        }
+                      }}
                     >
                       <div className="p-5 space-y-4">
                         {/* Card Header */}
@@ -1070,7 +1085,12 @@ export default function AssetsPage() {
                           {/* Action Dropdown */}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -1954,43 +1974,65 @@ export default function AssetsPage() {
       {/* MODAL: ASSET DETAIL, SCHEDULE & CUSTODY HISTORY                 */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       <Dialog open={!!detailItem} onOpenChange={(open) => !open && setDetailItem(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <div className="flex items-center gap-2">
+        <DialogContent className="flex max-h-[min(90vh,900px)] w-[min(96vw,56rem)] max-w-none flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 space-y-1 border-b px-6 py-4 pr-12">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs font-bold text-violet-600 bg-violet-100 dark:bg-violet-950 px-2 py-0.5 rounded">
                 {detailItem?.assetTag}
               </span>
-              <DialogTitle className="text-xl">{detailItem?.name}</DialogTitle>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-xs font-medium border",
+                  detailItem ? STATE_CONFIG[detailItem.state]?.badgeClass : ""
+                )}
+              >
+                {detailItem ? STATE_CONFIG[detailItem.state]?.label : ""}
+              </Badge>
             </div>
-            <DialogDescription>
+            <DialogTitle className="text-left text-xl leading-tight">{detailItem?.name}</DialogTitle>
+            <DialogDescription className="text-left">
               {detailItem?.category} • {detailItem?.model || detailItem?.manufacturer || "Standard Equipment"}
             </DialogDescription>
           </DialogHeader>
 
           {detailItem && (
-            <div className="space-y-4">
-              {/* Mini Tabs */}
-              <Tabs value={detailTab} onValueChange={(v: any) => setDetailTab(v)}>
-                <TabsList className="grid grid-cols-5 w-full">
-                  <TabsTrigger value="specs" className="gap-2">
-                    <FileText className="h-4 w-4" /> Specs &amp; Valuation
-                  </TabsTrigger>
-                  <TabsTrigger value="schedule" className="gap-2">
-                    <TrendingDown className="h-4 w-4" /> Depreciation
-                  </TabsTrigger>
-                  <TabsTrigger value="history" className="gap-2">
-                    <History className="h-4 w-4" /> Custody Chain
-                  </TabsTrigger>
-                  <TabsTrigger value="software" className="gap-2">
-                    <Layers className="h-4 w-4" /> Software ({assetSoftwareList.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="security" className="gap-2">
-                    <ShieldCheck className="h-4 w-4" /> Endpoint
-                  </TabsTrigger>
-                </TabsList>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <Tabs
+                value={detailTab}
+                onValueChange={(v: "specs" | "schedule" | "history" | "software" | "security") => setDetailTab(v)}
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <div className="shrink-0 overflow-x-auto border-b px-4 py-2">
+                  <TabsList className="inline-flex h-auto w-max min-w-full flex-nowrap justify-start gap-1 bg-muted/60 p-1">
+                    <TabsTrigger value="specs" className="gap-1.5 px-3 text-xs sm:text-sm">
+                      <FileText className="h-4 w-4 shrink-0" />
+                      Specs
+                    </TabsTrigger>
+                    <TabsTrigger value="schedule" className="gap-1.5 px-3 text-xs sm:text-sm">
+                      <TrendingDown className="h-4 w-4 shrink-0" />
+                      Depreciation
+                    </TabsTrigger>
+                    <TabsTrigger value="history" className="gap-1.5 px-3 text-xs sm:text-sm">
+                      <History className="h-4 w-4 shrink-0" />
+                      Custody
+                    </TabsTrigger>
+                    <TabsTrigger value="software" className="gap-1.5 px-3 text-xs sm:text-sm">
+                      <Layers className="h-4 w-4 shrink-0" />
+                      Software
+                      <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+                        {assetSoftwareList.length}
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger value="security" className="gap-1.5 px-3 text-xs sm:text-sm">
+                      <ShieldCheck className="h-4 w-4 shrink-0" />
+                      Endpoint
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
 
-                {/* Subtab 1: Specs & Valuation */}
-                <TabsContent value="specs" className="space-y-4 mt-4">
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+                <TabsContent value="specs" className="mt-0 space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div className="p-3 rounded-lg bg-muted/40 border">
                       <span className="text-xs text-muted-foreground">Current State</span>
@@ -2042,8 +2084,7 @@ export default function AssetsPage() {
                   </div>
                 </TabsContent>
 
-                {/* Subtab 2: Depreciation Schedule */}
-                <TabsContent value="schedule" className="space-y-4 mt-4">
+                <TabsContent value="schedule" className="mt-0 space-y-4">
                   {loadingSchedule ? (
                     <div className="py-12 text-center text-muted-foreground">Calculating depreciation matrix...</div>
                   ) : scheduleData.length === 0 ? (
@@ -2074,8 +2115,7 @@ export default function AssetsPage() {
                   )}
                 </TabsContent>
 
-                {/* Subtab 3: Custody History */}
-                <TabsContent value="history" className="space-y-4 mt-4">
+                <TabsContent value="history" className="mt-0 space-y-4">
                   {loadingHistory ? (
                     <div className="py-12 text-center text-muted-foreground">Loading custody chain...</div>
                   ) : !historyData || (historyData.assignments.length === 0 && historyData.events.length === 0) ? (
@@ -2131,8 +2171,7 @@ export default function AssetsPage() {
                   )}
                 </TabsContent>
 
-                {/* Subtab 4: Installed Software on Asset */}
-                <TabsContent value="software" className="space-y-4 mt-4">
+                <TabsContent value="software" className="mt-0 space-y-4">
                   {loadingAssetSoftware ? (
                     <div className="py-12 text-center text-xs text-muted-foreground">
                       <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" /> Loading installed applications on {detailItem.name}...
@@ -2184,7 +2223,7 @@ export default function AssetsPage() {
                   )}
                 </TabsContent>
 
-                <TabsContent value="security" className="space-y-4 mt-4">
+                <TabsContent value="security" className="mt-0 space-y-4">
                   {detailItem.assignedToId ? (
                     <DeviceInstallPanel
                       employeeId={detailItem.assignedToId}
@@ -2198,11 +2237,12 @@ export default function AssetsPage() {
                     </div>
                   )}
                 </TabsContent>
+                </div>
               </Tabs>
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none border-t bg-muted/30 px-6 py-4">
             <Button variant="outline" onClick={() => setDetailItem(null)}>
               Close
             </Button>
