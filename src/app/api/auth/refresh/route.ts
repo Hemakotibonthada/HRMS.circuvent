@@ -16,10 +16,17 @@ import {
   REFRESH_COOKIE,
   accessCookieOptions,
   refreshCookieOptions,
+  writeSessionCookies,
+  legacySharedCookieClearOptions,
 } from "@/lib/auth/tokens";
 
 function clearedResponse(error: string, status: number) {
   const response = NextResponse.json({ error }, { status });
+  const legacy = legacySharedCookieClearOptions();
+  if (legacy) {
+    response.cookies.set(ACCESS_COOKIE, "", legacy);
+    response.cookies.set(REFRESH_COOKIE, "", legacy);
+  }
   response.cookies.set(ACCESS_COOKIE, "", { ...accessCookieOptions(), maxAge: 0 });
   response.cookies.set(REFRESH_COOKIE, "", { ...refreshCookieOptions(), maxAge: 0 });
   return response;
@@ -77,7 +84,6 @@ export async function POST(request: NextRequest) {
         }
       : {}),
   });
-  response.cookies.set(ACCESS_COOKIE, result.accessToken, accessCookieOptions());
-  response.cookies.set(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions());
+  writeSessionCookies(response, result.accessToken, result.refreshToken);
   return response;
 }

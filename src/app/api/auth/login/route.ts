@@ -19,6 +19,8 @@ import {
   REFRESH_COOKIE,
   accessCookieOptions,
   refreshCookieOptions,
+  writeSessionCookies,
+  legacySharedCookieClearOptions,
 } from "@/lib/auth/tokens";
 import { checkRateLimit, clientIdentifier } from "@/lib/api-context";
 
@@ -121,8 +123,7 @@ export async function POST(request: NextRequest) {
         }
       : {}),
   });
-  response.cookies.set(ACCESS_COOKIE, result.accessToken, accessCookieOptions());
-  response.cookies.set(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions());
+  writeSessionCookies(response, result.accessToken, result.refreshToken);
 
   after(async () => {
     await recordSignInWorkLog(result.user.id, result.user.orgId, result.user.email);

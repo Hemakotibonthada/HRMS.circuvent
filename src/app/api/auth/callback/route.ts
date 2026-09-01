@@ -3,10 +3,7 @@ import { cookies } from "next/headers";
 import { exchangeCode, idpAssertedMfa, requestedApp, safeReturnTo, ssoEnabled, verifyToken } from "@/lib/circuvent-sso";
 import { signInWithSso, recordSignInWorkLog, type SignInFailure } from "@/lib/auth/session";
 import {
-  ACCESS_COOKIE,
-  REFRESH_COOKIE,
-  accessCookieOptions,
-  refreshCookieOptions,
+  writeSessionCookies,
 } from "@/lib/auth/tokens";
 
 export const runtime = "nodejs";
@@ -114,8 +111,7 @@ export async function GET(req: NextRequest) {
     const destination = safeReturnTo(returnTo) ?? new URL("/dashboard", appUrl(req)).toString();
 
     const res = NextResponse.redirect(destination);
-    res.cookies.set(ACCESS_COOKIE, result.accessToken, accessCookieOptions());
-    res.cookies.set(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions());
+    writeSessionCookies(res, result.accessToken, result.refreshToken);
 
     after(async () => {
       await recordSignInWorkLog(result.user.id, result.user.orgId, result.user.email);
