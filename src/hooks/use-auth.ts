@@ -125,18 +125,29 @@ export function useAuth() {
 /** Signs out and notifies every hook instance. */
 export async function signOutSession(): Promise<void> {
   let federatedLogoutUrl: string | null = null;
+  let redirectTo: string | null = null;
   try {
     const res = await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     if (res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { federatedLogoutUrl?: string };
+      const body = (await res.json().catch(() => ({}))) as {
+        federatedLogoutUrl?: string;
+        redirectTo?: string;
+      };
       if (typeof body.federatedLogoutUrl === "string") {
         federatedLogoutUrl = body.federatedLogoutUrl;
+      }
+      if (typeof body.redirectTo === "string") {
+        redirectTo = body.redirectTo;
       }
     }
   } finally {
     window.dispatchEvent(new Event("circuvent-auth-change"));
     if (federatedLogoutUrl) {
       window.location.assign(federatedLogoutUrl);
+    } else if (redirectTo) {
+      window.location.assign(redirectTo);
+    } else {
+      window.location.assign("/login");
     }
   }
 }

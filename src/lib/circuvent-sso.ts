@@ -12,16 +12,27 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { createHash, randomBytes } from "node:crypto";
 import type { AppId } from "@/lib/auth/tokens";
 
-const ISSUER = (process.env.AUTH_ISSUER ?? "https://myaccount.circuvent.com").replace(
-  /\/+$/,
-  ""
+function canonicalIssuer(raw: string | undefined): string {
+  const trimmed = (raw ?? "https://myaccount.circuvent.com").trim().replace(/\/+$/, "");
+  if (trimmed === "https://auth.circuvent.com") {
+    return "https://myaccount.circuvent.com";
+  }
+  return trimmed;
+}
+
+const ISSUER = canonicalIssuer(process.env.AUTH_ISSUER);
+
+const TOKEN_ISSUERS = Array.from(
+  new Set([ISSUER, "https://myaccount.circuvent.com", "https://auth.circuvent.com"])
 );
 
-/**
- * `createRemoteJWKSet` caches the key set and refetches on an unknown `kid`,
- * so a key rotation at the issuer needs no redeploy here.
- */
-const jwks = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`));
+let jwksCache: ReturnType<typeof createRemoteJWKSet> | null = null;
+
+function jwksFor(): ReturnType<typeof createRemoteJWKSet> {
+  if (jwksCache) return jwksCache;
+  jwksCache = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`));
+  return jwksCache;
+}
 
 export interface CircuventClaims extends JWTPayload {
   sub: string;
@@ -162,11 +173,19 @@ export function refreshTokens(refreshToken: string): Promise<TokenSet> {
 /** Verifies a token this issuer signed and returns its claims. */
 export async function verifyToken(token: string): Promise<CircuventClaims> {
   const { clientId } = ssoConfig();
-  const { payload } = await jwtVerify(token, jwks, {
-    issuer: ISSUER,
-    audience: clientId,
-  });
-  return payload as CircuventClaims;
+  let lastError: unknown;
+  for (const issuer of TOKEN_ISSUERS) {
+    try {
+      const { payload } = await jwtVerify(token, jwksFor(), {
+        issuer,
+        audience: clientId,
+      });
+      return payload as CircuventClaims;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError ?? new Error("Token verification failed");
 }
 
 /**
@@ -247,7 +266,7 @@ export async function verifyLogoutToken(
   logoutToken: string
 ): Promise<{ sub: string; sid?: string }> {
   const { clientId } = ssoConfig();
-  const { payload } = await jwtVerify(logoutToken, jwks, {
+  const { payload } = await jwtVerify(logoutToken, jwksFor(), {
     issuer: ISSUER,
     audience: clientId,
   });
