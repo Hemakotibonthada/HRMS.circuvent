@@ -18,7 +18,11 @@ export interface DelegationHandoff {
 }
 
 export async function sealDelegationHandoff(payload: DelegationHandoff): Promise<string> {
-  return new SignJWT(payload)
+  return new SignJWT({
+    accessToken: payload.accessToken,
+    refreshToken: payload.refreshToken,
+    next: payload.next,
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuer(HANDOFF_ISSUER)
     .setAudience(HANDOFF_AUDIENCE)
