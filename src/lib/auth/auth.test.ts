@@ -205,10 +205,10 @@ describe("session cookies", () => {
     if (previous !== undefined) process.env.AUTH_COOKIE_DOMAIN = previous;
   });
 
-  it("uses the configured apex domain so every subdomain shares the session", () => {
-    process.env.AUTH_COOKIE_DOMAIN = ".circuvent.com";
-    expect(cookieOptions(900).domain).toBe(".circuvent.com");
-    delete process.env.AUTH_COOKIE_DOMAIN;
+  it("stays host-scoped so each app can hold its own session", () => {
+    const opts = cookieOptions(900);
+    expect(opts.domain).toBeUndefined();
+    expect(opts.secure).toBe(false);
   });
 
   it("names the cookies distinctly", () => {

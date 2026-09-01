@@ -9,9 +9,8 @@
 //   refresh  opaque, 30 days, stored only as a hash in identity.sessions.
 //            Revocable, and rotated on every use.
 //
-// The cookie is scoped to .circuvent.com so one sign-in covers hrms., work.,
-// ats., mail. and office. — real SSO across the suite, which the current
-// per-app Firebase Auth only approximates.
+// The cookie is host-scoped per app. Silent SSO uses circuvent_sso on
+// `.circuvent.com`, not a shared cv_access.
 //
 // Rotation also gives replay detection: a refresh token is single-use, so if
 // an old one is presented again it was either stolen or replayed, and the
@@ -131,13 +130,11 @@ export interface CookieOptions {
  * Cookie attributes for the session cookies.
  *
  * Sessions are host-scoped by default so multiple Circuvent apps (work.,
- * hrms., assets., …) can stay signed in at once. Set AUTH_COOKIE_DOMAIN only
- * for a deliberate shared-cookie deployment. Silent SSO uses circuvent_sso on
- * `.circuvent.com`, not cv_access.
+ * hrms., assets., …) can stay signed in at once. Silent SSO uses
+ * circuvent_sso on `.circuvent.com`, not cv_access.
  */
 export function cookieOptions(maxAge: number): CookieOptions {
   const isProd = process.env.NODE_ENV === "production";
-  const domain = process.env.AUTH_COOKIE_DOMAIN?.trim() || undefined;
 
   return {
     httpOnly: true,
@@ -145,7 +142,6 @@ export function cookieOptions(maxAge: number): CookieOptions {
     sameSite: "lax",
     path: "/",
     maxAge,
-    ...(domain ? { domain } : {}),
   };
 }
 
