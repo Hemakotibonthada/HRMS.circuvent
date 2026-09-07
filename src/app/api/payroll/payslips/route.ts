@@ -6,11 +6,15 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
+import { withTenant } from "@/db/client";
+import { employees } from "@/db/schema/hrms";
 import { NeonPayrollRepository } from "@/db/repositories/payroll.neon";
 import { RepositoryError } from "@/db/repositories/types";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
 import { currentEmployeeId, resolveScopedEmployeeId } from "@/lib/current-employee";
+import { fetchPaystubPayslips } from "@/lib/paystub-client";
 
 export async function GET(request: NextRequest) {
   let ctx;
@@ -49,7 +53,49 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid employee id" }, { status: 400 });
     }
 
-    const payslips = await new NeonPayrollRepository(ctx).payslipsFor(employeeId);
+    let payslips = await new NeonPayrollRepository(ctx).payslipsFor(employeeId);
+
+    if (payslips.length === 0) {
+      const [emp] = await withTenant(ctx, async (tx) =>
+        tx
+          .select({
+            workEmail: employees.workEmail,
+            employeeCode: employees.employeeCode,
+          })
+          .from(employees)
+          .where(eq(employees.id, employeeId))
+          .limit(1)
+      );
+
+      const synced = await fetchPaystubPayslips(ctx.orgId, employeeId, {
+        email: emp?.workEmail ?? undefined,
+        employeeCode: emp?.employeeCode ?? undefined,
+      });
+
+      if (synced.length > 0) {
+        payslips = synced.map((p) => ({
+          id: p.id,
+          runId: p.runId,
+          employeeId,
+          employeeName: p.employeeName,
+          workingDays: p.workingDays,
+          presentDays: p.presentDays,
+          lopDays: p.lopDays,
+          gross: p.gross,
+          totalDeductions: p.totalDeductions,
+          netPay: p.netPay,
+          grossMinor: p.grossMinor,
+          totalDeductionsMinor: p.totalDeductionsMinor,
+          netPayMinor: p.netPayMinor,
+          status: p.status,
+          anomalies: p.anomalies ?? [],
+          periodMonth: p.periodMonth,
+          periodYear: p.periodYear,
+          payslipUrl: p.payslipUrl,
+        }));
+      }
+    }
+
     return NextResponse.json({ employeeId, payslips });
   } catch (error) {
     if (error instanceof RepositoryError) {
@@ -59,3 +105,4 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+

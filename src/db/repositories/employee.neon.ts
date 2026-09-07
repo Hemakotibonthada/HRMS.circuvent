@@ -294,10 +294,48 @@ export class NeonEmployeeRepository implements EmployeeRepository {
         .limit(1);
 
       if (rows.length === 0) return null;
-      return toRecord({
+      const record = toRecord({
         ...rows[0].employee,
         departmentName: rows[0].departmentName,
       });
+
+      // If the employee record is missing Aadhaar/PAN, pull the masked values
+      // from candidate_registration via their candidate_id link.
+      //
+      // These are stored by ATS under its own encryption key — HRMS cannot
+      // decrypt them, but the mask (XXXXXXXX7056) is safe to show to HR so
+      // the onboarding form does not appear empty for employees who did fill
+      // their joining form.
+      //
+      // `candidate_id` exists on the employees table in the database but is
+      // not in this app's Drizzle schema (it is owned by the ATS handoff
+      // migration), so this must be a raw SQL query.
+      if (!record.aadhaarNumber || !record.panNumber) {
+        try {
+          const regResult = await tx.execute(
+            sql`SELECT r.aadhaar_masked, r.pan_masked
+                  FROM hrms.candidate_registration r
+                  JOIN hrms.employees e ON e.candidate_id = r.candidate_id
+                 WHERE e.id = ${id}::uuid
+                   AND e.deleted_at IS NULL
+                 LIMIT 1`
+          );
+          const reg = ((regResult as unknown as { rows?: Record<string, unknown>[] }).rows ?? [])[0];
+          if (reg) {
+            if (!record.aadhaarNumber && reg.aadhaar_masked) {
+              record.aadhaarNumber = String(reg.aadhaar_masked);
+            }
+            if (!record.panNumber && reg.pan_masked) {
+              record.panNumber = String(reg.pan_masked);
+            }
+          }
+        } catch {
+          // Non-fatal: the registration table is written by ATS with raw SQL
+          // and may not exist in all environments; proceed without the mask.
+        }
+      }
+
+      return record;
     });
   }
 

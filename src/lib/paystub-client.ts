@@ -266,3 +266,84 @@ export async function pushEmployeeToPaystub(
 
   return (await response.json()) as PaystubEmployeeSyncResult;
 }
+
+export function paystubSyncBaseUrl(): string {
+  const custom = process.env.PAYSTUB_BASE_URL?.trim();
+  if (custom) return custom.replace(/\/+$/, "");
+
+  const syncUrl = process.env.PAYSTUB_SYNC_URL?.trim();
+  if (syncUrl) {
+    try {
+      return new URL(syncUrl).origin;
+    } catch {}
+  }
+  return "https://paystub.circuvent.com";
+}
+
+export interface PaystubPayslipItem {
+  id: string;
+  runId: string;
+  employeeId: string;
+  paystubEmployeeId?: string;
+  employeeName?: string;
+  workingDays: number;
+  presentDays: number;
+  lopDays: number;
+  gross: number;
+  totalDeductions: number;
+  netPay: number;
+  grossMinor: string;
+  totalDeductionsMinor: string;
+  netPayMinor: string;
+  status: string;
+  anomalies: string[];
+  periodMonth: number;
+  periodYear: number;
+  documentId?: string;
+  payslipUrl?: string;
+}
+
+export async function fetchPaystubPayslips(
+  hrmsOrgId: string,
+  hrmsEmployeeId: string,
+  options?: { email?: string; employeeCode?: string },
+  fetchImpl: typeof fetch = fetch
+): Promise<PaystubPayslipItem[]> {
+  const baseUrl = paystubSyncBaseUrl();
+  const token = process.env.CROSS_APP_SYNC_TOKEN?.trim();
+  if (!token) return [];
+
+  let paystubOrgId: string | undefined;
+  try {
+    const mapping = resolvePaystubTenant(hrmsOrgId);
+    paystubOrgId = mapping?.orgId;
+  } catch {
+    // optional mapping fallback
+  }
+
+  const query = new URLSearchParams();
+  query.set("hrmsEmployeeId", hrmsEmployeeId);
+  if (paystubOrgId) query.set("orgId", paystubOrgId);
+  if (options?.email) query.set("email", options.email);
+  if (options?.employeeCode) query.set("employeeCode", options.employeeCode);
+
+  try {
+    const res = await fetchImpl(`${baseUrl}/api/sync/payslips?${query.toString()}`, {
+      method: "GET",
+      headers: {
+        "X-Service-Token": token,
+      },
+    });
+
+    if (!res.ok) {
+      console.warn(`Paystub payslips sync returned HTTP ${res.status}`);
+      return [];
+    }
+
+    const data = (await res.json()) as { payslips?: PaystubPayslipItem[] };
+    return data.payslips ?? [];
+  } catch (err) {
+    console.error("Failed to fetch payslips from Paystub:", err);
+    return [];
+  }
+}

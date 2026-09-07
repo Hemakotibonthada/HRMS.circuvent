@@ -221,13 +221,20 @@ export default function PayslipPage() {
           the real thing.
         */}
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2" disabled title="Not available yet">
-            <Download className="h-4 w-4" /> Download PDF
-          </Button>
-          <Button variant="outline" className="gap-2" disabled title="Not available yet">
-            <Mail className="h-4 w-4" /> Email Payslip
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={!currentPayslip}
+            onClick={() => {
+              if (currentPayslip) {
+                window.open(`/api/payroll/payslips/${currentPayslip.id}/pdf`, "_blank");
+              }
+            }}
+          >
+            <Download className="h-4 w-4" /> View / Download Payslip
           </Button>
         </div>
+
       </div>
 
       {/* Net Pay Highlight */}

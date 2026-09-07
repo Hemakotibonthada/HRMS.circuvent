@@ -10,6 +10,8 @@ import { requireApiContext } from "@/lib/api-context";
 import { currentEmployeeId } from "@/lib/current-employee";
 import { getObjectBytes, StorageConfigError, StorageRequestError } from "@/lib/storage/object-store";
 
+import { paystubSyncBaseUrl } from "@/lib/paystub-client";
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -57,6 +59,24 @@ export async function GET(
     });
 
     if (!bytes) {
+      const baseUrl = paystubSyncBaseUrl();
+      const token = process.env.CROSS_APP_SYNC_TOKEN?.trim();
+      if (token) {
+        const paystubRes = await fetch(`${baseUrl}/api/sync/payslips/${id}`, {
+          headers: { "X-Service-Token": token },
+        });
+        if (paystubRes.ok) {
+          const contentType = paystubRes.headers.get("Content-Type") ?? "text/html; charset=utf-8";
+          const body = await paystubRes.arrayBuffer();
+          return new NextResponse(body, {
+            headers: {
+              "Content-Type": contentType,
+              "Content-Disposition": `inline; filename="payslip-${id}.html"`,
+              "Cache-Control": "private, no-store",
+            },
+          });
+        }
+      }
       return NextResponse.json({ error: "Payslip not found or not yet archived" }, { status: 404 });
     }
 
