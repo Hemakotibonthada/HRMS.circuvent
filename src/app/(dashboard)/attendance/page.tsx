@@ -26,7 +26,7 @@ import {
   TrendingUp, Calendar, MapPin, Timer, LogIn, LogOut, Eye,
   Building2, Laptop, Palmtree, RefreshCw, Smartphone, CreditCard,
   Radio, Sparkles, Check, CheckCheck, X, FileEdit, History,
-  ShieldCheck, Info,
+  ShieldCheck, Info, BellRing,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -89,10 +89,26 @@ export interface RegularisationItem {
   createdAt: string;
 }
 
+function formatAttendanceHours(rec: AttendanceItem): { text: string; isSinglePunch?: boolean } {
+  // Enforce single-day cap: a day cannot exceed 24 hours (1440 minutes)
+  const cappedMinutes = typeof rec.workedMinutes === "number" ? Math.min(1440, Math.max(0, rec.workedMinutes)) : 0;
+
+  // If clock-in was recorded but employee didn't manually clock out or only one punch made
+  if (rec.clockInAt && !rec.clockOutAt) {
+    return { text: "0-1 hours", isSinglePunch: true };
+  }
+
+  if (cappedMinutes <= 0) return { text: "0h 0m" };
+  const h = Math.floor(cappedMinutes / 60);
+  const m = cappedMinutes % 60;
+  return { text: `${h}h ${m}m` };
+}
+
 function formatMinutes(minutes?: number): string {
   if (!minutes || minutes <= 0) return "0h 0m";
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
+  const capped = Math.min(1440, minutes);
+  const h = Math.floor(capped / 60);
+  const m = capped % 60;
   return `${h}h ${m}m`;
 }
 
@@ -127,6 +143,30 @@ export default function AttendancePage() {
   const [smartcardModalOpen, setSmartcardModalOpen] = useState(false);
   const [smartcardId, setSmartcardId] = useState("");
   const [cardTapped, setCardTapped] = useState(false);
+
+  const [sendingReminders, setSendingReminders] = useState(false);
+
+  const handleSendReminders = async () => {
+    try {
+      setSendingReminders(true);
+      const res = await fetch("/api/attendance/reminders/clock-out", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send reminders");
+
+      toast.success("Clock-Out Reminders Sent", {
+        description: data.message || `Sent ${data.reminded} reminders to employees who forgot to clock out.`,
+      });
+    } catch (err) {
+      toast.error("Failed to Send Reminders", {
+        description: err instanceof Error ? err.message : "Network error",
+      });
+    } finally {
+      setSendingReminders(false);
+    }
+  };
 
   const [regularizeOpen, setRegularizeOpen] = useState(false);
   const [regForm, setRegForm] = useState({
@@ -649,6 +689,21 @@ export default function AttendancePage() {
               <FileEdit className="h-4 w-4 text-purple-500" /> Regularization Requests ({regularisations.length})
             </TabsTrigger>
           </TabsList>
+
+          <div className="flex items-center gap-2">
+            {(isHR || isAdmin || isManager) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSendReminders}
+                disabled={sendingReminders}
+                className="gap-1.5 text-xs text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800 hover:bg-violet-50 dark:hover:bg-violet-950/40"
+              >
+                <BellRing className={cn("h-3.5 w-3.5 text-violet-600", sendingReminders && "animate-spin")} />
+                {sendingReminders ? "Sending..." : "Send Clock-Out Reminders"}
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Tab 1: Attendance Register */}
@@ -729,9 +784,26 @@ export default function AttendancePage() {
                               </span>
                             </TableCell>
                             <TableCell>
-                              <span className="font-mono text-xs font-bold">
-                                {formatMinutes(rec.workedMinutes)}
-                              </span>
+                              {(() => {
+                                const hoursInfo = formatAttendanceHours(rec);
+                                if (hoursInfo.isSinglePunch) {
+                                  return (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400">
+                                        0-1 hours
+                                      </span>
+                                      <Badge variant="outline" className="text-[9px] px-1 py-0 border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300">
+                                        Web Punch
+                                      </Badge>
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <span className="font-mono text-xs font-bold">
+                                    {hoursInfo.text}
+                                  </span>
+                                );
+                              })()}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

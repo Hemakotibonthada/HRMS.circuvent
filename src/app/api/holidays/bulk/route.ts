@@ -28,6 +28,7 @@ import {
   type ParsedHolidayRow,
   type RowIssue,
 } from "@/lib/holiday-import";
+import { syncHolidaysToPaystub } from "@/lib/sync/paystub-holiday-sync";
 
 const bodySchema = z.discriminatedUnion("source", [
   z.object({
@@ -175,6 +176,11 @@ export async function POST(request: NextRequest) {
         .returning();
 
       return { inserted, duplicates };
+    });
+
+    // Auto-sync with Paystub in background
+    void syncHolidaysToPaystub(ctx).catch((err) => {
+      console.warn("Auto-sync holidays to Paystub failed:", err);
     });
 
     return NextResponse.json(

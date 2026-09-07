@@ -40,6 +40,12 @@ import {
 type Row = typeof attendanceRecords.$inferSelect;
 
 function toRecord(row: Row): AttendanceRecordDto {
+  // A single calendar day can NEVER exceed 24 hours (1440 minutes).
+  const workedMinutes =
+    typeof row.workedMinutes === "number"
+      ? Math.min(1440, Math.max(0, row.workedMinutes))
+      : undefined;
+
   return {
     id: row.id,
     employeeId: row.employeeId,
@@ -47,7 +53,7 @@ function toRecord(row: Row): AttendanceRecordDto {
     clockInAt: row.clockInAt?.toISOString(),
     clockOutAt: row.clockOutAt?.toISOString(),
     status: row.status,
-    workedMinutes: row.workedMinutes ?? undefined,
+    workedMinutes,
     overtimeMinutes: row.overtimeMinutes,
     lateByMinutes: row.lateByMinutes,
     earlyLeaveByMinutes: row.earlyLeaveByMinutes,
@@ -294,10 +300,25 @@ export class NeonAttendanceRepository implements AttendanceRepository {
         throw new RepositoryError("You have not clocked in", 409);
       }
 
-      const workedMinutes = Math.max(
+      const rawElapsed = Math.max(
         0,
         Math.round((at.getTime() - record.clockInAt.getTime()) / 60_000)
       );
+
+      // A single calendar day cannot exceed 24 hours (1440 minutes).
+      // If someone forgot to clock out and clocked out days later, cap to shift length or max 24 hours.
+      const shiftScheduledMinutes =
+        context.shiftStart && context.shiftEnd
+          ? (context.isNightShift
+              ? shiftMinutes(context.shiftEnd) + 1440 - shiftMinutes(context.shiftStart)
+              : shiftMinutes(context.shiftEnd) - shiftMinutes(context.shiftStart))
+          : 540;
+
+      let workedMinutes = Math.min(1440, rawElapsed);
+      if (rawElapsed > 1440 || (rawElapsed > shiftScheduledMinutes + 300 && at.getDate() !== record.clockInAt.getDate())) {
+        // Multi-day forgotten punch out: cap at shift standard + reasonable overtime (max 24h)
+        workedMinutes = Math.min(1440, Math.max(shiftScheduledMinutes, Math.min(rawElapsed, shiftScheduledMinutes + 120)));
+      }
 
       let earlyLeaveByMinutes = 0;
       let overtimeMinutes = 0;

@@ -61,6 +61,20 @@ export default function HRCalendarPage() {
   const month = currentDate.getMonth();
   const monthName = currentDate.toLocaleString("default", { month: "long" });
 
+  const [weekendDays, setWeekendDays] = useState<number[]>([0, 6]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("hrms_weekend_days");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) setWeekendDays(parsed);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     if (!holidayStore.initialized) startSync(COLLECTIONS.holidays, holidayStore);
     if (!leaveStore.initialized) startSync(COLLECTIONS.leaves, leaveStore);
@@ -205,7 +219,7 @@ export default function HRCalendarPage() {
               const holidays = holidayMap.get(dateKey) || [];
               const leaveCount = leaveCountMap.get(dateKey) || 0;
               const isToday = day === new Date().getDate() && month === new Date().getMonth() && year === new Date().getFullYear();
-              const isSunday = (i % 7) === 0;
+              const isWeekendDay = weekendDays.includes(i % 7);
 
               return (
                 <div
@@ -213,7 +227,7 @@ export default function HRCalendarPage() {
                   className={cn(
                     "p-1.5 min-h-[80px] border-b border-r cursor-pointer hover:bg-accent/50 transition-colors relative",
                     isToday && "bg-violet-50 dark:bg-violet-900/20",
-                    isSunday && "bg-red-50/50 dark:bg-red-900/10",
+                    isWeekendDay && "bg-rose-50/40 dark:bg-rose-950/20",
                     holidays.length > 0 && "bg-amber-50/50 dark:bg-amber-900/10",
                   )}
                   {...clickable(() => setSelectedDay(day))}

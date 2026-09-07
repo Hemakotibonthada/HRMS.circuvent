@@ -18,7 +18,23 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarDays, Plus, Search, Sun, Star, Palmtree, Gift, Upload, Download, FileSpreadsheet } from "lucide-react";
+import {
+  CalendarDays,
+  Plus,
+  Search,
+  Sun,
+  Star,
+  Palmtree,
+  Gift,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  RefreshCw,
+  SlidersHorizontal,
+  ChevronLeft,
+  ChevronRight,
+  Calendar as CalendarIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useHolidayStore, startSync, type HolidayDoc } from "@/stores/unified-store";
@@ -36,10 +52,10 @@ function weekdayOf(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-IN", { weekday: "long", timeZone: "UTC" });
 }
 
-function isWeekend(iso: string): boolean {
+function isWeekend(iso: string, weekendDays: number[] = [0, 6]): boolean {
   if (!iso) return false;
   const day = new Date(`${iso}T00:00:00Z`).getUTCDay();
-  return day === 0 || day === 6;
+  return weekendDays.includes(day);
 }
 
 function formatDate(iso: string): string {
@@ -77,12 +93,56 @@ export default function HolidaysPage() {
   const [kindFilter, setKindFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [weekendDialogOpen, setWeekendDialogOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [weekendDays, setWeekendDays] = useState<number[]>([0, 6]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("hrms_weekend_days");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) setWeekendDays(parsed);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     if (!initialized) startSync(COLLECTIONS.holidays, store);
   }, [initialized, store]);
 
   const today = todayIso();
+
+  const handleSyncToPaystub = async (customDays?: number[]) => {
+    setIsSyncing(true);
+    try {
+      const days = customDays ?? weekendDays;
+      const res = await fetch("/api/holidays/sync-paystub", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekendDays: days }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Sync failed");
+      toast.success(data.message || `Synchronized ${data.syncedCount ?? items.length} holidays to Paystub!`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to sync with Paystub");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleSaveWeekendPolicy = async (newDays: number[]) => {
+    setWeekendDays(newDays);
+    try {
+      localStorage.setItem("hrms_weekend_days", JSON.stringify(newDays));
+    } catch {
+      // ignore
+    }
+    await handleSyncToPaystub(newDays);
+  };
 
   const filtered = useMemo(() => {
     let result = items;
@@ -101,7 +161,7 @@ export default function HolidaysPage() {
   const gazetted = items.filter((h) => !h.isOptional).length;
   const optional = items.filter((h) => h.isOptional).length;
   const upcoming = items.filter((h) => h.holidayDate >= today).length;
-  const onWeekend = items.filter((h) => isWeekend(h.holidayDate)).length;
+  const onWeekend = items.filter((h) => isWeekend(h.holidayDate, weekendDays)).length;
 
   const monthBreakdown = useMemo(() => {
     const map = new Map<string, number>();
@@ -187,7 +247,26 @@ export default function HolidaysPage() {
             {items.length} holidays &middot; {upcoming} upcoming
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleSyncToPaystub()}
+            disabled={isSyncing}
+            className="gap-1.5 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-full h-9 px-4"
+          >
+            <RefreshCw className={cn("h-4 w-4 shrink-0", isSyncing && "animate-spin")} />
+            <span>{isSyncing ? "Syncing..." : "Sync with Paystub"}</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setWeekendDialogOpen(true)}
+            className="gap-1.5 border-border shadow-sm hover:bg-accent/80 rounded-full h-9 px-4"
+          >
+            <SlidersHorizontal className="h-4 w-4 shrink-0" />
+            <span>Weekend Policy</span>
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -268,7 +347,8 @@ export default function HolidaysPage() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="list">Holidays</TabsTrigger>
+          <TabsTrigger value="list">Holidays List</TabsTrigger>
+          <TabsTrigger value="calendar">Monthly Calendar</TabsTrigger>
           <TabsTrigger value="analytics">By Month</TabsTrigger>
         </TabsList>
 
@@ -278,8 +358,14 @@ export default function HolidaysPage() {
           ) : filtered.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">No matching holidays found.</p>
           ) : (
-            filtered.map((holiday) => <HolidayRow key={holiday.id} holiday={holiday} today={today} />)
+            filtered.map((holiday) => (
+              <HolidayRow key={holiday.id} holiday={holiday} today={today} weekendDays={weekendDays} />
+            ))
           )}
+        </TabsContent>
+
+        <TabsContent value="calendar" className="mt-4">
+          <HolidayCalendarTab items={items} weekendDays={weekendDays} />
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-4">
@@ -346,12 +432,27 @@ export default function HolidaysPage() {
       </Dialog>
 
       <BulkImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={refresh} />
+
+      <WeekendPolicyDialog
+        open={weekendDialogOpen}
+        onOpenChange={setWeekendDialogOpen}
+        weekendDays={weekendDays}
+        onSave={handleSaveWeekendPolicy}
+      />
     </div>
   );
 }
 
-function HolidayRow({ holiday, today }: { holiday: HolidayDoc; today: string }) {
-  const weekend = isWeekend(holiday.holidayDate);
+function HolidayRow({
+  holiday,
+  today,
+  weekendDays = [0, 6],
+}: {
+  holiday: HolidayDoc;
+  today: string;
+  weekendDays?: number[];
+}) {
+  const weekend = isWeekend(holiday.holidayDate, weekendDays);
   const past = holiday.holidayDate < today;
 
   return (
@@ -377,6 +478,262 @@ function HolidayRow({ holiday, today }: { holiday: HolidayDoc; today: string }) 
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function HolidayCalendarTab({
+  items,
+  weekendDays,
+}: {
+  items: HolidayDoc[];
+  weekendDays: number[];
+}) {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const monthName = currentDate.toLocaleString("default", { month: "long" });
+
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const goToday = () => setCurrentDate(new Date());
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay(); // 0 = Sun, 6 = Sat
+
+  const calendarCells = useMemo(() => {
+    const cells: (number | null)[] = [];
+    for (let i = 0; i < firstDay; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }, [daysInMonth, firstDay]);
+
+  const holidayMap = useMemo(() => {
+    const map = new Map<string, HolidayDoc[]>();
+    for (const h of items) {
+      const key = h.holidayDate?.slice(0, 10);
+      if (key) map.set(key, [...(map.get(key) || []), h]);
+    }
+    return map;
+  }, [items]);
+
+  const daysHeader = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <Button variant="outline" size="icon" onClick={prevMonth}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <div className="flex items-center gap-2">
+          <CalendarIcon className="h-4 w-4 text-violet-500" />
+          <h2 className="text-base font-semibold">
+            {monthName} {year}
+          </h2>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={goToday}>
+            Today
+          </Button>
+          <Button variant="outline" size="icon" onClick={nextMonth}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 border rounded-lg overflow-hidden bg-card">
+        {daysHeader.map((d, idx) => (
+          <div
+            key={d}
+            className={cn(
+              "p-2 text-center text-xs font-semibold border-b bg-muted/40",
+              weekendDays.includes(idx) && "text-rose-600 dark:text-rose-400 font-bold"
+            )}
+          >
+            {d}
+            {weekendDays.includes(idx) && (
+              <span className="block text-[9px] font-normal text-muted-foreground">Weekend</span>
+            )}
+          </div>
+        ))}
+
+        {calendarCells.map((day, i) => {
+          if (day === null) {
+            return <div key={`empty-${i}`} className="p-2 min-h-[90px] bg-muted/15 border-b border-r" />;
+          }
+
+          const dayOfWeek = i % 7;
+          const isWeekendDay = weekendDays.includes(dayOfWeek);
+          const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          const holidays = holidayMap.get(dateKey) || [];
+          const isToday =
+            day === new Date().getDate() &&
+            month === new Date().getMonth() &&
+            year === new Date().getFullYear();
+
+          return (
+            <div
+              key={dateKey}
+              className={cn(
+                "p-2 min-h-[90px] border-b border-r relative flex flex-col justify-between transition-colors",
+                isToday && "ring-1 ring-violet-500 bg-violet-50/40 dark:bg-violet-950/20",
+                isWeekendDay && !isToday && "bg-rose-50/30 dark:bg-rose-950/15",
+                holidays.length > 0 && "bg-emerald-50/40 dark:bg-emerald-950/20"
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <span
+                  className={cn(
+                    "text-xs font-medium inline-block",
+                    isToday && "bg-violet-600 text-white rounded-full w-5 h-5 flex items-center justify-center font-bold"
+                  )}
+                >
+                  {day}
+                </span>
+                {isWeekendDay && (
+                  <Badge variant="outline" className="text-[9px] h-4 px-1 py-0 text-muted-foreground border-rose-200 dark:border-rose-900">
+                    Weekend
+                  </Badge>
+                )}
+              </div>
+
+              <div className="mt-1 space-y-1">
+                {holidays.map((h) => (
+                  <div
+                    key={h.id}
+                    title={`${h.name} (${h.isOptional ? "Optional" : "Gazetted"})`}
+                    className={cn(
+                      "text-[11px] px-1.5 py-0.5 rounded font-medium truncate",
+                      h.isOptional
+                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+                        : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
+                    )}
+                  >
+                    {h.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded bg-emerald-100 border border-emerald-300 dark:bg-emerald-900/40" />
+          <span>Gazetted Holiday</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded bg-amber-100 border border-amber-300 dark:bg-amber-900/40" />
+          <span>Optional Holiday</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded bg-rose-50 border border-rose-200 dark:bg-rose-950/30" />
+          <span>Weekend (Sat & Sun default)</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WeekendPolicyDialog({
+  open,
+  onOpenChange,
+  weekendDays,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  weekendDays: number[];
+  onSave: (days: number[]) => Promise<void>;
+}) {
+  const [selected, setSelected] = useState<number[]>(weekendDays);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setSelected(weekendDays);
+  }, [weekendDays, open]);
+
+  const daysList = [
+    { day: 0, label: "Sunday", hint: "Default Weekend" },
+    { day: 1, label: "Monday", hint: "Workday" },
+    { day: 2, label: "Tuesday", hint: "Workday" },
+    { day: 3, label: "Wednesday", hint: "Workday" },
+    { day: 4, label: "Thursday", hint: "Workday" },
+    { day: 5, label: "Friday", hint: "Workday" },
+    { day: 6, label: "Saturday", hint: "Default Weekend" },
+  ];
+
+  const toggleDay = (day: number) => {
+    setSelected((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()
+    );
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(selected);
+      onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Configure Weekend Policy</DialogTitle>
+          <DialogDescription>
+            Select which days of the week are considered recurring weekend holidays. By default, Saturday and Sunday are weekends. Changes will automatically sync with Paystub.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2 py-3">
+          {daysList.map(({ day, label, hint }) => {
+            const isChecked = selected.includes(day);
+            return (
+              <div
+                key={day}
+                onClick={() => toggleDay(day)}
+                className={cn(
+                  "flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-colors",
+                  isChecked
+                    ? "border-violet-500/50 bg-violet-50/50 dark:bg-violet-950/20"
+                    : "border-border hover:bg-accent/40"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    checked={isChecked}
+                    onCheckedChange={() => toggleDay(day)}
+                    id={`day-${day}`}
+                  />
+                  <Label htmlFor={`day-${day}`} className="font-medium cursor-pointer text-sm">
+                    {label}
+                  </Label>
+                </div>
+                <span className="text-xs text-muted-foreground">{hint}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            className="bg-gradient-to-r from-violet-500 to-purple-600 text-white"
+          >
+            {saving ? "Saving & Syncing..." : "Save & Sync to Paystub"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

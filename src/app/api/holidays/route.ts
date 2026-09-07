@@ -18,6 +18,7 @@ import { holidays } from "@/db/schema/hrms";
 import { authErrorResponse } from "@/lib/server-auth";
 import { requireApiContext } from "@/lib/api-context";
 import { describeIssues, toFieldIssues } from "@/lib/validation-response";
+import { syncHolidaysToPaystub } from "@/lib/sync/paystub-holiday-sync";
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "A holiday needs a name").max(200),
@@ -106,6 +107,11 @@ export async function POST(request: NextRequest) {
         })
         .returning();
       return row;
+    });
+
+    // Auto-sync with Paystub in background
+    void syncHolidaysToPaystub(ctx).catch((err) => {
+      console.warn("Auto-sync holidays to Paystub failed:", err);
     });
 
     return NextResponse.json(
