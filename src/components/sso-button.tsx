@@ -44,7 +44,7 @@ export function SsoButton() {
             fill="none"
           />
         </svg>
-        Sign in with Circuvent
+        Continue with SSO
       </a>
 
       <div className="flex items-center gap-3">

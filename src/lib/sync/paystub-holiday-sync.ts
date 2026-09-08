@@ -5,6 +5,7 @@
 import { withTenant } from "@/db/client";
 import { holidays } from "@/db/schema/hrms";
 import type { ApiContext } from "@/lib/api-context";
+import { resolvePaystubTenant } from "@/lib/paystub-client";
 
 interface SyncResult {
   ok: boolean;
@@ -31,19 +32,11 @@ export async function syncHolidaysToPaystub(
 
   const syncUrl = `${baseUrl.replace(/\/$/, "")}/api/sync/holidays`;
 
-  // Determine target Paystub orgId
-  let paystubOrgId = "15b17596-eb0b-46fe-a4e2-125bee3f8fb3";
-  try {
-    const rawMap = process.env.PAYSTUB_SYNC_TENANT_MAP;
-    if (rawMap) {
-      const map = JSON.parse(rawMap);
-      if (map[ctx.orgId]?.orgId) {
-        paystubOrgId = map[ctx.orgId].orgId;
-      }
-    }
-  } catch {
-    // Fall back to default orgId
-  }
+  // A sync must never quietly choose a different tenant. The employee and
+  // attendance sync paths already require this mapping; holidays need the
+  // identical contract so a green HRMS toast means the caller's Paystub
+  // organisation, not a legacy default, received the calendar.
+  const { orgId: paystubOrgId } = resolvePaystubTenant(ctx.orgId);
 
   // 1. Fetch holidays from HRMS database
   const hrmsHolidays = await withTenant(ctx, async (tx) => {

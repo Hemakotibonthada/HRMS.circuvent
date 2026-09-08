@@ -95,7 +95,7 @@ function formatAttendanceHours(rec: AttendanceItem): { text: string; isSinglePun
 
   // If clock-in was recorded but employee didn't manually clock out or only one punch made
   if (rec.clockInAt && !rec.clockOutAt) {
-    return { text: "0-1 hours", isSinglePunch: true };
+    return { text: "Missing clock-out", isSinglePunch: true };
   }
 
   if (cappedMinutes <= 0) return { text: "0h 0m" };
@@ -129,9 +129,11 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [clockAvailable, setClockAvailable] = useState(false);
 
   // Time & Session
   const [currentTime, setCurrentTime] = useState(new Date());
+  const todayIso = `${currentTime.getFullYear()}-${String(currentTime.getMonth() + 1).padStart(2, "0")}-${String(currentTime.getDate()).padStart(2, "0")}`;
   const [activeRecord, setActiveRecord] = useState<AttendanceItem | null>(null);
 
   // Filters & Tabs
@@ -183,15 +185,6 @@ export default function AttendancePage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Today ISO in local timezone
-  const todayIso = useMemo(() => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  }, []);
-
   // Load Attendance Data
   const loadData = useCallback(async () => {
     try {
@@ -200,10 +193,11 @@ export default function AttendancePage() {
       const month = now.getMonth() + 1;
       const year = now.getFullYear();
 
-      const [listRes, summaryRes, regRes] = await Promise.all([
+      const [listRes, summaryRes, regRes, clockRes] = await Promise.all([
         fetch("/api/attendance?pageSize=100", { credentials: "include" }),
         fetch(`/api/attendance/summary?month=${month}&year=${year}`, { credentials: "include" }),
         fetch("/api/attendance/regularisation?queue=1", { credentials: "include" }),
+        fetch("/api/attendance/clock", { credentials: "include", cache: "no-store" }),
       ]);
 
       if (listRes.ok) {
@@ -211,24 +205,14 @@ export default function AttendancePage() {
         const items: AttendanceItem[] = data.items || data.data || [];
         setRecords(items);
 
-        // Filter for current user's records to find their active session
-        const myRecords = items.filter((r) => {
-          if (user?.employeeId && r.employeeId) return r.employeeId === user.employeeId;
-          if (user?.displayName && r.employeeName) {
-            return r.employeeName.toLowerCase().trim() === user.displayName.toLowerCase().trim();
-          }
-          return true;
-        });
-
-        // 1. First priority: any session with clockInAt and no clockOutAt
-        const openSession = myRecords.find((r) => !!r.clockInAt && !r.clockOutAt);
-
-        // 2. Second priority: today's record (matching local date or UTC)
-        const todayUtc = new Date().toISOString().slice(0, 10);
-        const todaySession = myRecords.find((r) => r.workDate === todayIso || r.workDate === todayUtc);
-
-        setActiveRecord(openSession || todaySession || null);
       }
+
+      // The authenticated punch endpoint, not the paginated team register,
+      // decides which session the caller can close (including overnight shifts).
+      if (!clockRes.ok) throw new Error("Could not load your clock status");
+      const clock = await clockRes.json();
+      setActiveRecord(clock.record ?? null);
+      setClockAvailable(true);
 
       if (summaryRes.ok) {
         const sumData = await summaryRes.json();
@@ -241,12 +225,13 @@ export default function AttendancePage() {
       }
     } catch (err) {
       console.error("Attendance data fetch failed:", err);
+      setClockAvailable(false);
       toast.error("Could not refresh attendance records");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [todayIso, user]);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -272,6 +257,7 @@ export default function AttendancePage() {
 
   // Handle Standard Web Clock In / Clock Out
   const handleClockToggle = async () => {
+    if (!clockAvailable) return;
     setActionLoading(true);
     const action = isClockedIn ? "out" : "in";
     try {
@@ -288,6 +274,7 @@ export default function AttendancePage() {
       const body = await res.json();
       if (!res.ok) {
         toast.error(body.error || `Failed to clock ${action}`);
+        await loadData();
         return;
       }
 
@@ -306,6 +293,7 @@ export default function AttendancePage() {
 
   // Handle Smartcard / NFC Biometric Punch
   const handleSmartcardPunch = async () => {
+    if (!clockAvailable) return;
     if (!smartcardId.trim()) {
       toast.error("Please scan or enter Smartcard ID");
       return;
@@ -521,7 +509,7 @@ export default function AttendancePage() {
                   )}
                 />
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-                  {isClockedIn ? "Session Active • Clocked In" : "Not Clocked In • Ready to Punch"}
+                  {!clockAvailable ? "Clock status unavailable • Refresh to retry" : isClockedIn ? "Session Active • Clocked In" : "Not Clocked In • Ready to Punch"}
                 </span>
               </div>
 
@@ -571,7 +559,7 @@ export default function AttendancePage() {
               <Button
                 size="lg"
                 onClick={handleClockToggle}
-                disabled={actionLoading}
+                disabled={actionLoading || !clockAvailable}
                 className={cn(
                   "h-14 font-bold text-base shadow-xl gap-2 transition-all border-0 cursor-pointer",
                   isClockedIn

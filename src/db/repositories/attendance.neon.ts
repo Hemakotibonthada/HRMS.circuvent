@@ -15,7 +15,7 @@
 //    9-to-5. An employee on a night shift clocking in at 22:00 is on time; a
 //    naive comparison would mark them thirteen hours late.
 
-import { and, asc, count, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, isNull, isNotNull, lte, sql, or } from "drizzle-orm";
 import { withTenant, type TenantContext } from "@/db/client";
 import { attendanceRecords, employees, locations, shifts } from "@/db/schema/hrms";
 import {
@@ -288,6 +288,7 @@ export class NeonAttendanceRepository implements AttendanceRepository {
             eq(attendanceRecords.employeeId, request.employeeId),
             gte(attendanceRecords.workDate, previousDate(today)),
             lte(attendanceRecords.workDate, today),
+            isNotNull(attendanceRecords.clockInAt),
             isNull(attendanceRecords.clockOutAt)
           )
         )
@@ -381,9 +382,17 @@ export class NeonAttendanceRepository implements AttendanceRepository {
         .where(
           and(
             eq(attendanceRecords.employeeId, employeeId),
-            eq(attendanceRecords.workDate, localDate(new Date(), context.timezone))
+            or(
+              eq(attendanceRecords.workDate, localDate(new Date(), context.timezone)),
+              and(
+                eq(attendanceRecords.workDate, previousDate(localDate(new Date(), context.timezone))),
+                isNotNull(attendanceRecords.clockInAt),
+                isNull(attendanceRecords.clockOutAt)
+              )
+            )
           )
         )
+        .orderBy(sql`CASE WHEN ${attendanceRecords.clockInAt} IS NOT NULL AND ${attendanceRecords.clockOutAt} IS NULL THEN 0 ELSE 1 END`, desc(attendanceRecords.workDate))
         .limit(1);
 
       return {
