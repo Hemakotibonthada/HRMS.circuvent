@@ -91,6 +91,7 @@ export default function HolidaysPage() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("list");
   const [kindFilter, setKindFilter] = useState("all");
+  const [yearFilter, setYearFilter] = useState<string>(String(new Date().getFullYear()));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [weekendDialogOpen, setWeekendDialogOpen] = useState(false);
@@ -146,6 +147,10 @@ export default function HolidaysPage() {
 
   const filtered = useMemo(() => {
     let result = items;
+    // Year filter — always applied first
+    if (yearFilter !== "all") {
+      result = result.filter((h) => (h.holidayDate || "").startsWith(yearFilter + "-"));
+    }
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(
@@ -156,12 +161,27 @@ export default function HolidaysPage() {
     if (kindFilter === "optional") result = result.filter((h) => h.isOptional);
     if (kindFilter === "upcoming") result = result.filter((h) => h.holidayDate >= today);
     return [...result].sort((a, b) => (a.holidayDate || "").localeCompare(b.holidayDate || ""));
-  }, [items, search, kindFilter, today]);
+  }, [items, search, kindFilter, yearFilter, today]);
 
-  const gazetted = items.filter((h) => !h.isOptional).length;
-  const optional = items.filter((h) => h.isOptional).length;
-  const upcoming = items.filter((h) => h.holidayDate >= today).length;
-  const onWeekend = items.filter((h) => isWeekend(h.holidayDate, weekendDays)).length;
+  // Stats scoped to the selected year
+  const yearItems = useMemo(() => {
+    if (yearFilter === "all") return items;
+    return items.filter((h) => (h.holidayDate || "").startsWith(yearFilter + "-"));
+  }, [items, yearFilter]);
+
+  const gazetted = yearItems.filter((h) => !h.isOptional).length;
+  const optional = yearItems.filter((h) => h.isOptional).length;
+  const upcoming = yearItems.filter((h) => h.holidayDate >= today).length;
+  const onWeekend = yearItems.filter((h) => isWeekend(h.holidayDate, weekendDays)).length;
+
+  // Derive the list of years present in data for the year dropdown
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    for (const h of items) {
+      if (h.holidayDate) years.add(h.holidayDate.slice(0, 4));
+    }
+    return [...years].sort().reverse();
+  }, [items]);
 
   const monthBreakdown = useMemo(() => {
     const map = new Map<string, number>();
@@ -244,7 +264,9 @@ export default function HolidaysPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Holiday Calendar</h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            {items.length} holidays &middot; {upcoming} upcoming
+            {yearItems.length} holiday{yearItems.length !== 1 ? "s" : ""}
+            {yearFilter !== "all" ? ` in ${yearFilter}` : ""}
+            &middot; {upcoming} upcoming
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -296,7 +318,7 @@ export default function HolidaysPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 stagger-children">
         {[
-          { label: "Total Holidays", value: items.length, icon: CalendarDays, color: "from-violet-500 to-purple-600" },
+          { label: "Total Holidays", value: yearItems.length, icon: CalendarDays, color: "from-violet-500 to-purple-600" },
           { label: "Gazetted", value: gazetted, icon: Star, color: "from-emerald-500 to-green-600" },
           { label: "Optional", value: optional, icon: Palmtree, color: "from-amber-500 to-orange-500" },
           { label: "Upcoming", value: upcoming, icon: Sun, color: "from-blue-500 to-cyan-500" },
@@ -332,6 +354,18 @@ export default function HolidaysPage() {
             className="pl-9"
           />
         </div>
+        {/* Year filter */}
+        <Select value={yearFilter} onValueChange={setYearFilter}>
+          <SelectTrigger className="w-32">
+            <SelectValue placeholder="Year" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All years</SelectItem>
+            {availableYears.map((y) => (
+              <SelectItem key={y} value={y}>{y}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={kindFilter} onValueChange={setKindFilter}>
           <SelectTrigger className="w-40">
             <SelectValue />
