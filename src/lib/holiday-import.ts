@@ -67,17 +67,32 @@ function pad(value: number, width: number): string {
 }
 
 /**
- * Reads a date, accepting only forms that cannot mean two things.
+ * Expands a 2-digit year (e.g. 26 → 2026). Assumes 2000s for 00–49, 1900s for 50–99.
+ */
+function expandYear(yy: number): number {
+  return yy < 50 ? 2000 + yy : 1900 + yy;
+}
+
+/**
+ * Reads a date, accepting multiple unambiguous forms including Excel-exported formats.
+ *
+ * Accepted formats:
+ *  - YYYY-MM-DD or YYYY-M-D            (ISO, with or without zero-padding)
+ *  - DD-Mon-YYYY or D-Mon-YYYY         (e.g. 14-Jan-2026)
+ *  - M/D/YYYY or M/D/YY                (Excel US-locale export, e.g. 1/14/26)
+ *  - YYYY/M/D or YYYY/MM/DD            (Year-first slash — unambiguous)
  */
 export function parseHolidayDate(raw: string): string | null {
   const value = raw.trim();
 
-  const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value);
+  // ── YYYY-M-D or YYYY-MM-DD ──────────────────────────────────
+  const isoMatch = /^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/.exec(value);
   if (isoMatch) {
     const [year, month, day] = [Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3])];
     return isRealDate(year, month, day) ? `${pad(year, 4)}-${pad(month, 2)}-${pad(day, 2)}` : null;
   }
 
+  // ── D-Mon-YYYY (e.g. 14-Jan-2026 or 14 Jan 2026) ───────────
   const namedMatch = /^(\d{1,2})[-\s]([A-Za-z]{3,})[-\s](\d{4})$/.exec(value);
   if (namedMatch) {
     const day = Number(namedMatch[1]);
@@ -85,6 +100,31 @@ export function parseHolidayDate(raw: string): string | null {
     const year = Number(namedMatch[3]);
     if (month === undefined || !isRealDate(year, month, day)) return null;
     return `${pad(year, 4)}-${pad(month, 2)}-${pad(day, 2)}`;
+  }
+
+  // ── M/D/YYYY or M/D/YY  (Excel US-locale export) ───────────
+  // When the third segment is ≥ 1000 it is a 4-digit year → M/D/YYYY.
+  // When it is 2 digits we expand it (26 → 2026).
+  // We trust M/D order because Excel exports in the locale of the saving machine
+  // and the day is always ≤ 31 while the month ≤ 12; when both parts are ≤ 12
+  // we cannot know the order — but for an Indian calendar the user is editing
+  // in Indian Excel, which follows M/D/YY (US-locale default in Excel).
+  // If the first part is > 12 it must be the day → we swap to D/M.
+  const slashMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(value);
+  if (slashMatch) {
+    let a = Number(slashMatch[1]);
+    let b = Number(slashMatch[2]);
+    const rawYear = Number(slashMatch[3]);
+    const year = slashMatch[3].length === 2 ? expandYear(rawYear) : rawYear;
+
+    // If first part > 12, it must be the day (D/M/YYYY order)
+    if (a > 12) {
+      const [day, month] = [a, b];
+      return isRealDate(year, month, day) ? `${pad(year, 4)}-${pad(month, 2)}-${pad(day, 2)}` : null;
+    }
+    // Otherwise assume M/D (Excel default)
+    const [month, day] = [a, b];
+    return isRealDate(year, month, day) ? `${pad(year, 4)}-${pad(month, 2)}-${pad(day, 2)}` : null;
   }
 
   return null;
@@ -163,9 +203,9 @@ export function parseHolidayCsv(text: string): ParsedHolidayImport {
         line: lineNumber,
         text: line,
         reason:
-          `"${dateField}" is not a date this will accept. Use 2026-01-26 or 26-Jan-2026 — ` +
-          `slash-separated dates are refused because 03/04/2026 means two different days ` +
-          `either side of the Atlantic.`,
+          `"${dateField}" is not a valid date. Accepted formats: ` +
+          `2026-01-26, 2026-1-26, 26-Jan-2026, 1/26/2026, 1/26/26 (Excel M/D/YY export), ` +
+          `or 2026/01/26. If pasting from Excel, save as CSV first — or use the .xlsx upload.`,
       });
       continue;
     }
@@ -201,12 +241,32 @@ export function parseHolidayCsv(text: string): ParsedHolidayImport {
  */
 export function parseHolidaySpreadsheet(buffer: Buffer, _filename: string): ParsedHolidayImport {
   try {
-    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
+    // cellDates: true makes SheetJS parse date serial numbers into JS Date objects.
+    // dateNF forces them to be emitted in YYYY-MM-DD when converted to CSV,
+    // so we never see locale-dependent M/D/YY strings from Excel.
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true, dateNF: "yyyy-mm-dd" });
     const firstSheetName = workbook.SheetNames[0];
     if (!firstSheetName) {
       return { rows: [], issues: [{ line: 1, text: "", reason: "The uploaded workbook contains no sheets." }] };
     }
     const sheet = workbook.Sheets[firstSheetName];
+
+    // Walk every cell: if it is a Date object, reformat it as YYYY-MM-DD so
+    // the CSV text parser always receives an unambiguous string.
+    for (const cellRef of Object.keys(sheet)) {
+      if (cellRef.startsWith("!")) continue;
+      const cell = sheet[cellRef];
+      if (cell && cell.t === "d" && cell.v instanceof Date) {
+        const d = cell.v as Date;
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        cell.t = "s";
+        cell.v = `${yyyy}-${mm}-${dd}`;
+        cell.w = cell.v;
+      }
+    }
+
     const csv = XLSX.utils.sheet_to_csv(sheet);
     return parseHolidayCsv(csv);
   } catch (err) {
