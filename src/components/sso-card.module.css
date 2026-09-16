@@ -1,52 +1,185 @@
-/* Identical suite SSO surface, scoped against each application's button styles. */
+/* Suite SSO: sleek & slim card maintaining exact brand identity. */
 .card {
-  --sso-surface: oklch(100% 0 0);
-  --sso-ink: oklch(21% 0.035 265);
-  --sso-muted: oklch(48% 0.035 255);
-  --sso-border: oklch(91% 0.016 255);
+  --sso-surface: #ffffff;
+  --sso-surface-hover: #fafbfc;
+  --sso-ink: oklch(20% 0.025 260);
+  --sso-muted: oklch(50% 0.02 255);
+  --sso-border: oklch(89% 0.012 255);
+  --sso-hover-border: oklch(78% 0.04 255);
+  --sso-icon-bg: #090d16;
+  --sso-icon-border: rgba(255, 255, 255, 0.09);
+  --sso-cyan: #06b6d4;
+
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   width: 100%;
   max-width: 440px;
   min-width: 0;
-  min-height: 80px;
-  padding: 16px 18px;
+  height: 54px;
+  min-height: 54px;
+  padding: 0 14px;
   border: 1px solid var(--sso-border);
-  border-radius: 20px;
+  border-radius: 11px;
   background: var(--sso-surface);
   color: var(--sso-ink);
-  box-shadow: 0 3px 6px oklch(20% 0.035 250 / 0.06), 0 10px 24px oklch(20% 0.035 250 / 0.09);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   font: inherit;
   text-align: left;
   text-decoration: none;
   cursor: pointer;
-  transition: border-color 160ms, box-shadow 160ms, transform 160ms;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease, transform 120ms ease;
+  user-select: none;
 }
-.card:hover { border-color: oklch(70% 0.12 220); transform: translateY(-1px); }
-.compact { min-height: 60px; padding: 10px 14px; gap: 10px; border-radius: 16px; }
-.compact .icon { flex-basis: 36px; height: 36px; border-radius: 11px; }
-.card:focus-visible { outline: 3px solid oklch(65% 0.14 220); outline-offset: 4px; }
-.card:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-.icon { flex: 0 0 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; background: oklch(16% 0.035 265); color: oklch(80% 0.13 210); }
-.copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.title { color: var(--sso-ink); font-size: 14px; font-weight: 650; line-height: 1.4; letter-spacing: -0.01em; }
-.subtitle { color: var(--sso-muted); font-size: 12px; font-weight: 400; line-height: 1.45; }
-.arrow { flex-shrink: 0; color: var(--sso-muted); transition: transform 160ms; }
-.card:hover .arrow { transform: translateX(3px); }
-:global(.dark) .card, :global([data-theme="dark"]) .card {
-  --sso-surface: oklch(24% 0.03 260);
-  --sso-ink: oklch(97% 0.008 250);
-  --sso-muted: oklch(77% 0.025 250);
-  --sso-border: oklch(39% 0.035 260);
+
+.card:hover {
+  background: var(--sso-surface-hover);
+  border-color: var(--sso-hover-border);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.06);
+  transform: translateY(-0.5px);
 }
-@media (max-width: 360px) { .card { padding: 14px 12px; gap: 10px; } }
-@media (max-width: 640px) {
-  .compact { min-height: 48px; padding: 10px; gap: 8px; }
-  .compact .icon { flex-basis: 28px; height: 28px; border-radius: 9px; }
-  .compact .icon svg { width: 18px; height: 18px; }
-  .compact .title { font-size: 12px; white-space: nowrap; }
-  .compact .subtitle, .compact .arrow { display: none; }
+
+.card:active {
+  transform: translateY(0) scale(0.995);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
-@media (prefers-reduced-motion: reduce) { .card, .arrow { transition: none; } .card:hover, .card:hover .arrow { transform: none; } }
+
+.card:focus-visible {
+  outline: 2px solid var(--sso-cyan);
+  outline-offset: 2px;
+}
+
+.card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+  border-color: var(--sso-border);
+  transform: none;
+}
+
+/* 30x30 dark squircle with cyan shield */
+.icon {
+  box-sizing: border-box;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--sso-icon-bg);
+  border: 1px solid var(--sso-icon-border);
+  color: var(--sso-cyan);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.card:hover .icon {
+  transform: scale(1.03);
+  box-shadow: 0 2px 6px rgba(6, 182, 212, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.iconSvg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+/* Compact 2-line copy */
+.copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sso-ink);
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.subtitle {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--sso-muted);
+  letter-spacing: 0;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.arrow {
+  box-sizing: content-box;
+  flex-shrink: 0;
+  color: var(--sso-muted);
+  transition: color 160ms ease, transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card:hover .arrow {
+  color: var(--sso-ink);
+  transform: translateX(2.5px);
+}
+
+/* Compact variant */
+.compact {
+  height: 42px;
+  min-height: 42px;
+  padding: 0 10px;
+  gap: 9px;
+  border-radius: 8px;
+}
+
+.compact .icon {
+  flex-basis: 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.compact .iconSvg {
+  width: 13px;
+  height: 13px;
+}
+
+.compact .title {
+  font-size: 12.5px;
+}
+
+.compact .subtitle {
+  display: none;
+}
+
+/* Dark mode */
+:global(.dark) .card,
+:global([data-theme="dark"]) .card {
+  --sso-surface: oklch(21% 0.02 260);
+  --sso-surface-hover: oklch(23% 0.025 260);
+  --sso-ink: oklch(98% 0.005 260);
+  --sso-muted: oklch(72% 0.02 255);
+  --sso-border: oklch(34% 0.025 260);
+  --sso-hover-border: oklch(45% 0.03 260);
+  --sso-icon-bg: #030712;
+  --sso-icon-border: rgba(255, 255, 255, 0.12);
+  --sso-cyan: #22d3ee;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card, .arrow, .icon { transition: none; }
+  .card:hover .arrow { transform: none; }
+  .card:hover .icon { transform: none; }
+}
+
+@media (forced-colors: active) {
+  .card, .icon { border-color: ButtonText; }
+  .card:focus-visible { outline-color: Highlight; }
+}
+
+
+

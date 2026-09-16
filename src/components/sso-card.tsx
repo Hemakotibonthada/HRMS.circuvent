@@ -13,23 +13,28 @@ type SsoCardProps = {
 
 /** Suite-wide visual treatment only; callers retain their existing SSO flow. */
 export function SsoCard({ href, onClick, disabled = false, className = "", compact = false }: SsoCardProps) {
-  const content = <>
-    <span className={styles.icon} aria-hidden="true">
-      <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 3 20 6v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z" />
-        <path d="m8.5 12 2.3 2.3 4.7-4.7" />
+  const content = (
+    <>
+      <span className={styles.icon} aria-hidden="true">
+        <svg className={styles.iconSvg} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+      </span>
+      <span className={styles.copy}>
+        <span className={styles.title}>Continue with SSO</span>
+        <span className={styles.subtitle}>Single sign-on · My Account</span>
+      </span>
+      <svg className={styles.arrow} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M5 12h14m-6-6 6 6-6 6" />
       </svg>
-    </span>
-    <span className={styles.copy}>
-      <span className={styles.title}>Continue with SSO</span>
-      <span className={styles.subtitle}>Single sign-on · My Account</span>
-    </span>
-    <svg className={styles.arrow} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5 12h14m-6-6 6 6-6 6" />
-    </svg>
-  </>;
+    </>
+  );
   const classes = `${styles.card} ${compact ? styles.compact : ""} ${className}`;
   return href && !disabled
     ? <a href={href} onClick={onClick} className={classes}>{content}</a>
     : <button type="button" onClick={onClick} disabled={disabled} className={classes}>{content}</button>;
 }
+
+
+
