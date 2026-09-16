@@ -1,5 +1,6 @@
 "use client";
 
+import { SsoCard } from "@/components/sso-card";
 import { useEffect, useState } from "react";
 
 /**
@@ -30,22 +31,7 @@ export function SsoButton({ next }: { next?: string } = {}) {
 
   return (
     <div className="space-y-3">
-      <a
-        href={next ? `/api/auth/sso/start?next=${encodeURIComponent(next)}` : "/api/auth/sso/start"}
-        className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-input bg-background text-sm font-medium transition-colors hover:bg-accent"
-      >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-          <rect x="2.5" y="2.5" width="19" height="19" rx="5" fill="#2585C6" />
-          <path
-            d="M15.5 9.2a4.2 4.2 0 1 0 0 5.6"
-            stroke="#fff"
-            strokeWidth="2"
-            strokeLinecap="round"
-            fill="none"
-          />
-        </svg>
-        Continue with SSO
-      </a>
+      <SsoCard href={next ? `/api/auth/sso/start?next=${encodeURIComponent(next)}` : "/api/auth/sso/start"} />
 
       <div className="flex items-center gap-3">
         <span className="h-px flex-1 bg-border" />

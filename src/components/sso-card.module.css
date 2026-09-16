@@ -1,0 +1,52 @@
+/* Identical suite SSO surface, scoped against each application's button styles. */
+.card {
+  --sso-surface: oklch(100% 0 0);
+  --sso-ink: oklch(21% 0.035 265);
+  --sso-muted: oklch(48% 0.035 255);
+  --sso-border: oklch(91% 0.016 255);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 440px;
+  min-width: 0;
+  min-height: 80px;
+  padding: 16px 18px;
+  border: 1px solid var(--sso-border);
+  border-radius: 20px;
+  background: var(--sso-surface);
+  color: var(--sso-ink);
+  box-shadow: 0 3px 6px oklch(20% 0.035 250 / 0.06), 0 10px 24px oklch(20% 0.035 250 / 0.09);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 160ms, box-shadow 160ms, transform 160ms;
+}
+.card:hover { border-color: oklch(70% 0.12 220); transform: translateY(-1px); }
+.compact { min-height: 60px; padding: 10px 14px; gap: 10px; border-radius: 16px; }
+.compact .icon { flex-basis: 36px; height: 36px; border-radius: 11px; }
+.card:focus-visible { outline: 3px solid oklch(65% 0.14 220); outline-offset: 4px; }
+.card:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.icon { flex: 0 0 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; background: oklch(16% 0.035 265); color: oklch(80% 0.13 210); }
+.copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.title { color: var(--sso-ink); font-size: 14px; font-weight: 650; line-height: 1.4; letter-spacing: -0.01em; }
+.subtitle { color: var(--sso-muted); font-size: 12px; font-weight: 400; line-height: 1.45; }
+.arrow { flex-shrink: 0; color: var(--sso-muted); transition: transform 160ms; }
+.card:hover .arrow { transform: translateX(3px); }
+:global(.dark) .card, :global([data-theme="dark"]) .card {
+  --sso-surface: oklch(24% 0.03 260);
+  --sso-ink: oklch(97% 0.008 250);
+  --sso-muted: oklch(77% 0.025 250);
+  --sso-border: oklch(39% 0.035 260);
+}
+@media (max-width: 360px) { .card { padding: 14px 12px; gap: 10px; } }
+@media (max-width: 640px) {
+  .compact { min-height: 48px; padding: 10px; gap: 8px; }
+  .compact .icon { flex-basis: 28px; height: 28px; border-radius: 9px; }
+  .compact .icon svg { width: 18px; height: 18px; }
+  .compact .title { font-size: 12px; white-space: nowrap; }
+  .compact .subtitle, .compact .arrow { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .card, .arrow { transition: none; } .card:hover, .card:hover .arrow { transform: none; } }
