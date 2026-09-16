@@ -26,6 +26,12 @@ export interface NavItem {
 }
 
 export const MODULES: NavItem[] = [
+  { id: "myprofile", name: "My Profile", shortName: "Profile", description: "Your employment and contact details", icon: Users, href: "/myprofile", color: "oklch(0.65 0.18 250)", category: "core" },
+  { id: "payslip", name: "My Payslips", shortName: "Payslips", description: "View and download your own payslips", icon: Receipt, href: "/payslip", color: "oklch(0.65 0.16 160)", category: "workforce" },
+  { id: "mydocuments", name: "My Documents", shortName: "Documents", description: "Your letters and employment documents", icon: FileText, href: "/mydocuments", color: "oklch(0.65 0.18 280)", category: "core" },
+  { id: "mybenefits", name: "My Benefits", shortName: "Benefits", description: "Your benefits and enrolments", icon: Heart, href: "/mybenefits", color: "oklch(0.65 0.18 20)", category: "workforce" },
+  { id: "timesheets", name: "Timesheets", shortName: "Time", description: "Record and review your working time", icon: Clock, href: "/timesheets", color: "oklch(0.65 0.18 250)", category: "workforce" },
+  { id: "goals", name: "Goals", shortName: "Goals", description: "Track your goals and development", icon: Target, href: "/goals", color: "oklch(0.65 0.18 280)", category: "talent" },
   {
     id: "dashboard",
     name: "Dashboard",

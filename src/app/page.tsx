@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/hooks/use-auth";
+import { HrmsLandingHero } from "@/components/hrms-landing-hero";
 import {
   Building2, Users, Clock, DollarSign, CalendarDays, Target, GraduationCap,
-  UserPlus, BarChart3, Shield, Zap, Globe, ArrowRight, Check, Star,
-  Briefcase, Award, ChevronRight, Menu, X, Sparkles, Lock, CheckCircle2,
-  Heart, FileText, Smartphone, TrendingUp, Layers, ShieldCheck,
-  Headphones, ChevronDown, HelpCircle, UserCheck, Play,
+  UserPlus, BarChart3, ArrowRight, Check,
+  Award, ChevronRight, Menu, X, Sparkles,
+  Heart, Smartphone, ShieldCheck,
+  Headphones, ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -231,7 +232,7 @@ export default function LandingPage() {
     return () => window.removeEventListener("scroll", handler);
   }, []);
 
-  const ctaHref = user ? "/dashboard" : "/login";
+  const ctaHref = user ? "/dashboard" : "/register";
   const currentTab = SUITE_TABS.find(t => t.id === activeSuiteTab) || SUITE_TABS[0];
 
   return (
@@ -247,8 +248,8 @@ export default function LandingPage() {
       {/* Top Banner */}
       <div className="bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 py-1.5 px-4 text-center text-xs font-semibold text-white tracking-wide">
         <span className="inline-flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 animate-spin" />
-          <span>Next-Gen Enterprise Workforce Platform &mdash; 91 Modules, 100% Tenant Isolation, India Statutory Ready</span>
+          <Sparkles className="h-3.5 w-3.5" />
+          <span>Meet your connected people workspace &mdash; part of Circuvent One</span>
         </span>
       </div>
 
@@ -312,13 +313,15 @@ export default function LandingPage() {
             className="p-2 rounded-lg text-muted-foreground hover:text-foreground md:hidden"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label="Toggle menu"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="hrms-mobile-navigation"
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
 
         {mobileMenuOpen && (
-          <div className="border-t bg-background/95 backdrop-blur-xl p-4 md:hidden animate-slide-up">
+          <div id="hrms-mobile-navigation" className="border-t bg-background/95 backdrop-blur-xl p-4 md:hidden">
             <div className="flex flex-col gap-2">
               <a href="#suite-explorer" className="px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted" onClick={() => setMobileMenuOpen(false)}>Product Suite</a>
               <a href="#features" className="px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted" onClick={() => setMobileMenuOpen(false)}>Features</a>
@@ -327,160 +330,19 @@ export default function LandingPage() {
               <a href="#faq" className="px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
               <div className="flex gap-2 pt-2 border-t mt-2">
                 <Button variant="outline" asChild className="flex-1 rounded-full text-xs">
-                  <Link href="/login">Sign In</Link>
+                  <Link href={user ? "/dashboard" : "/login"}>{user ? "Open Dashboard" : "Sign In"}</Link>
                 </Button>
-                <Button asChild className="flex-1 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs border-0">
+                {!user && <Button asChild className="flex-1 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-xs border-0">
                   <Link href="/register">Get Started Free</Link>
-                </Button>
+                </Button>}
+                <ThemeToggle />
               </div>
             </div>
           </div>
         )}
       </nav>
 
-      {/* HERO SECTION */}
-      <section className="relative pt-20 pb-20 sm:pt-28 sm:pb-28">
-        <div className="mx-auto max-w-7xl px-6">
-          <div className="mx-auto max-w-4xl text-center">
-            <ScrollReveal>
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-violet-200/80 bg-violet-50/80 px-4 py-1.5 text-xs font-semibold text-violet-800 dark:border-violet-800/60 dark:bg-violet-950/40 dark:text-violet-300 shadow-xs">
-                <Zap className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
-                Next-Generation Cloud HR &amp; Workforce Operating System
-              </div>
-            </ScrollReveal>
-
-            <ScrollReveal delay={100}>
-              <h1 className="text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl text-foreground leading-[1.12]">
-                Empower Your People.{" "}
-                <span className="bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent animate-gradient">
-                  Automate Everything.
-                </span>
-              </h1>
-            </ScrollReveal>
-
-            <ScrollReveal delay={200}>
-              <p className="mx-auto mt-6 max-w-2xl text-base sm:text-lg text-muted-foreground leading-relaxed">
-                Streamline employee lifecycles, geofenced biometric attendance, one-click statutory payroll,
-                OKR appraisals, and peer kudos — unified in one lightning-fast platform.
-              </p>
-            </ScrollReveal>
-
-            <ScrollReveal delay={300}>
-              <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <Button
-                  size="lg"
-                  asChild
-                  className="h-12 px-8 bg-gradient-to-r from-violet-500 to-purple-600 text-white font-semibold rounded-full border-0 shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] gap-2"
-                >
-                  <Link href={ctaHref}>
-                    Start 14-Day Free Trial <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  asChild
-                  className="h-12 px-8 font-semibold rounded-full"
-                >
-                  <a href="#suite-explorer">
-                    Explore 91 Modules <ChevronRight className="ml-1 h-4 w-4" />
-                  </a>
-                </Button>
-              </div>
-            </ScrollReveal>
-
-            <ScrollReveal delay={400}>
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-muted-foreground">
-                <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> 14-Day Free Trial</span>
-                <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> No Credit Card Required</span>
-                <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Instant Cloud Setup</span>
-              </div>
-            </ScrollReveal>
-          </div>
-
-          {/* Hero Visual Mockup with High-Resolution Workplace Photography & Floating Cards */}
-          <ScrollReveal delay={500} className="mt-14">
-            <div className="relative mx-auto max-w-5xl rounded-2xl p-2 bg-gradient-to-b from-border/80 via-border/40 to-transparent shadow-2xl border">
-              <div className="relative overflow-hidden rounded-xl bg-card border shadow-inner aspect-video max-h-[560px]">
-                {/* Background high-res workplace stock photo */}
-                <Image
-                  src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1400&q=80"
-                  alt="Modern agile team collaborating with Circuvent HRMS"
-                  fill
-                  priority
-                  className="object-cover object-center opacity-30 dark:opacity-20 transition-transform duration-700 hover:scale-102"
-                />
-
-                {/* Gradient tint overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-
-                {/* In-app Dashboard Header Simulation */}
-                <div className="absolute top-0 left-0 right-0 p-4 border-b bg-background/70 backdrop-blur-md flex items-center justify-between z-10">
-                  <div className="flex items-center gap-3">
-                    <div className="flex gap-1.5">
-                      <div className="h-3 w-3 rounded-full bg-red-400/80" />
-                      <div className="h-3 w-3 rounded-full bg-amber-400/80" />
-                      <div className="h-3 w-3 rounded-full bg-emerald-400/80" />
-                    </div>
-                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                      <Building2 className="h-3.5 w-3.5 text-violet-500" /> Circuvent HRMS Enterprise Console
-                    </span>
-                  </div>
-                  <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 text-[10px] font-bold">
-                    ● Live System Active
-                  </Badge>
-                </div>
-
-                {/* Center Content & Floating UI Widgets */}
-                <div className="absolute inset-0 pt-16 p-6 flex flex-col justify-between pointer-events-none">
-                  {/* Top floating cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="p-3 rounded-xl bg-background/90 backdrop-blur-md border shadow-lg space-y-1">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-muted-foreground font-medium">Headcount Active</span>
-                        <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40">98.4% Present</Badge>
-                      </div>
-                      <p className="text-lg font-black text-foreground">1,248 Employees</p>
-                      <p className="text-[10px] text-muted-foreground">Across 6 Office Locations</p>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-background/90 backdrop-blur-md border shadow-lg space-y-1">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-muted-foreground font-medium">Monthly Payroll</span>
-                        <Badge variant="outline" className="text-[10px] text-violet-600 bg-violet-50 dark:bg-violet-950/40">Computed</Badge>
-                      </div>
-                      <p className="text-lg font-black text-foreground">₹48,25,000</p>
-                      <p className="text-[10px] text-muted-foreground">PF, ESI &amp; TDS Pre-deducted</p>
-                    </div>
-
-                    <div className="hidden sm:block p-3 rounded-xl bg-background/90 backdrop-blur-md border shadow-lg space-y-1">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-muted-foreground font-medium">Performance OKRs</span>
-                        <Badge variant="outline" className="text-[10px] text-blue-600 bg-blue-50 dark:bg-blue-950/40">Q3 Pacing</Badge>
-                      </div>
-                      <p className="text-lg font-black text-foreground">87.5% On Track</p>
-                      <p className="text-[10px] text-muted-foreground">360° Review Cycles Active</p>
-                    </div>
-                  </div>
-
-                  {/* Bottom floating notification cards */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-4">
-                    <div className="p-2.5 px-4 rounded-full bg-violet-600/90 text-white backdrop-blur-md shadow-xl flex items-center gap-2 text-xs font-semibold">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>Aditi Rao awarded 'Team Player 🤝' Kudos (+100 pts)</span>
-                    </div>
-
-                    <div className="p-2.5 px-4 rounded-full bg-background/90 text-foreground border shadow-xl flex items-center gap-2 text-xs font-semibold">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                      <span>Leave Request Approved &middot; 3 Days Annual Leave</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </ScrollReveal>
-        </div>
-      </section>
+      <HrmsLandingHero signedIn={Boolean(user)} />
 
       {/* STATS NUMERICAL BAR */}
       <section className="py-14 border-y border-border/40 bg-muted/20">

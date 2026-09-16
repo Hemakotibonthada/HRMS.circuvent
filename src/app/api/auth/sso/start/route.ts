@@ -8,6 +8,7 @@ import {
   ssoEnabled,
 } from "@/lib/circuvent-sso";
 import { redirectWithPkce } from "@/lib/sso-flow";
+import { requestPortalOrigin, safePortalPath } from "@/lib/hrms-portals";
 
 export const runtime = "nodejs";
 
@@ -24,13 +25,15 @@ export async function GET(req: NextRequest) {
   const nonce = randomState();
 
   const params = new URL(req.url).searchParams;
-  const returnTo = safeReturnTo(params.get("return_to"));
+  const portalOrigin = requestPortalOrigin(req);
+  const returnTo = portalOrigin ? null : safeReturnTo(params.get("return_to"));
 
-  return redirectWithPkce(authorizeUrl({ state, codeChallenge: challenge, nonce }), {
+  return redirectWithPkce(authorizeUrl({ state, codeChallenge: challenge, nonce, redirectUri: portalOrigin ? `${portalOrigin}/api/auth/callback` : undefined }), {
     verifier,
     state,
     nonce,
     returnTo: returnTo ?? undefined,
-    app: requestedApp(params.get("app")),
+    app: portalOrigin ? "hrms" : requestedApp(params.get("app")),
+    next: safePortalPath(params.get("next"), portalOrigin ? "/workspace" : "/dashboard"),
   });
 }

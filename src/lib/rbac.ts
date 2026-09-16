@@ -288,6 +288,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 // ─── MODULE → REQUIRED PERMISSION ───────────────────────────
 
 export const MODULE_PERMISSION_MAP: Record<string, Permission> = {
+  workspace: "dashboard.view",
   dashboard: "dashboard.view",
   employees: "employees.view",
   departments: "departments.view",

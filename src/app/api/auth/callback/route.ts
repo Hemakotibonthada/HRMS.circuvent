@@ -11,6 +11,7 @@ import {
 import { signInWithSso, recordSignInWorkLog, type SignInFailure } from "@/lib/auth/session";
 import { clearPkceCookies, ssoLanding } from "@/lib/sso-flow";
 import { sealDelegationHandoff } from "@/lib/sso-delegation-handoff";
+import { requestPortalOrigin, safePortalPath } from "@/lib/hrms-portals";
 
 export const runtime = "nodejs";
 
@@ -24,11 +25,8 @@ const MESSAGES: Record<SignInFailure, string> = {
 };
 
 function appUrl(req: NextRequest): string {
-  const forwarded = req.headers.get("x-forwarded-host");
-  if (forwarded) {
-    const proto = req.headers.get("x-forwarded-proto") ?? "https";
-    return `${proto}://${forwarded}`;
-  }
+  const portalOrigin = requestPortalOrigin(req);
+  if (portalOrigin) return portalOrigin;
   return (
     process.env.NEXT_PUBLIC_HRMS_URL ??
     process.env.NEXT_PUBLIC_APP_URL ??
@@ -59,7 +57,8 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const jar = await cookies();
-  const returnTo = jar.get("sso_return")?.value;
+  const portalOrigin = requestPortalOrigin(req);
+  const returnTo = portalOrigin ? undefined : jar.get("sso_return")?.value;
 
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -73,17 +72,17 @@ export async function GET(req: NextRequest) {
   const expectedState = jar.get("sso_state")?.value;
   const verifier = jar.get("sso_verifier")?.value;
   const nonce = jar.get("sso_nonce")?.value;
-  const app = requestedApp(jar.get("sso_app")?.value);
+  const app = portalOrigin ? "hrms" : requestedApp(jar.get("sso_app")?.value);
 
   if (!expectedState || state !== expectedState || !verifier) {
     return fail(req, "state_mismatch", returnTo);
   }
 
   try {
-    const tokens = await exchangeCode(code, verifier);
+    const tokens = await exchangeCode(code, verifier, portalOrigin ? `${portalOrigin}/api/auth/callback` : undefined);
     const claims = await verifyToken(tokens.id_token);
 
-    if (nonce && claims.nonce && claims.nonce !== nonce) {
+    if (!nonce || claims.nonce !== nonce) {
       return fail(req, "nonce_mismatch", returnTo);
     }
 
@@ -109,7 +108,7 @@ export async function GET(req: NextRequest) {
     if (!result.ok) return fail(req, MESSAGES[result.reason], returnTo);
 
     const destination =
-      safeReturnTo(returnTo) ?? new URL("/dashboard", appUrl(req)).toString();
+      safeReturnTo(returnTo) ?? new URL(safePortalPath(jar.get("sso_next")?.value, portalOrigin ? "/workspace" : "/dashboard"), appUrl(req)).toString();
     const destUrl = new URL(destination);
     const hrmsOrigin = new URL(appUrl(req)).origin;
     const nextPath = `${destUrl.pathname}${destUrl.search}`;

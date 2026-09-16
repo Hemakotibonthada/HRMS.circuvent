@@ -15,6 +15,7 @@ const REFRESH_INTERVAL_MS = ACCESS_TTL_MS - 5 * 60 * 1000;
 export interface AuthUser {
   uid: string;
   employeeId: string | null;
+  employmentType?: string | null;
   email: string | null;
   displayName: string | null;
   avatarUrl?: string | null;
@@ -33,6 +34,7 @@ interface MeResponse {
     avatarUrl?: string | null;
     mfaVerified?: boolean;
     employeeId?: string | null;
+    employmentType?: string | null;
   };
 }
 
@@ -40,6 +42,7 @@ function toUser(body: MeResponse): AuthUser {
   return {
     uid: body.user.id,
     employeeId: body.user.employeeId ?? null,
+    employmentType: body.user.employmentType ?? null,
     email: body.user.email ?? null,
     displayName: body.user.displayName ?? null,
     avatarUrl: body.user.avatarUrl ?? null,

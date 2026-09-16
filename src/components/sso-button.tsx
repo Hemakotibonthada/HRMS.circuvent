@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
  * Rendered only when the deployment is wired to auth.circuvent.com, so an
  * environment without it never shows a button that would dead-end.
  */
-export function SsoButton() {
+export function SsoButton({ next }: { next?: string } = {}) {
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export function SsoButton() {
   return (
     <div className="space-y-3">
       <a
-        href="/api/auth/sso/start"
+        href={next ? `/api/auth/sso/start?next=${encodeURIComponent(next)}` : "/api/auth/sso/start"}
         className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-input bg-background text-sm font-medium transition-colors hover:bg-accent"
       >
         <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">

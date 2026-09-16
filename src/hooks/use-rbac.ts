@@ -7,8 +7,9 @@ import {
   type Permission,
   hasPermission,
   hasAnyPermission,
-  canAccessModule,
 } from "@/lib/rbac";
+import { useHrmsPortal } from "@/components/hrms-portal-provider";
+import { portalAllowsModule } from "@/lib/hrms-portals";
 
 export interface RBACContext {
   role: Role;
@@ -42,6 +43,7 @@ const KNOWN: Role[] = ["admin", "hr", "manager", "employee"];
  */
 export function useRBAC(): RBACContext {
   const { user, loading } = useAuth();
+  const portal = useHrmsPortal();
 
   const role: Role = useMemo(() => {
     const claimed = user?.role;
@@ -55,12 +57,12 @@ export function useRBAC(): RBACContext {
       roleLoading: loading,
       can: (permission: Permission) => hasPermission(role, permission),
       canAny: (permissions: Permission[]) => hasAnyPermission(role, permissions),
-      canAccessModule: (moduleId: string) => canAccessModule(role, moduleId),
+      canAccessModule: (moduleId: string) => portalAllowsModule(portal, moduleId, user?.role ?? ""),
       isAdmin: role === "admin",
       isHR: role === "hr",
       isManager: role === "manager",
       isEmployee: role === "employee",
     }),
-    [role, loading]
+    [role, loading, portal, user?.role]
   );
 }

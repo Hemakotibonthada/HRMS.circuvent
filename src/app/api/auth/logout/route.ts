@@ -7,6 +7,7 @@ import {
   refreshCookieOptions,
 } from "@/lib/auth/tokens";
 import { logoutUrl, ssoEnabled } from "@/lib/circuvent-sso";
+import { requestPortalOrigin } from "@/lib/hrms-portals";
 
 export async function POST(request: NextRequest) {
   let federated = request.nextUrl.searchParams.get("federated") === "1";
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest) {
   }
 
   const appOrigin =
+    requestPortalOrigin(request) ??
     process.env.NEXT_PUBLIC_HRMS_URL ??
     process.env.NEXT_PUBLIC_APP_URL ??
     new URL(request.url).origin;

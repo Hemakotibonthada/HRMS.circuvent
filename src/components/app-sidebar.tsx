@@ -27,9 +27,13 @@ import { accountPortalUrl } from "@/lib/account-portal";
 import { useRBAC } from "@/hooks/use-rbac";
 import { getRoleLabel, getRoleBadgeColor } from "@/lib/rbac";
 import { useAppStore } from "@/stores/app-store";
+import { useHrmsPortal } from "@/components/hrms-portal-provider";
+import { HrmsPortalSwitcher } from "@/components/hrms-portal-switcher";
+import { HRMS_PORTALS, portalHome } from "@/lib/hrms-portals";
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const portal = useHrmsPortal();
   const router = useRouter();
   const { user } = useAuth();
   const rbac = useRBAC();
@@ -59,24 +63,25 @@ export function AppSidebar() {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/dashboard" className="flex items-center gap-3" />}>
+            <SidebarMenuButton size="lg" render={<Link href={portalHome(portal)} className="flex items-center gap-3" />}>
                 <BrandMark size={36} className="shrink-0" />
                 <div className="flex flex-col">
                   <span className="text-sm font-bold tracking-tight">
                     {organization?.name ?? "Circuvent HRMS"}
                   </span>
                   <span className="text-[11px] text-muted-foreground">
-                    Human Resources
+                    {HRMS_PORTALS[portal].name}
                   </span>
                 </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <HrmsPortalSwitcher />
       </SidebarHeader>
 
       <SidebarContent>
         {categories.map((cat) => (
-          <Collapsible key={cat.key} defaultOpen className="group/collapsible">
+          <Collapsible key={`${cat.key}-${cat.items.some(item => pathname === item.href || pathname.startsWith(item.href + "/"))}`} defaultOpen={cat.key === "core" || cat.items.some(item => pathname === item.href || pathname.startsWith(item.href + "/"))} className="group/collapsible">
             <SidebarGroup>
               <SidebarGroupLabel render={<CollapsibleTrigger className="flex w-full items-center justify-between" />}>
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -94,7 +99,7 @@ export function AppSidebar() {
                           <SidebarMenuButton
                             isActive={isActive}
                             tooltip={item.name}
-                            render={<Link href={item.href} className="flex items-center gap-3" />}
+                            render={<Link href={item.id === "dashboard" ? portalHome(portal) : item.href} className="flex items-center gap-3" />}
                           >
                               <item.icon
                                 className="h-4.5 w-4.5 shrink-0 transition-colors"
@@ -161,7 +166,7 @@ export function AppSidebar() {
                 {/* Billing is an account-owner concern. It used to be offered to
                     everyone, so an employee clicking it landed on subscription
                     and payment details that are not theirs to see. */}
-                {rbac.isAdmin && (
+                {rbac.isAdmin && portal === "hrms" && (
                   <DropdownMenuItem onClick={() => router.push("/billing")}>
                     <CreditCard className="mr-2 h-4 w-4" /> Billing
                   </DropdownMenuItem>

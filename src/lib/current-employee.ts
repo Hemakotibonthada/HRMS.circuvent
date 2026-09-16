@@ -138,13 +138,14 @@ export async function requireCurrentEmployeeId(
 export async function currentEmployeeIdentity(
   ctx: EmployeeLookupContext,
   tx?: Tx
-): Promise<{ id: string; employeeCode: string; avatarUrl: string | null } | null> {
+): Promise<{ id: string; employeeCode: string; avatarUrl: string | null; employmentType: string } | null> {
   const run = async (t: Tx) => {
     const rows = await t
       .select({
         id: employees.id,
         userId: employees.userId,
         employeeCode: employees.employeeCode,
+        employmentType: employees.employmentType,
         avatarUrl: employees.avatarUrl,
       })
       .from(employees)
@@ -176,6 +177,7 @@ export async function currentEmployeeIdentity(
             id: employees.id,
             userId: employees.userId,
             employeeCode: employees.employeeCode,
+            employmentType: employees.employmentType,
             avatarUrl: employees.avatarUrl,
           })
           .from(employees)
@@ -211,7 +213,7 @@ export async function currentEmployeeIdentity(
       avatarUrl = account?.avatarUrl ?? null;
     }
 
-    return { id: row.id, employeeCode: row.employeeCode, avatarUrl };
+    return { id: row.id, employeeCode: row.employeeCode, avatarUrl, employmentType: row.employmentType };
   };
 
   return tx ? run(tx) : withTenant(ctx, run);

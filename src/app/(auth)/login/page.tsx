@@ -12,9 +12,19 @@ import { toast } from "sonner";
 import { SsoButton } from "@/components/sso-button";
 import { SsoError } from "@/components/sso-error";
 import { AuthBrandPanel } from "@/components/auth-brand-panel";
+import { useHrmsPortal } from "@/components/hrms-portal-provider";
+import { HRMS_PORTALS, portalHome, safePortalPath } from "@/lib/hrms-portals";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function LoginPage() {
   const router = useRouter();
+  const portal = useHrmsPortal();
+  const { user: existingUser, loading: sessionLoading } = useAuth();
+  const [next, setNext] = useState(portalHome(portal));
+  useEffect(() => { setNext(safePortalPath(new URLSearchParams(window.location.search).get("next"), portalHome(portal))); }, [portal]);
+  useEffect(() => {
+    if (!sessionLoading && existingUser) router.replace(safePortalPath(new URLSearchParams(window.location.search).get("next"), portalHome(portal)));
+  }, [sessionLoading, existingUser, router, portal]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -102,7 +112,7 @@ export default function LoginPage() {
       // Tells every useAuth instance to re-read the session it now has.
       window.dispatchEvent(new Event("circuvent-auth-change"));
       toast.success(body.user?.displayName ? `Welcome back, ${body.user.displayName}!` : "Welcome back!");
-      router.push("/dashboard");
+      router.push(next);
     } catch {
       toast.error("Could not reach the sign-in service. Check your connection.");
     } finally {
@@ -138,12 +148,12 @@ export default function LoginPage() {
           <Card className="border-0 shadow-xl transition-shadow duration-500 hover:shadow-2xl">
             <CardHeader className="text-center">
               <CardTitle className="text-xl">Welcome back</CardTitle>
-              <CardDescription>Sign in to your HRMS account</CardDescription>
+              <CardDescription>Sign in to your {HRMS_PORTALS[portal].name.toLowerCase()}</CardDescription>
             </CardHeader>
             <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <SsoError />
-              <SsoButton />
+              <SsoButton next={next} />
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -236,12 +246,12 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <p className="mt-6 text-center text-sm text-muted-foreground">
+            {portal === "hrms" ? <p className="mt-6 text-center text-sm text-muted-foreground">
               Don&apos;t have an account?{" "}
               <Link href="/register" className="text-primary font-medium hover:underline">
                 Create one
               </Link>
-            </p>
+            </p> : <p className="mt-6 text-center text-sm text-muted-foreground">Use the account provided by your organization. Need access? Contact your HR administrator.</p>}
             </CardContent>
           </Card>
         </div>

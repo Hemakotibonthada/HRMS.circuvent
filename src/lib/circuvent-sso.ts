@@ -104,11 +104,12 @@ export function authorizeUrl(input: {
   nonce?: string;
   scope?: string;
   prompt?: "none";
+  redirectUri?: string;
 }): string {
   const { clientId, redirectUri } = ssoConfig();
   const url = new URL(`${ISSUER}/authorize`);
   url.searchParams.set("client_id", clientId);
-  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("redirect_uri", input.redirectUri ?? redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set(
     "scope",
@@ -149,13 +150,13 @@ async function postToken(body: URLSearchParams): Promise<TokenSet> {
   return data as TokenSet;
 }
 
-export function exchangeCode(code: string, codeVerifier: string): Promise<TokenSet> {
+export function exchangeCode(code: string, codeVerifier: string, callbackUri?: string): Promise<TokenSet> {
   const { redirectUri } = ssoConfig();
   return postToken(
     new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: redirectUri,
+      redirect_uri: callbackUri ?? redirectUri,
       code_verifier: codeVerifier,
     })
   );

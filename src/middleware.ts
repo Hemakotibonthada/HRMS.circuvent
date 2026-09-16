@@ -16,10 +16,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ACCESS_COOKIE, REFRESH_COOKIE, verifyAccessToken } from "@/lib/auth/tokens";
 import { canAccessModule, type Role } from "@/lib/rbac";
+import { PORTAL_HEADER, portalForHost, portalHome, canEnterPortal, portalAllowsModule } from "@/lib/hrms-portals";
 
 /** Routes reachable without a session cookie. */
 const PUBLIC_PREFIXES = [
   "/login",
+  "/portal-access",
   "/register",
   "/forgot-password",
   // Reached from an emailed link by someone who is, by definition, signed out.
@@ -81,6 +83,8 @@ const PUBLIC_PREFIXES = [
   // message about a session that nobody involved was ever going to have.
   "/api/mailbox-eligibility",
   "/api/service/mailbox-approved",
+  // Short-lived My Space delegation, verified by the handler; no browser cookie.
+  "/api/service/myspace",
   // The scheduled sweep is called by Vercel's cron infrastructure, which has
   // no cookie and no session. It authenticates itself: the handler compares
   // `Authorization: Bearer $CRON_SECRET` in constant time and refuses every
@@ -153,8 +157,15 @@ function moduleFor(pathname: string): string | null {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const portal = portalForHost(request.headers.get("host") ?? request.nextUrl.hostname, process.env.NODE_ENV !== "production");
+  const headers = new Headers(request.headers);
+  headers.set(PORTAL_HEADER, portal);
 
-  if (isPublic(pathname)) return NextResponse.next();
+  if (portal !== "hrms" && (pathname === "/" || pathname === "/dashboard")) {
+    return NextResponse.redirect(new URL(portalHome(portal), request.url));
+  }
+
+  if (isPublic(pathname)) return NextResponse.next({ request: { headers } });
 
   // Bearer first, then the cookie. Native apps have no usable cookie jar, so
   // they present the same signed token as a bearer credential; without this
@@ -186,6 +197,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
+  if (portal !== "hrms" && !pathname.startsWith("/api/auth/")) {
+    const allowed = canEnterPortal(portal, claims.role) &&
+      (pathname.startsWith("/api/") || portalAllowsModule(portal, moduleFor(pathname) ?? "", claims.role));
+    if (!allowed) {
+      if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Your role cannot access this portal" }, { status: 403 });
+      return NextResponse.redirect(new URL("/portal-access", request.url));
+    }
+  }
+
   // Coarse module gate mirroring MODULE_PERMISSION_MAP. It stops an employee
   // loading the payroll bundle at all; the API routes still enforce the real
   // check, since middleware cannot be trusted for row-level decisions.
@@ -201,7 +221,6 @@ export async function middleware(request: NextRequest) {
   // Identity is forwarded to route handlers so they do not each re-verify the
   // token. These are set on the *outgoing* request, so a client cannot forge
   // them: any inbound value is overwritten here.
-  const headers = new Headers(request.headers);
   headers.set("x-user-id", claims.sub);
   headers.set("x-org-id", claims.org);
   headers.set("x-user-role", claims.role);

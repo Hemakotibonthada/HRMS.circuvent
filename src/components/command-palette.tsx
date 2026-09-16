@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { MODULES } from "@/lib/constants";
 import { Search, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRBAC } from "@/hooks/use-rbac";
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -12,6 +13,7 @@ export function CommandPalette() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const rbac = useRBAC();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -25,6 +27,7 @@ export function CommandPalette() {
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
 
   const filtered = MODULES.filter((m) =>
+    rbac.canAccessModule(m.href.slice(1)) &&
     `${m.name} ${m.shortName} ${m.description}`.toLowerCase().includes(query.toLowerCase())
   );
 

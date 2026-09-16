@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Open_Sans } from "next/font/google";
 import { Providers } from "@/components/providers";
+import { headers } from "next/headers";
+import { HrmsPortalProvider } from "@/components/hrms-portal-provider";
+import { HRMS_PORTALS, PORTAL_HEADER, type HrmsPortal } from "@/lib/hrms-portals";
 import {
   baseMetadata,
   jsonLd,
@@ -16,7 +19,12 @@ const openSans = Open_Sans({
   variable: "--font-sans",
 });
 
-export const metadata: Metadata = baseMetadata;
+export async function generateMetadata(): Promise<Metadata> {
+  const requested = (await headers()).get(PORTAL_HEADER) ?? "hrms";
+  if (requested === "hrms" || !Object.hasOwn(HRMS_PORTALS, requested)) return baseMetadata;
+  const portal = HRMS_PORTALS[requested as HrmsPortal];
+  return { ...baseMetadata, title: `${portal.name} | Circuvent`, description: portal.description, robots: { index: false, follow: false } };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -24,11 +32,13 @@ export const viewport: Viewport = {
   themeColor: siteConfig.themeColor,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const requested = (await headers()).get(PORTAL_HEADER) ?? "hrms";
+  const portal: HrmsPortal = Object.hasOwn(HRMS_PORTALS, requested) ? requested as HrmsPortal : "hrms";
   return (
     <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
@@ -49,7 +59,7 @@ export default function RootLayout({
         />
       </head>
       <body className={`${openSans.variable} font-sans antialiased`}>
-        <Providers>{children}</Providers>
+        <Providers><HrmsPortalProvider portal={portal}>{children}</HrmsPortalProvider></Providers>
       </body>
     </html>
   );
