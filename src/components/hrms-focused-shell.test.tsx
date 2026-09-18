@@ -28,8 +28,8 @@ describe("focused portal UI", () => {
     session.pathname = "/workspace";
     session.role = "employee";
     render(<HrmsPortalProvider portal="employee"><WorkspacePage /></HrmsPortalProvider>);
-    fireEvent.click(screen.getByRole("button", { name: "Time & leave", exact: true }));
-    expect(screen.getByRole("button", { name: "Time & leave", exact: true }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Time & leave" }));
+    expect(screen.getByRole("button", { name: "Time & leave" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("link", { name: "Timesheets" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "All sections" }));
     expect(screen.getByRole("button", { name: "All sections" }).getAttribute("aria-pressed")).toBe("true");

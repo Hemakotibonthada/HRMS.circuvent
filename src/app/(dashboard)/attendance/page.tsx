@@ -26,7 +26,7 @@ import {
   TrendingUp, Calendar, MapPin, Timer, LogIn, LogOut, Eye,
   Building2, Laptop, Palmtree, RefreshCw, Smartphone, CreditCard,
   Radio, Sparkles, Check, CheckCheck, X, FileEdit, History,
-  ShieldCheck, Info, BellRing,
+  ShieldCheck, Info, BellRing, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -486,6 +486,59 @@ export default function AttendancePage() {
             <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
             Refresh
           </Button>
+        </div>
+      </div>
+
+      {/* ─── Enterprise Hardware & Multi-Tenancy Link Banner ─── */}
+      <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-r from-violet-950/20 via-slate-900/40 to-indigo-950/30 p-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-violet-600/20 flex items-center justify-center text-violet-400 border border-violet-500/30">
+              <Radio className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm">Enterprise Attendance Infrastructure Connected</span>
+                <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-500">
+                  Active Sync
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Live hardware RFID card readers, biometric logs &amp; MySpace client workspaces linked via{" "}
+                <a
+                  href="https://attendance.circuvent.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-violet-600 dark:text-violet-400 underline hover:text-violet-300"
+                >
+                  https://attendance.circuvent.com
+                </a>
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {(isAdmin || isHR) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDeviceSync}
+                disabled={actionLoading}
+                className="gap-1.5 h-8 text-xs font-semibold"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5 text-emerald-500", actionLoading && "animate-spin")} />
+                Sync Punch Records
+              </Button>
+            )}
+            <a
+              href="https://attendance.circuvent.com"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/40 bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 transition shadow-sm"
+            >
+              Open Readers Portal
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
         </div>
       </div>
 
