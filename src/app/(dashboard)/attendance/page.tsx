@@ -445,7 +445,7 @@ export default function AttendancePage() {
   const wfhCount = todayRecords.filter((r) => r.status === "wfh").length;
 
   return (
-    <div className="space-y-6 p-6 max-w-7xl mx-auto">
+    <div className="space-y-6 px-4 sm:px-6 lg:px-8 py-6 w-full">
       {/* Header & Live Clock */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">

@@ -21,7 +21,7 @@ export default function WorkspacePage() {
     : portal === "intern" ? ["attendance", "leave", "training", "timesheets", "goals", "mydocuments"]
     : ["selfservice", "attendance", "leave", "payslip", "mydocuments", "benefits"];
   const quick = priorities.flatMap(id => modules.filter(m => m.id === id));
-  return <div className="mx-auto max-w-7xl space-y-8 p-5 md:p-10">
+  return <div className="w-full space-y-8 p-5 md:px-8 md:py-8">
     <section className="rounded-2xl border bg-gradient-to-br from-primary/10 via-background to-background p-6 md:p-9">
       <p className="text-xs font-semibold uppercase tracking-widest text-primary">{definition.name}</p>
       <h1 className="mt-3 text-3xl font-bold tracking-tight">Welcome{user?.displayName ? `, ${user.displayName.split(" ")[0]}` : " to your workspace"}</h1>
