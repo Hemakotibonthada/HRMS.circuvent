@@ -1,7 +1,21 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, UserRound, LogOut, Settings } from "lucide-react";
+import {
+  Home,
+  Search,
+  UserRound,
+  LogOut,
+  Settings,
+  Users,
+  Clock,
+  CreditCard,
+  Sparkles,
+  MessageSquare,
+  Sliders,
+  FolderKanban,
+  type LucideIcon,
+} from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationCenter } from "@/components/notification-center";
@@ -12,6 +26,17 @@ import { useAuth, signOutSession } from "@/hooks/use-auth";
 import { HRMS_PORTALS, portalHome } from "@/lib/hrms-portals";
 import { navigationGroups, activeNavigationGroup } from "@/lib/hrms-navigation";
 import styles from "./hrms-focused-shell.module.css";
+
+const GROUP_ICONS: Record<string, LucideIcon> = {
+  personal: UserRound,
+  people: Users,
+  time: Clock,
+  pay: CreditCard,
+  talent: Sparkles,
+  connect: MessageSquare,
+  operations: Sliders,
+  more: FolderKanban,
+};
 
 export function HrmsFocusedShell({ children }: { children: React.ReactNode }) {
   const portal = useHrmsPortal();
@@ -27,7 +52,15 @@ export function HrmsFocusedShell({ children }: { children: React.ReactNode }) {
         <Link href={home} className={styles.brand}><BrandMark size={32} /><span><strong>{HRMS_PORTALS[portal].name}</strong><small>Circuvent</small></span></Link>
         <nav aria-label="Workspace sections" className={styles.tabs}>
           <Link href={home} aria-current={pathname === home ? "page" : undefined}><Home size={16} />Home</Link>
-          {groups.map(group => <Link key={group.id} href={group.items[0].href} aria-current={activeGroup?.id === group.id ? "true" : undefined}>{group.label}</Link>)}
+          {groups.map(group => {
+            const GroupIcon = GROUP_ICONS[group.id] || FolderKanban;
+            return (
+              <Link key={group.id} href={group.items[0].href} aria-current={activeGroup?.id === group.id ? "true" : undefined}>
+                <GroupIcon size={15} />
+                {group.label}
+              </Link>
+            );
+          })}
         </nav>
         <div className={styles.actions}>
           <button type="button" aria-label="Search HRMS tools" onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }))}><Search size={18} /></button>
