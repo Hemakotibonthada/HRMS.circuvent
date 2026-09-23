@@ -1,0 +1,40 @@
+# Circuvent HRMS — joins Platform Postgres network.
+# Port 3013 published for pre-DNS smoke tests. Do not flip public DNS
+# until health checks pass. Traefik YAML prepared separately under Coolify.
+services:
+  hrms:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: circuvent-hrms
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      - PORT=3013
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+      - DATABASE_DRIVER=pg
+    ports:
+      - "0.0.0.0:3013:3013"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - platform-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3013/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+networks:
+  platform-net:
+    external: true
+    name: platform_platform-net

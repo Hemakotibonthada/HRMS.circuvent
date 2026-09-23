@@ -1,0 +1,24 @@
+node_modules
+.next
+.git
+.github
+.vercel
+.firebase
+.DS_Store
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+dev2.log
+dev-server.log
+# Top-level only — do NOT use bare "mobile" (that also drops src/lib/mobile).
+/android
+/mobile
+/Architecture_Docs
+/security
+coverage
+out
+build
+dist
+*.md
+!README.md
