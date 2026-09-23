@@ -7,6 +7,7 @@ import { HRMS_PORTALS, PORTAL_HEADER, type HrmsPortal } from "@/lib/hrms-portals
 import {
   baseMetadata,
   jsonLd,
+  metadataForPortal,
   organizationJsonLd,
   siteConfig,
   softwareApplicationJsonLd,
@@ -22,8 +23,7 @@ const openSans = Open_Sans({
 export async function generateMetadata(): Promise<Metadata> {
   const requested = (await headers()).get(PORTAL_HEADER) ?? "hrms";
   if (requested === "hrms" || !Object.hasOwn(HRMS_PORTALS, requested)) return baseMetadata;
-  const portal = HRMS_PORTALS[requested as HrmsPortal];
-  return { ...baseMetadata, title: `${portal.name} | Circuvent`, description: portal.description, robots: { index: false, follow: false } };
+  return metadataForPortal(requested as HrmsPortal);
 }
 
 export const viewport: Viewport = {

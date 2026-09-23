@@ -7,6 +7,7 @@
 
 import type { Metadata } from "next";
 import type { OgCardOptions } from "@/lib/og";
+import { HRMS_PORTALS, type HrmsPortal } from "@/lib/hrms-portals";
 
 /** Canonical public origin. Override per deployment with NEXT_PUBLIC_HRMS_URL. */
 export const SITE_URL = (
@@ -51,6 +52,83 @@ export const OG_CARD: OgCardOptions = {
     "The full employee lifecycle — onboarding, attendance, leave, performance and exit — with an Indian payroll engine for PF, ESI, professional tax, TDS and gratuity.",
   accent: "#2e1065",
 };
+
+/** Per-portal OG card copy. Role hosts keep distinct titles for Twitterbot. */
+const PORTAL_OG: Record<HrmsPortal, OgCardOptions> = {
+  hrms: OG_CARD,
+  employee: {
+    product: "Employee",
+    domain: "employee.circuvent.com",
+    headline: "Your working day, in one place",
+    description:
+      "Attendance, leave, payslips, documents and benefits — Circuvent’s employee portal.",
+    accent: "#4c1d95",
+  },
+  intern: {
+    product: "Intern",
+    domain: "intern.circuvent.com",
+    headline: "Track time, build skills, stay connected",
+    description:
+      "Timesheets, learning and your team — Circuvent’s intern portal.",
+    accent: "#5b21b6",
+  },
+  hr: {
+    product: "HR",
+    domain: "hr.circuvent.com",
+    headline: "From onboarding to payroll",
+    description:
+      "Manage the employee journey — Circuvent’s HR portal for people operations.",
+    accent: "#2e1065",
+  },
+  manager: {
+    product: "Manager",
+    domain: "manager.circuvent.com",
+    headline: "Support your team and track performance",
+    description:
+      "Reviews, approvals and team visibility — Circuvent’s manager portal.",
+    accent: "#3730a3",
+  },
+};
+
+export function portalOgCard(portal: HrmsPortal): OgCardOptions {
+  return PORTAL_OG[portal] ?? OG_CARD;
+}
+
+/** Full metadata for a portal host (titles, OG, Twitter, canonical). */
+export function metadataForPortal(portal: HrmsPortal): Metadata {
+  if (portal === "hrms") return baseMetadata;
+  const def = HRMS_PORTALS[portal];
+  const url = `https://${def.host}`;
+  const title = `${def.name} | Circuvent`;
+  return {
+    ...baseMetadata,
+    metadataBase: new URL(url),
+    title: { default: title, template: `%s | ${def.name}` },
+    description: def.description,
+    applicationName: def.name,
+    alternates: { canonical: "/" },
+    openGraph: {
+      type: "website",
+      siteName: def.name,
+      title,
+      description: def.description,
+      url,
+      locale: siteConfig.locale,
+    },
+    twitter: {
+      card: "summary_large_image",
+      ...(siteConfig.twitterHandle
+        ? { site: siteConfig.twitterHandle, creator: siteConfig.twitterHandle }
+        : {}),
+      title,
+      description: def.description,
+    },
+    // Authenticated role surfaces stay noindex; OG images and titles still work.
+    robots: { index: false, follow: false, nocache: true },
+  };
+}
+
+
 
 const KEYWORDS = [
   "Circuvent HRMS",
