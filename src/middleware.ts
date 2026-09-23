@@ -161,8 +161,17 @@ export async function middleware(request: NextRequest) {
   const headers = new Headers(request.headers);
   headers.set(PORTAL_HEADER, portal);
 
+  // Link-preview crawlers must see `/` on role hosts so root generateMetadata
+  // (portal title, og:url, OG image) can answer. Humans still go to /workspace.
+  const ua = request.headers.get("user-agent") ?? "";
+  const isLinkPreviewBot =
+    /Twitterbot|Slackbot|LinkedInBot|facebookexternalhit|Facebot|Discordbot|WhatsApp|TelegramBot|Applebot|Iframely|Embedly/i.test(
+      ua
+    );
   if (portal !== "hrms" && (pathname === "/" || pathname === "/dashboard")) {
-    return NextResponse.redirect(new URL(portalHome(portal), request.url));
+    if (!(pathname === "/" && isLinkPreviewBot)) {
+      return NextResponse.redirect(new URL(portalHome(portal), request.url));
+    }
   }
 
   if (isPublic(pathname)) return NextResponse.next({ request: { headers } });
