@@ -3,9 +3,10 @@ import { headers } from "next/headers";
 import { HRMS_PORTALS, PORTAL_HEADER, type HrmsPortal } from "@/lib/hrms-portals";
 import { metadataForPortal } from "@/lib/seo";
 
-// Sign-in, registration and password reset. Thin gated surfaces: portal-aware
-// OG/canonical so a pasted employee/intern/hr/manager login link previews with
-// the correct host and title, while staying noindex.
+// Sign-in, registration and password reset. Portal-aware OG/canonical so a
+// pasted employee/intern/hr/manager login link previews with the correct host
+// and title. Explicit images keep the root opengraph-image route attached when
+// nested metadata would otherwise drop the file-convention merge.
 
 export async function generateMetadata(): Promise<Metadata> {
   const requested = (await headers()).get(PORTAL_HEADER) ?? "hrms";
@@ -28,11 +29,13 @@ export async function generateMetadata(): Promise<Metadata> {
       description: def.description,
       url,
       locale: "en_IN",
+      images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description: def.description,
+      images: ["/twitter-image"],
     },
     robots: { index: false, follow: false },
   };
